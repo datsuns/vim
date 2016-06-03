@@ -175,6 +175,8 @@ main
      * Do any system-specific initialisations.  These can NOT use IObuff or
      * NameBuff.  Thus emsg2() cannot be called!
      */
+    // システム依存の初期化
+    // IObuffとかNameBuffはまだ使えない状態なので注意
     mch_early_init();
 
 #if defined(WIN32) && defined(FEAT_MBYTE)
