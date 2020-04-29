@@ -3844,6 +3844,9 @@ A jump table for the options with a short description can be found at |Q_op|.
 		try to keep 'lines' and 'columns' the same when adding and
 		removing GUI components.
 
+	  'C'	Remove caption (title) bar.  Support Win32 only.
+
+
 						*'guipty'* *'noguipty'*
 'guipty'		boolean	(default on)
 			global

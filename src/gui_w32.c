@@ -1057,6 +1057,55 @@ _OnSizeTextArea(
 #endif
 }
 
+    static int
+has_caption(void)
+{
+    return GetWindowLong(s_hwnd, GWL_STYLE) & WS_CAPTION;
+}
+
+    static int
+get_caption_height(void)
+{
+    // A window's caption includes extra 1 dot margin.  When caption is
+    // removed the margin also be removed.  So we must return -1 when
+    // caption is diabled.
+    return has_caption() ? GetSystemMetrics(SM_CYCAPTION) : -1;
+}
+
+    static int
+get_caption_width_adjustment(void)
+{
+    return has_caption() ? 0 : -2;
+}
+
+    void
+gui_mch_show_caption(int show)
+{
+    const static LONG flags_on = WS_CAPTION;
+    const static LONG flags_off = 0;
+    LONG style, newstyle;
+
+    // Remove caption when title is null
+    style = newstyle = GetWindowLong(s_hwnd, GWL_STYLE);
+    if (show)
+    {
+	newstyle &= ~flags_off;
+	newstyle |= flags_on;
+    }
+    else
+    {
+	newstyle &= ~flags_on;
+	newstyle |= flags_off;
+    }
+    if (newstyle != style)
+    {
+	SetWindowLong(s_hwnd, GWL_STYLE, newstyle);
+	SetWindowPos(s_hwnd, NULL, 0, 0, 0, 0,
+		SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER);
+	gui_set_shellsize(FALSE, FALSE, RESIZE_BOTH);
+    }
+}
+
 #ifdef FEAT_MENU
 /*
  * Find the vimmenu_T with the given id
@@ -2924,11 +2973,12 @@ gui_mswin_get_valid_dimensions(
 
     base_width = gui_get_base_width()
 	+ (GetSystemMetrics(SM_CXFRAME) +
-	   GetSystemMetrics(SM_CXPADDEDBORDER)) * 2;
+	   GetSystemMetrics(SM_CXPADDEDBORDER)) * 2
+	+ get_caption_width_adjustment();
     base_height = gui_get_base_height()
 	+ (GetSystemMetrics(SM_CYFRAME) +
 	   GetSystemMetrics(SM_CXPADDEDBORDER)) * 2
-	+ GetSystemMetrics(SM_CYCAPTION)
+	+ get_caption_height()
 #ifdef FEAT_MENU
 	+ gui_mswin_get_menu_height(FALSE)
 #endif
@@ -3349,12 +3399,13 @@ gui_mch_newfont(void)
     if (win_socket_id == 0)
     {
 	gui_resize_shell(rect.right - rect.left
+	    - get_caption_width_adjustment()
 	    - (GetSystemMetrics(SM_CXFRAME) +
 	       GetSystemMetrics(SM_CXPADDEDBORDER)) * 2,
 	    rect.bottom - rect.top
 	    - (GetSystemMetrics(SM_CYFRAME) +
 	       GetSystemMetrics(SM_CXPADDEDBORDER)) * 2
-	    - GetSystemMetrics(SM_CYCAPTION)
+	    - get_caption_height()
 #ifdef FEAT_MENU
 	    - gui_mswin_get_menu_height(FALSE)
 #endif
@@ -5420,10 +5471,11 @@ gui_mch_set_shellsize(
 
     // compute the size of the outside of the window
     win_width = width + (GetSystemMetrics(SM_CXFRAME) +
-			 GetSystemMetrics(SM_CXPADDEDBORDER)) * 2;
+			 GetSystemMetrics(SM_CXPADDEDBORDER)) * 2
+			+ get_caption_width_adjustment();
     win_height = height + (GetSystemMetrics(SM_CYFRAME) +
 			   GetSystemMetrics(SM_CXPADDEDBORDER)) * 2
-			+ GetSystemMetrics(SM_CYCAPTION)
+			+ get_caption_height()
 #ifdef FEAT_MENU
 			+ gui_mswin_get_menu_height(FALSE)
 #endif
@@ -6335,7 +6387,8 @@ gui_mch_get_screen_dimensions(int *screen_w, int *screen_h)
 
     *screen_w = workarea_rect.right - workarea_rect.left
 		- (GetSystemMetrics(SM_CXFRAME) +
-		   GetSystemMetrics(SM_CXPADDEDBORDER)) * 2;
+		   GetSystemMetrics(SM_CXPADDEDBORDER)) * 2
+		- get_caption_width_adjustment();
 
     // FIXME: dirty trick: Because the gui_get_base_height() doesn't include
     // the menubar for MSwin, we subtract it from the screen height, so that
@@ -6343,7 +6396,7 @@ gui_mch_get_screen_dimensions(int *screen_w, int *screen_h)
     *screen_h = workarea_rect.bottom - workarea_rect.top
 		- (GetSystemMetrics(SM_CYFRAME) +
 		   GetSystemMetrics(SM_CXPADDEDBORDER)) * 2
-		- GetSystemMetrics(SM_CYCAPTION)
+		- get_caption_height()
 #ifdef FEAT_MENU
 		- gui_mswin_get_menu_height(FALSE)
 #endif

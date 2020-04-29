@@ -3419,6 +3419,8 @@ gui_init_which_components(char_u *oldval UNUSED)
     static int	prev_tearoff = -1;
     int		using_tearoff = FALSE;
 #endif
+    static int	prev_nocaption = -1;
+    int		using_caption = TRUE;
 
     char_u	*p;
     int		i;
@@ -3498,6 +3500,9 @@ gui_init_which_components(char_u *oldval UNUSED)
 #if defined(FEAT_MENU)
 		using_tearoff = TRUE;
 #endif
+		break;
+	    case GO_NOCAPTION:
+		using_caption = FALSE;
 		break;
 	    default:
 		// Ignore options that are not supported
@@ -3610,6 +3615,14 @@ gui_init_which_components(char_u *oldval UNUSED)
 	    prev_tearoff = using_tearoff;
 	}
 #endif
+	if (using_caption != prev_nocaption)
+	{
+#if defined(MSWIN)
+	    gui_mch_show_caption(using_caption);
+#endif
+	    prev_nocaption = using_caption;
+	    need_set_size = TRUE;
+	}
 	if (need_set_size != 0)
 	{
 #ifdef FEAT_GUI_GTK

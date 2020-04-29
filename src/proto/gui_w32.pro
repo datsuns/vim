@@ -60,6 +60,7 @@ void gui_mch_settitle(char_u *title, char_u *icon);
 void mch_set_mouse_shape(int shape);
 char_u *gui_mch_browse(int saving, char_u *title, char_u *dflt, char_u *ext, char_u *initdir, char_u *filter);
 char_u *gui_mch_browsedir(char_u *title, char_u *initdir);
+void gui_mch_show_caption(int show);
 void gui_mch_set_parent(char *title);
 char *gui_mch_do_spawn(char_u *arg);
 void gui_mch_prepare(int *argc, char **argv);
