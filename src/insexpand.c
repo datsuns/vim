@@ -989,9 +989,9 @@ trigger_complete_changed_event(int cur)
     dict_set_items_ro(v_event);
 
     recursive = TRUE;
-    textlock++;
+    textwinlock++;
     apply_autocmds(EVENT_COMPLETECHANGED, NULL, NULL, FALSE, curbuf);
-    textlock--;
+    textwinlock--;
     recursive = FALSE;
 
     dict_free_contents(v_event);
@@ -2217,7 +2217,8 @@ expand_by_function(
     pos = curwin->w_cursor;
     curwin_save = curwin;
     curbuf_save = curbuf;
-    // Lock the text to avoid weird things from happening.
+    // Lock the text to avoid weird things from happening.  Do allow switching
+    // to another window temporarily.
     ++textlock;
 
     // Call a function, which returns a list or dict.
@@ -2333,7 +2334,7 @@ ins_compl_add_list(list_T *list)
     int		dir = compl_direction;
 
     // Go through the List with matches and add each of them.
-    range_list_materialize(list);
+    CHECK_LIST_MATERIALIZE(list);
     FOR_ALL_LIST_ITEMS(list, li)
     {
 	if (ins_compl_add_tv(&li->li_tv, dir) == OK)
@@ -2442,8 +2443,8 @@ f_complete(typval_T *argvars, typval_T *rettv UNUSED)
 	return;
     }
 
-    // "textlock" is set when evaluating 'completefunc' but we can change text
-    // here.
+    // "textlock" is set when evaluating 'completefunc' but we can change
+    // text here.
     textlock = 0;
 
     // Check for undo allowed here, because if something was already inserted
@@ -2518,7 +2519,7 @@ get_complete_info(list_T *what_list, dict_T *retdict)
     else
     {
 	what_flag = 0;
-	range_list_materialize(what_list);
+	CHECK_LIST_MATERIALIZE(what_list);
 	FOR_ALL_LIST_ITEMS(what_list, item)
 	{
 	    char_u *what = tv_get_string(&item->li_tv);

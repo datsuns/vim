@@ -164,7 +164,6 @@ static dict_T		vimvardict;		// Dictionary with v: variables
 // for VIM_VERSION_ defines
 #include "version.h"
 
-static void ex_let_const(exarg_T *eap, int is_const);
 static char_u *skip_var_one(char_u *arg, int include_type);
 static void list_glob_vars(int *first);
 static void list_buf_vars(int *first);
@@ -245,7 +244,9 @@ evalvars_init(void)
 
     set_vim_var_nr(VV_ECHOSPACE,    sc_col - 1);
 
-    set_reg_var(0);  // default for v:register is not 0 but '"'
+    // Default for v:register is not 0 but '"'.  This is adjusted once the
+    // clipboard has been setup by calling reset_reg_var().
+    set_reg_var(0);
 }
 
 #if defined(EXITFREE) || defined(PROTO)
@@ -434,7 +435,7 @@ eval_spell_expr(char_u *badword, char_u *expr)
     if (p_verbose == 0)
 	++emsg_off;
 
-    if (eval1(&p, &rettv, TRUE) == OK)
+    if (eval1(&p, &rettv, EVAL_EVALUATE) == OK)
     {
 	if (rettv.v_type != VAR_LIST)
 	    clear_tv(&rettv);
@@ -595,7 +596,7 @@ heredoc_get(exarg_T *eap, char_u *cmd, int script_get)
 	    return NULL;
 	}
 	*p = NUL;
-	if (vim_islower(*marker))
+	if (!script_get && vim_islower(*marker))
 	{
 	    emsg(_("E221: Marker cannot start with lower case letter"));
 	    return NULL;
@@ -682,27 +683,14 @@ heredoc_get(exarg_T *eap, char_u *cmd, int script_get)
  * ":let [var1, var2] = expr"	unpack list.
  * ":let var =<< ..."		heredoc
  * ":let var: string"		Vim9 declaration
- */
-    void
-ex_let(exarg_T *eap)
-{
-    ex_let_const(eap, FALSE);
-}
-
-/*
+ *
  * ":const"			list all variable values
  * ":const var1 var2"		list variable values
  * ":const var = expr"		assignment command.
  * ":const [var1, var2] = expr"	unpack list.
  */
     void
-ex_const(exarg_T *eap)
-{
-    ex_let_const(eap, TRUE);
-}
-
-    static void
-ex_let_const(exarg_T *eap, int is_const)
+ex_let(exarg_T *eap)
 {
     char_u	*arg = eap->arg;
     char_u	*expr = NULL;
@@ -714,7 +702,8 @@ ex_let_const(exarg_T *eap, int is_const)
     char_u	*argend;
     int		first = TRUE;
     int		concat;
-    int		flags = is_const ? LET_IS_CONST : 0;
+    int		has_assign;
+    int		flags = eap->cmdidx == CMD_const ? LET_IS_CONST : 0;
 
     // detect Vim9 assignment without ":let" or ":const"
     if (eap->arg == eap->cmd)
@@ -729,8 +718,9 @@ ex_let_const(exarg_T *eap, int is_const)
     concat = expr[0] == '.'
 	&& ((expr[1] == '=' && current_sctx.sc_version < 2)
 		|| (expr[1] == '.' && expr[2] == '='));
-    if (*expr != '=' && !((vim_strchr((char_u *)"+-*/%", *expr) != NULL
-						 && expr[1] == '=') || concat))
+    has_assign =  *expr == '=' || (vim_strchr((char_u *)"+-*/%", *expr) != NULL
+							    && expr[1] == '=');
+    if (!has_assign && !concat)
     {
 	// ":let" without "=": list variables
 	if (*arg == '[')
@@ -774,24 +764,32 @@ ex_let_const(exarg_T *eap, int is_const)
     }
     else
     {
-	op[0] = '=';
-	op[1] = NUL;
-	if (*expr != '=')
-	{
-	    if (vim_strchr((char_u *)"+-*/%.", *expr) != NULL)
-	    {
-		op[0] = *expr;   // +=, -=, *=, /=, %= or .=
-		if (expr[0] == '.' && expr[1] == '.') // ..=
-		    ++expr;
-	    }
-	    expr = skipwhite(expr + 2);
-	}
-	else
-	    expr = skipwhite(expr + 1);
+	int eval_flags;
 
-	if (eap->skip)
-	    ++emsg_skip;
-	i = eval0(expr, &rettv, &eap->nextcmd, !eap->skip);
+	rettv.v_type = VAR_UNKNOWN;
+	i = FAIL;
+	if (has_assign || concat)
+	{
+	    op[0] = '=';
+	    op[1] = NUL;
+	    if (*expr != '=')
+	    {
+		if (vim_strchr((char_u *)"+-*/%.", *expr) != NULL)
+		{
+		    op[0] = *expr;   // +=, -=, *=, /=, %= or .=
+		    if (expr[0] == '.' && expr[1] == '.') // ..=
+			++expr;
+		}
+		expr = skipwhite(expr + 2);
+	    }
+	    else
+		expr = skipwhite(expr + 1);
+
+	    if (eap->skip)
+		++emsg_skip;
+	    eval_flags = eap->skip ? 0 : EVAL_EVALUATE;
+	    i = eval0(expr, &rettv, &eap->nextcmd, eval_flags);
+	}
 	if (eap->skip)
 	{
 	    if (i != FAIL)
@@ -858,7 +856,7 @@ ex_let_vars(
 	return FAIL;
     }
 
-    range_list_materialize(l);
+    CHECK_LIST_MATERIALIZE(l);
     item = l->lv_first;
     while (*arg != ']')
     {
@@ -1107,7 +1105,7 @@ list_arg_vars(exarg_T *eap, char_u *arg, int *first)
 		{
 		    // handle d.key, l[idx], f(expr)
 		    arg_subsc = arg;
-		    if (handle_subscript(&arg, &tv, TRUE, TRUE,
+		    if (handle_subscript(&arg, &tv, EVAL_EVALUATE, TRUE,
 							  name, &name) == FAIL)
 			error = TRUE;
 		    else
@@ -2196,6 +2194,22 @@ set_argv_var(char **argv, int argc)
 }
 
 /*
+ * Reset v:register, taking the 'clipboard' setting into account.
+ */
+    void
+reset_reg_var(void)
+{
+    int regname = 0;
+
+    // Adjust the register according to 'clipboard', so that when
+    // "unnamed" is present it becomes '*' or '+' instead of '"'.
+#ifdef FEAT_CLIPBOARD
+    adjust_clip_reg(&regname);
+#endif
+    set_reg_var(regname);
+}
+
+/*
  * Set v:register if needed.
  */
     void
@@ -2495,21 +2509,22 @@ get_script_local_ht(void)
 
 /*
  * Look for "name[len]" in script-local variables.
- * Return -1 when not found.
+ * Return a non-NULL pointer when found, NULL when not found.
  */
-    int
+    void *
 lookup_scriptvar(char_u *name, size_t len, cctx_T *dummy UNUSED)
 {
     hashtab_T	*ht = get_script_local_ht();
     char_u	buffer[30];
     char_u	*p;
-    int		res;
+    void	*res;
     hashitem_T	*hi;
 
     if (ht == NULL)
-	return -1;
+	return NULL;
     if (len < sizeof(buffer) - 1)
     {
+	// avoid an alloc/free for short names
 	vim_strncpy(buffer, name, len);
 	p = buffer;
     }
@@ -2517,19 +2532,20 @@ lookup_scriptvar(char_u *name, size_t len, cctx_T *dummy UNUSED)
     {
 	p = vim_strnsave(name, (int)len);
 	if (p == NULL)
-	    return -1;
+	    return NULL;
     }
 
     hi = hash_find(ht, p);
-    res = HASHITEM_EMPTY(hi) ? -1 : 1;
+    res = HASHITEM_EMPTY(hi) ? NULL : hi;
 
     // if not script-local, then perhaps imported
-    if (res == -1 && find_imported(p, 0, NULL) != NULL)
-	res = 1;
+    if (res == NULL && find_imported(p, 0, NULL) != NULL)
+	res = p;
 
     if (p != buffer)
 	vim_free(p);
-    return res;
+    // Don't return "buffer", gcc complains.
+    return res == NULL ? NULL : IObuff;
 }
 
 /*
@@ -2591,7 +2607,7 @@ find_var_ht(char_u *name, char_u **varname)
     if (*name == 'v')				// v: variable
 	return &vimvarht;
     if (get_current_funccal() != NULL
-			      && get_current_funccal()->func->uf_dfunc_idx < 0)
+	       && get_current_funccal()->func->uf_dfunc_idx == UF_NOT_COMPILED)
     {
 	// a: and l: are only used in functions defined with ":function"
 	if (*name == 'a')			// a: function argument
@@ -3279,7 +3295,8 @@ var_exists(char_u *var)
 	if (n)
 	{
 	    // handle d.key, l[idx], f(expr)
-	    n = (handle_subscript(&var, &tv, TRUE, FALSE, name, &name) == OK);
+	    n = (handle_subscript(&var, &tv, EVAL_EVALUATE,
+						    FALSE, name, &name) == OK);
 	    if (n)
 		clear_tv(&tv);
 	}
@@ -3792,6 +3809,81 @@ free_callback(callback_T *callback)
 	callback->cb_free_name = FALSE;
     }
     callback->cb_name = NULL;
+}
+
+/*
+ * Process a function argument that can be a string expression or a function
+ * reference.
+ * "tv" must remain valid until calling evalarg_clean()!
+ * Returns FAIL when the argument is invalid.
+ */
+    int
+evalarg_get(typval_T *tv, evalarg_T *eva)
+{
+    if (tv->v_type == VAR_STRING
+	    || tv->v_type == VAR_NUMBER
+	    || tv->v_type == VAR_BOOL
+	    || tv->v_type == VAR_SPECIAL)
+    {
+	eva->eva_string = tv_get_string_buf(tv, eva->eva_buf);
+	return OK;
+    }
+
+    eva->eva_callback = get_callback(tv);
+    return eva->eva_callback.cb_name == NULL ? FAIL : OK;
+}
+
+/*
+ * Return whether "eva" has a valid expression or callback.
+ */
+    int
+evalarg_valid(evalarg_T *eva)
+{
+    return eva->eva_string != NULL || eva->eva_callback.cb_name != NULL;
+}
+
+/*
+ * Invoke the expression or callback "eva" and return the result in "tv".
+ * Returns FAIL if something failed
+ */
+    int
+evalarg_call(evalarg_T *eva, typval_T *tv)
+{
+    typval_T	argv[1];
+
+    if (eva->eva_string != NULL)
+	return eval0(eva->eva_string, tv, NULL, EVAL_EVALUATE);
+
+    argv[0].v_type = VAR_UNKNOWN;
+    return call_callback(&eva->eva_callback, -1, tv, 0, argv);
+}
+
+/*
+ * Like evalarg_call(), but just return TRUE of FALSE.
+ * Sets "error" to TRUE if evaluation failed.
+ */
+    int
+evalarg_call_bool(evalarg_T *eva, int *error)
+{
+    typval_T	tv;
+    int		r;
+
+    if (evalarg_call(eva, &tv) == FAIL)
+    {
+	*error = TRUE;
+	return FALSE;
+    }
+    r = tv_get_number(&tv);
+    clear_tv(&tv);
+    *error = FALSE;
+    return r;
+}
+
+    void
+evalarg_clean(evalarg_T *eva)
+{
+    if (eva->eva_string == NULL)
+	free_callback(&eva->eva_callback);
 }
 
 #endif // FEAT_EVAL

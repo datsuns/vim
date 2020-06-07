@@ -30,6 +30,9 @@
 /* Define when __DATE__ " " __TIME__ can be used */
 #undef HAVE_DATE_TIME
 
+/* Defined from $SOURCE_DATE_EPOCH, used as the build date */
+#undef BUILD_DATE
+
 /* Define when __attribute__((unused)) can be used */
 #undef HAVE_ATTRIBUTE_UNUSED
 
@@ -125,12 +128,6 @@
 /* Define to range of pty names to try */
 #undef PTYRANGE0
 #undef PTYRANGE1
-
-/* Define mode for pty */
-#undef PTYMODE
-
-/* Define group for pty */
-#undef PTYGROUP
 
 /* Define as the return type of signal handlers (int or void).  */
 #undef RETSIGTYPE
@@ -489,6 +486,12 @@
 
 /* Define if we have isnan() */
 #undef HAVE_ISNAN
+
+/* Define if we have dirfd() */
+#undef HAVE_DIRFD
+
+/* Define if we have flock() */
+#undef HAVE_FLOCK
 
 /* Define to inline symbol or empty */
 #undef inline

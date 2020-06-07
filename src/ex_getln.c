@@ -682,7 +682,8 @@ may_add_char_to_search(int firstc, int *c, incsearch_state_T *is_state)
     // NOTE: must call restore_last_search_pattern() before returning!
     save_last_search_pattern();
 
-    if (!do_incsearch_highlighting(firstc, &search_delim, is_state, &skiplen, &patlen))
+    if (!do_incsearch_highlighting(firstc, &search_delim, is_state,
+							    &skiplen, &patlen))
     {
 	restore_last_search_pattern();
 	return FAIL;
@@ -1318,12 +1319,12 @@ getcmdline_int(
 		c = get_expr_register();
 		if (c == '=')
 		{
-		    // Need to save and restore ccline.  And set "textlock"
+		    // Need to save and restore ccline.  And set "textwinlock"
 		    // to avoid nasty things like going to another buffer when
 		    // evaluating an expression.
-		    ++textlock;
+		    ++textwinlock;
 		    p = get_expr_line();
-		    --textlock;
+		    --textwinlock;
 
 		    if (p != NULL)
 		    {
@@ -2548,17 +2549,17 @@ check_opt_wim(void)
 
 /*
  * Return TRUE when the text must not be changed and we can't switch to
- * another window or buffer.  Used when editing the command line, evaluating
+ * another window or buffer.  TRUE when editing the command line, evaluating
  * 'balloonexpr', etc.
  */
     int
-text_locked(void)
+text_and_win_locked(void)
 {
 #ifdef FEAT_CMDWIN
     if (cmdwin_type != 0)
 	return TRUE;
 #endif
-    return textlock != 0;
+    return textwinlock != 0;
 }
 
 /*
@@ -2578,7 +2579,19 @@ get_text_locked_msg(void)
     if (cmdwin_type != 0)
 	return e_cmdwin;
 #endif
+    if (textwinlock != 0)
+	return e_textwinlock;
     return e_textlock;
+}
+
+/*
+ * Return TRUE when the text must not be changed and/or we cannot switch to
+ * another window.  TRUE while evaluating 'completefunc'.
+ */
+    int
+text_locked(void)
+{
+    return text_and_win_locked() || textlock != 0;
 }
 
 /*
@@ -3560,11 +3573,11 @@ cmdline_paste(
     regname = may_get_selection(regname);
 #endif
 
-    // Need to  set "textlock" to avoid nasty things like going to another
+    // Need to  set "textwinlock" to avoid nasty things like going to another
     // buffer when evaluating an expression.
-    ++textlock;
+    ++textwinlock;
     i = get_spec_reg(regname, &arg, &allocated, TRUE);
-    --textlock;
+    --textwinlock;
 
     if (i)
     {
@@ -4193,10 +4206,19 @@ open_cmdwin(void)
 	ga_clear(&winsizes);
 	return K_IGNORE;
     }
-    cmdwin_type = get_cmdline_type();
+    // Don't let quitting the More prompt make this fail.
+    got_int = FALSE;
 
     // Create the command-line buffer empty.
-    (void)do_ecmd(0, NULL, NULL, NULL, ECMD_ONE, ECMD_HIDE, NULL);
+    if (do_ecmd(0, NULL, NULL, NULL, ECMD_ONE, ECMD_HIDE, NULL) == FAIL)
+    {
+	// Some autocommand messed it up?
+	win_close(curwin, TRUE);
+	ga_clear(&winsizes);
+	return Ctrl_C;
+    }
+    cmdwin_type = get_cmdline_type();
+
     apply_autocmds(EVENT_BUFFILEPRE, NULL, NULL, FALSE, curbuf);
     (void)setfname(curbuf, (char_u *)"[Command Line]", NULL, TRUE);
     apply_autocmds(EVENT_BUFFILEPOST, NULL, NULL, FALSE, curbuf);
@@ -4468,6 +4490,8 @@ get_user_input(
 
     rettv->v_type = VAR_STRING;
     rettv->vval.v_string = NULL;
+    if (input_busy)
+	return;  // this doesn't work recursively.
 
 #ifdef NO_CONSOLE_INPUT
     // While starting up, there is no place to enter text. When running tests
@@ -4528,12 +4552,18 @@ get_user_input(
 	if (defstr != NULL)
 	{
 	    int save_ex_normal_busy = ex_normal_busy;
+	    int save_vgetc_busy = vgetc_busy;
+	    int save_input_busy = input_busy;
 
+	    input_busy |= vgetc_busy;
 	    ex_normal_busy = 0;
+	    vgetc_busy = 0;
 	    rettv->vval.v_string =
 		getcmdline_prompt(secret ? NUL : '@', p, get_echo_attr(),
 							      xp_type, xp_arg);
 	    ex_normal_busy = save_ex_normal_busy;
+	    vgetc_busy = save_vgetc_busy;
+	    input_busy = save_input_busy;
 	}
 	if (inputdialog && rettv->vval.v_string == NULL
 		&& argvars[1].v_type != VAR_UNKNOWN

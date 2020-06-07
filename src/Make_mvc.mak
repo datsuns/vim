@@ -23,6 +23,8 @@
 #
 #	Feature Set: FEATURES=[TINY, SMALL, NORMAL, BIG, HUGE] (default is HUGE)
 #
+#   	Name to add to the version: MODIFIED_BY=[name of modifier]
+#
 #	GUI interface: GUI=yes (default is no)
 #
 #	GUI with DirectWrite (DirectX): DIRECTX=yes
@@ -675,9 +677,6 @@ CFLAGS = $(CFLAGS) $(WP64CHECK)
 
 CFLAGS = $(CFLAGS) $(OPTFLAG) -DNDEBUG $(CPUARG)
 RCFLAGS = $(rcflags) $(rcvars) -DNDEBUG
-! if "$(CL)" == "/D_USING_V110_SDK71_"
-RCFLAGS = $(RCFLAGS) /D_USING_V110_SDK71_
-! endif
 ! ifdef USE_MSVCRT
 CFLAGS = $(CFLAGS) /MD
 LIBC = msvcrt.lib
@@ -706,6 +705,10 @@ LIBC = $(LIBC) libcmtd.lib
 CFLAGS = $(CFLAGS) /Zl /MTd
 ! endif
 !endif # DEBUG
+
+!if "$(CL)" == "/D_USING_V110_SDK71_"
+RCFLAGS = $(RCFLAGS) /D_USING_V110_SDK71_
+!endif
 
 !if $(MSVC_MAJOR) >= 8
 # Visual Studio 2005 has 'deprecated' many of the standard CRT functions
@@ -760,6 +763,7 @@ OBJ = \
 	$(OUTDIR)\findfile.obj \
 	$(OUTDIR)\fold.obj \
 	$(OUTDIR)\getchar.obj \
+	$(OUTDIR)\gui_xim.obj \
 	$(OUTDIR)\hardcopy.obj \
 	$(OUTDIR)\hashtab.obj \
 	$(OUTDIR)\highlight.obj \
@@ -806,8 +810,11 @@ OBJ = \
 	$(OUTDIR)\tag.obj \
 	$(OUTDIR)\term.obj \
 	$(OUTDIR)\testing.obj \
+	$(OUTDIR)\textformat.obj \
+	$(OUTDIR)\textobject.obj \
 	$(OUTDIR)\textprop.obj \
 	$(OUTDIR)\time.obj \
+	$(OUTDIR)\typval.obj \
 	$(OUTDIR)\ui.obj \
 	$(OUTDIR)\undo.obj \
 	$(OUTDIR)\usercmd.obj \
@@ -1240,6 +1247,13 @@ CFLAGS = $(CFLAGS) -DMSWINPS
 CFLAGS = $(CFLAGS) -DFEAT_$(FEATURES)
 
 #
+# MODIFIED_BY - Name of who modified a release version
+#
+!if "$(MODIFIED_BY)" != ""
+CFLAGS = $(CFLAGS) -DMODIFIED_BY=\"$(MODIFIED_BY)\"
+!endif
+
+#
 # Always generate the .pdb file, so that we get debug symbols that can be used
 # on a crash (doesn't add overhead to the executable).
 # Generate edit-and-continue debug info when no optimization - allows to
@@ -1587,6 +1601,8 @@ $(OUTDIR)/fold.obj:	$(OUTDIR) fold.c  $(INCL)
 
 $(OUTDIR)/getchar.obj:	$(OUTDIR) getchar.c  $(INCL)
 
+$(OUTDIR)/gui_xim.obj:	$(OUTDIR) gui_xim.c  $(INCL)
+
 $(OUTDIR)/hardcopy.obj:	$(OUTDIR) hardcopy.c  $(INCL) version.h
 
 $(OUTDIR)/hashtab.obj:	$(OUTDIR) hashtab.c  $(INCL)
@@ -1744,9 +1760,15 @@ $(OUTDIR)/term.obj:	$(OUTDIR) term.c  $(INCL)
 
 $(OUTDIR)/term.obj:	$(OUTDIR) testing.c  $(INCL)
 
+$(OUTDIR)/textformat.obj:	$(OUTDIR) textformat.c  $(INCL)
+
+$(OUTDIR)/textobject.obj:	$(OUTDIR) textobject.c  $(INCL)
+
 $(OUTDIR)/textprop.obj:	$(OUTDIR) textprop.c  $(INCL)
 
 $(OUTDIR)/time.obj:	$(OUTDIR) time.c  $(INCL)
+
+$(OUTDIR)/typval.obj:	$(OUTDIR) typval.c  $(INCL)
 
 $(OUTDIR)/ui.obj:	$(OUTDIR) ui.c  $(INCL)
 
@@ -1805,6 +1827,7 @@ $(OUTDIR)/glbl_ime.obj:	$(OUTDIR) glbl_ime.cpp  dimm.h $(INCL)
 
 CCCTERM = $(CC) $(CFLAGS) -Ilibvterm/include -DINLINE="" \
 	-DVSNPRINTF=vim_vsnprintf \
+	-DSNPRINTF=vim_snprintf \
 	-DIS_COMBINING_FUNCTION=utf_iscomposing_uint \
 	-DWCWIDTH_FUNCTION=utf_uint2cells \
 	-DGET_SPECIAL_PTY_TYPE_FUNCTION=get_special_pty_type \
@@ -1838,14 +1861,18 @@ $(OUTDIR)/vterm_vterm.obj: $(OUTDIR) libvterm/src/vterm.c $(TERM_DEPS)
 	$(CCCTERM) /Fo$@ libvterm/src/vterm.c
 
 
-# $CFLAGS may contain backslashes and double quotes, escape them both.
+# $CFLAGS may contain backslashes, quotes and chevrons, escape them all.
 E0_CFLAGS = $(CFLAGS:\=\\)
-E_CFLAGS = $(E0_CFLAGS:"=\")
+E00_CFLAGS = $(E0_CFLAGS:"=\")
 # ") stop the string
-# $LINKARGS2 may contain backslashes and double quotes, escape them both.
+E000_CFLAGS = $(E00_CFLAGS:<=^^<)
+E_CFLAGS = $(E000_CFLAGS:>=^^>)
+# $LINKARGS2 may contain backslashes, quotes and chevrons, escape them all.
 E0_LINKARGS2 = $(LINKARGS2:\=\\)
-E_LINKARGS2 = $(E0_LINKARGS2:"=\")
+E00_LINKARGS2 = $(E0_LINKARGS2:"=\")
 # ") stop the string
+E000_LINKARGS2 = $(E00_LINKARGS2:<=^^<)
+E_LINKARGS2 = $(E000_LINKARGS2:>=^^>)
 
 $(PATHDEF_SRC): Make_mvc.mak
 	@echo creating $(PATHDEF_SRC)
@@ -1897,6 +1924,7 @@ proto.h: \
 	proto/filepath.pro \
 	proto/findfile.pro \
 	proto/getchar.pro \
+	proto/gui_xim.pro \
 	proto/hardcopy.pro \
 	proto/hashtab.pro \
 	proto/highlight.pro \
@@ -1942,8 +1970,11 @@ proto.h: \
 	proto/tag.pro \
 	proto/term.pro \
 	proto/testing.pro \
+	proto/textformat.pro \
+	proto/textobject.pro \
 	proto/textprop.pro \
 	proto/time.pro \
+	proto/typval.pro \
 	proto/ui.pro \
 	proto/undo.pro \
 	proto/usercmd.pro \

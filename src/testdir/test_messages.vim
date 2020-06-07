@@ -1,19 +1,9 @@
 " Tests for :messages, :echomsg, :echoerr
 
+source check.vim
 source shared.vim
 source term_util.vim
-
-" Get all messages but drop the maintainer entry.
-func GetMessages()
-  redir => result
-  redraw | messages
-  redir END
-  let msg_list = split(result, "\n")
-  if msg_list->len() > 0 && msg_list[0] =~ 'Messages maintainer:'
-    return msg_list[1:]
-  endif
-  return msg_list
-endfunc
+source view_util.vim
 
 func Test_messages()
   let oldmore = &more
@@ -183,9 +173,7 @@ endfunc
 
 " Test more-prompt (see :help more-prompt).
 func Test_message_more()
-  if !CanRunVimInTerminal()
-    throw 'Skipped: cannot run vim in terminal'
-  endif
+  CheckRunVimInTerminal
   let buf = RunVimInTerminal('', {'rows': 6})
   call term_sendkeys(buf, ":call setline(1, range(1, 100))\n")
 
@@ -276,9 +264,7 @@ func Test_message_more()
 endfunc
 
 func Test_ask_yesno()
-  if !CanRunVimInTerminal()
-    throw 'Skipped: cannot run vim in terminal'
-  endif
+  CheckRunVimInTerminal
   let buf = RunVimInTerminal('', {'rows': 6})
   call term_sendkeys(buf, ":call setline(1, range(1, 2))\n")
 
@@ -315,6 +301,14 @@ func Test_null()
     echom test_null_job()
     echom test_null_channel()
   endif
+endfunc
+
+func Test_mapping_at_hit_return_prompt()
+  nnoremap <C-B> :echo "hit ctrl-b"<CR>
+  call feedkeys(":ls\<CR>", "xt")
+  call feedkeys("\<*C-B>", "xt")
+  call assert_match('hit ctrl-b', Screenline(&lines - 1))
+  nunmap <C-B>
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

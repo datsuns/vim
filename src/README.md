@@ -80,8 +80,11 @@ syntax.c	| syntax and other highlighting
 tag.c		| tags
 term.c		| terminal handling, termcap codes
 testing.c	| testing: assert and test functions
+textformat.c	| text formatting
+textobject.c	| text objects
 textprop.c	| text properties
 time.c		| time and timer functions
+typval.c	| vim script type/value functions
 undo.c		| undo and redo
 usercmd.c	| user defined commands
 userfunc.c	| user defined functions

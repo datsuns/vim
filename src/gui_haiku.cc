@@ -551,7 +551,7 @@ struct VimMsg {
 };
 
 #define RGB(r, g, b)	((char_u)(r) << 16 | (char_u)(g) << 8 | (char_u)(b) << 0)
-#define GUI_TO_RGB(g)	{ (g) >> 16, (g) >> 8, (g) >> 0, 255 }
+#define GUI_TO_RGB(g)	{ (char_u)((g) >> 16), (char_u)((g) >> 8), (char_u)((g) >> 0), 255 }
 
 // ---------------- end of header part ----------------
 
@@ -1145,10 +1145,11 @@ VimFormView::FrameResized(float new_width, float new_height)
 VimTextAreaView::VimTextAreaView(BRect frame):
     BView(frame, "VimTextAreaView", B_FOLLOW_ALL_SIDES,
 #ifdef FEAT_MBYTE_IME
-	B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE | B_INPUT_METHOD_AWARE),
+	B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE | B_INPUT_METHOD_AWARE
 #else
-	B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE),
+	B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE
 #endif
+	),
     mouseDragEventCount(0)
 {
 #ifdef FEAT_MBYTE_IME
@@ -3093,7 +3094,7 @@ gui_haiku_process_event(bigtime_t timeout)
 			}
 		    }
 #else
-		    add_to_input_buf_csi(string, len);
+			add_to_input_buf_csi(string, len);
 #endif
 		    else
 			add_to_input_buf(string, len);
@@ -3990,40 +3991,6 @@ gui_mch_adjust_charheight()
     return OK;
 }
 
-/*
- * Display the saved error message(s).
- */
-#ifdef USE_MCH_ERRMSG
-    void
-display_errors(void)
-{
-    char    *p;
-    char_u  pError[256];
-
-    if (error_ga.ga_data == NULL)
-    return;
-
-    // avoid putting up a message box with blanks only
-    for (p = (char *)error_ga.ga_data; *p; ++p)
-    if (!isspace(*p))
-    {
-	if (STRLEN(p) > 255)
-	pError[0] = 255;
-	else
-	pError[0] = STRLEN(p);
-
-	STRNCPY(&pError[1], p, pError[0]);
-//	ParamText(pError, nil, nil, nil);
-//	Alert(128, nil);
-	break;
-	// TODO: handled message longer than 256 chars
-	//   use auto-sizeable alert
-	//   or dialog with scrollbars (TextEdit zone)
-    }
-    ga_clear(&error_ga);
-}
-#endif
-
     void
 gui_mch_getmouse(int *x, int *y)
 {
@@ -4471,15 +4438,16 @@ gui_mch_wait_for_chars(
 	int	wtime)
 {
     int		focus;
-    bigtime_t	    until, timeout;
-    status_t	    st;
+    bigtime_t	until, timeout;
+    status_t	st;
 
-    if (wtime >= 0) {
+    if (wtime >= 0)
+    {
 	timeout = wtime * 1000;
 	until = system_time() + timeout;
-    } else {
-	timeout = B_INFINITE_TIMEOUT;
     }
+    else
+	timeout = B_INFINITE_TIMEOUT;
 
     focus = gui.in_focus;
     for (;;)
@@ -4495,6 +4463,28 @@ gui_mch_wait_for_chars(
 	}
 
 	gui_mch_flush();
+
+#ifdef MESSAGE_QUEUE
+# ifdef FEAT_TIMERS
+	did_add_timer = FALSE;
+# endif
+	parse_queued_messages();
+# ifdef FEAT_TIMERS
+	if (did_add_timer)
+	    // Need to recompute the waiting time.
+	    break;
+# endif
+# ifdef FEAT_JOB_CHANNEL
+	if (has_any_channel())
+	{
+	    if (wtime < 0 || timeout > 20000)
+		timeout = 20000;
+	}
+	else if (wtime < 0)
+	    timeout = B_INFINITE_TIMEOUT;
+# endif
+#endif
+
 	/*
 	 * Don't use gui_mch_update() because then we will spin-lock until a
 	 * char arrives, instead we use gui_haiku_process_event() to hang until
@@ -4512,7 +4502,8 @@ gui_mch_wait_for_chars(
 	 * Calculate how much longer we're willing to wait for the
 	 * next event.
 	 */
-	if (wtime >= 0) {
+	if (wtime >= 0)
+	{
 	    timeout = until - system_time();
 	    if (timeout < 0)
 		break;

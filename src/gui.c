@@ -804,6 +804,13 @@ gui_init(void)
 	    gui_mch_disable_beval_area(balloonEval);
 #endif
 
+#ifndef FEAT_GUI_MSWIN
+	// In the GUI modifiers are prepended to keys.
+	// Don't do this for MS-Windows yet, it sends CTRL-K without the
+	// modifier.
+	seenModifyOtherKeys = TRUE;
+#endif
+
 #if defined(FEAT_XIM) && defined(FEAT_GUI_GTK)
 	if (!im_xim_isvalid_imactivate())
 	    emsg(_("E599: Value of 'imactivatekey' is invalid"));
@@ -4754,7 +4761,7 @@ gui_get_color(char_u *name)
 	    && gui.in_use
 #endif
 	    )
-	semsg(_("E254: Cannot allocate color %s"), name);
+	semsg(_(e_alloc_color), name);
     return t;
 }
 
@@ -5120,7 +5127,8 @@ gui_find_iconfile(char_u *name, char_u *buffer, char *ext)
 # endif
 #endif
 
-#if defined(FEAT_GUI_GTK) || defined(FEAT_GUI_X11) || defined(PROTO)
+#if defined(FEAT_GUI_GTK) || defined(FEAT_GUI_X11)|| defined(FEAT_GUI_HAIKU) \
+	|| defined(PROTO)
     void
 display_errors(void)
 {
