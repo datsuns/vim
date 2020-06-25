@@ -906,7 +906,7 @@ do_highlight(
 	while (*linep && !VIM_ISWHITE(*linep) && *linep != '=')
 	    ++linep;
 	vim_free(key);
-	key = vim_strnsave_up(key_start, (int)(linep - key_start));
+	key = vim_strnsave_up(key_start, linep - key_start);
 	if (key == NULL)
 	{
 	    error = TRUE;
@@ -963,7 +963,7 @@ do_highlight(
 	    break;
 	}
 	vim_free(arg);
-	arg = vim_strnsave(arg_start, (int)(linep - arg_start));
+	arg = vim_strnsave(arg_start, linep - arg_start);
 	if (arg == NULL)
 	{
 	    error = TRUE;
@@ -4419,9 +4419,8 @@ update_search_hl(
     while (cur != NULL || shl_flag == FALSE)
     {
 	if (shl_flag == FALSE
-		&& ((cur != NULL
-			&& cur->priority > SEARCH_HL_PRIORITY)
-		    || cur == NULL))
+		&& (cur == NULL
+			|| cur->priority > SEARCH_HL_PRIORITY))
 	{
 	    shl = search_hl;
 	    shl_flag = TRUE;
@@ -4453,7 +4452,7 @@ update_search_hl(
 		    *match_conc = cur->conceal_char;
 		}
 		else
-		    *has_match_conc = *match_conc = 0;
+		    *has_match_conc = 0;
 # endif
 	    }
 	    else if (col == shl->endcol)
@@ -4503,9 +4502,8 @@ update_search_hl(
     while (cur != NULL || shl_flag == FALSE)
     {
 	if (shl_flag == FALSE
-		&& ((cur != NULL
-			&& cur->priority > SEARCH_HL_PRIORITY)
-		    || cur == NULL))
+		&& (cur == NULL ||
+			cur->priority > SEARCH_HL_PRIORITY))
 	{
 	    shl = search_hl;
 	    shl_flag = TRUE;
@@ -5003,7 +5001,7 @@ ex_match(exarg_T *eap)
     {
 	p = skiptowhite(eap->arg);
 	if (!eap->skip)
-	    g = vim_strnsave(eap->arg, (int)(p - eap->arg));
+	    g = vim_strnsave(eap->arg, p - eap->arg);
 	p = skipwhite(p);
 	if (*p == NUL)
 	{
