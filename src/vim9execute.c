@@ -1089,7 +1089,7 @@ call_def_function(
 		    // compilation: don't set SOURCING_LNUM.
 		    if (GA_GROW(&ectx.ec_stack, 1) == FAIL)
 			goto failed;
-		    if (get_option_tv(&name, &optval, TRUE) == FAIL)
+		    if (eval_option(&name, &optval, TRUE) == FAIL)
 			goto failed;
 		    *STACK_TV_BOT(0) = optval;
 		    ++ectx.ec_stack.ga_len;
@@ -1105,7 +1105,7 @@ call_def_function(
 		    if (GA_GROW(&ectx.ec_stack, 1) == FAIL)
 			goto failed;
 		    // name is always valid, checked when compiling
-		    (void)get_env_tv(&name, &optval, TRUE);
+		    (void)eval_env_var(&name, &optval, TRUE);
 		    *STACK_TV_BOT(0) = optval;
 		    ++ectx.ec_stack.ga_len;
 		}
@@ -2188,6 +2188,7 @@ call_def_function(
 		{
 		    dict_T	*dict;
 		    dictitem_T	*di;
+		    typval_T	temp_tv;
 
 		    tv = STACK_TV_BOT(-1);
 		    if (tv->v_type != VAR_DICT || tv->vval.v_dict == NULL)
@@ -2203,8 +2204,11 @@ call_def_function(
 			semsg(_(e_dictkey), iptr->isn_arg.string);
 			goto failed;
 		    }
-		    clear_tv(tv);
+		    // Clear the dict after getting the item, to avoid that it
+		    // make the item invalid.
+		    temp_tv = *tv;
 		    copy_tv(&di->di_tv, tv);
+		    clear_tv(&temp_tv);
 		}
 		break;
 

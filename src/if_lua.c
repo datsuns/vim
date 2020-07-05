@@ -576,6 +576,8 @@ luaV_totypval(lua_State *L, int pos, typval_T *tv)
 {
     int status = OK;
 
+    tv->v_lock = 0;
+
     switch (lua_type(L, pos))
     {
 	case LUA_TBOOLEAN:
@@ -871,7 +873,13 @@ luaV_list_index(lua_State *L)
     list_T *l = luaV_unbox(L, luaV_List, 1);
     if (lua_isnumber(L, 2)) // list item?
     {
-	listitem_T *li = list_find(l, (long) luaL_checkinteger(L, 2));
+	long n = (long) luaL_checkinteger(L, 2);
+	listitem_T *li;
+
+	// Lua array index starts with 1 while Vim uses 0, subtract 1 to
+	// normalize.
+	n -= 1;
+	li = list_find(l, n);
 	if (li == NULL)
 	    lua_pushnil(L);
 	else
@@ -900,22 +908,38 @@ luaV_list_newindex(lua_State *L)
     list_T *l = luaV_unbox(L, luaV_List, 1);
     long n = (long) luaL_checkinteger(L, 2);
     listitem_T *li;
+
+    // Lua array index starts with 1 while Vim uses 0, subtract 1 to normalize.
+    n -= 1;
+
     if (l->lv_lock)
 	luaL_error(L, "list is locked");
     li = list_find(l, n);
-    if (li == NULL) return 0;
-    if (lua_isnil(L, 3)) // remove?
+    if (li == NULL)
     {
-	vimlist_remove(l, li, li);
-	listitem_free(l, li);
+        if (!lua_isnil(L, 3))
+        {
+	   typval_T v;
+	   luaV_checktypval(L, 3, &v, "inserting list item");
+	   if (list_insert_tv(l, &v, li) == FAIL)
+	        luaL_error(L, "failed to add item to list");
+	   clear_tv(&v);
+        }
     }
     else
     {
-	typval_T v;
-	luaV_checktypval(L, 3, &v, "setting list item");
-	clear_tv(&li->li_tv);
-	copy_tv(&v, &li->li_tv);
-	clear_tv(&v);
+        if (lua_isnil(L, 3)) // remove?
+        {
+	    vimlist_remove(l, li, li);
+	    listitem_free(l, li);
+        }
+        else
+        {
+	    typval_T v;
+	    luaV_checktypval(L, 3, &v, "setting list item");
+	    clear_tv(&li->li_tv);
+	    li->li_tv = v;
+        }
     }
     return 0;
 }
@@ -1061,7 +1085,7 @@ luaV_dict_newindex(lua_State *L)
     dict_T *d = luaV_unbox(L, luaV_Dict, 1);
     char_u *key = (char_u *) luaL_checkstring(L, 2);
     dictitem_T *di;
-    typval_T v;
+    typval_T tv;
 
     if (d->dv_lock)
 	luaL_error(L, "dict is locked");
@@ -1071,9 +1095,12 @@ luaV_dict_newindex(lua_State *L)
 	luaL_error(L, "empty key");
     if (!lua_isnil(L, 3)) // read value?
     {
-	luaV_checktypval(L, 3, &v, "setting dict item");
-	if (d->dv_scope == VAR_DEF_SCOPE && v.v_type == VAR_FUNC)
+	luaV_checktypval(L, 3, &tv, "setting dict item");
+	if (d->dv_scope == VAR_DEF_SCOPE && tv.v_type == VAR_FUNC)
+	{
+	    clear_tv(&tv);
 	    luaL_error(L, "cannot assign funcref to builtin scope");
+	}
     }
     di = dict_find(d, key, -1);
     if (di == NULL) // non-existing key?
@@ -1082,10 +1109,14 @@ luaV_dict_newindex(lua_State *L)
 	    return 0;
 	di = dictitem_alloc(key);
 	if (di == NULL)
+	{
+	    clear_tv(&tv);
 	    return 0;
+	}
 	if (dict_add(d, di) == FAIL)
 	{
 	    vim_free(di);
+	    clear_tv(&tv);
 	    return 0;
 	}
     }
@@ -1098,10 +1129,7 @@ luaV_dict_newindex(lua_State *L)
 	dictitem_free(di);
     }
     else
-    {
-	copy_tv(&v, &di->di_tv);
-	clear_tv(&v);
-    }
+	di->di_tv = tv;
     return 0;
 }
 
@@ -1418,7 +1446,8 @@ luaV_buffer_newindex(lua_State *L)
 			curwin->w_cursor.lnum -= 1;
 			check_cursor_col();
 		    }
-		    else check_cursor();
+		    else
+			check_cursor();
 		    changed_cline_bef_curs();
 		}
 		invalidate_botline();
@@ -1819,8 +1848,7 @@ luaV_dict(lua_State *L)
 		    lua_pushnil(L);
 		    return 1;
 		}
-		copy_tv(&v, &di->di_tv);
-		clear_tv(&v);
+		di->di_tv = v;
 		lua_pop(L, 2); // key copy and value
 	    }
 	}
@@ -2375,7 +2403,7 @@ ex_luado(exarg_T *eap)
     lua_replace(L, -2); // function -> body
     for (l = eap->line1; l <= eap->line2; l++)
     {
-	// Check the line number, the command my have deleted lines.
+	// Check the line number, the command may have deleted lines.
 	if (l > curbuf->b_ml.ml_line_count)
 	    break;
 

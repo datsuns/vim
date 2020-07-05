@@ -2336,9 +2336,12 @@ get_script_item_idx(int sid, char_u *name, int check_writable)
     imported_T *
 find_imported(char_u *name, size_t len, cctx_T *cctx)
 {
-    scriptitem_T    *si = SCRIPT_ITEM(current_sctx.sc_sid);
+    scriptitem_T    *si;
     int		    idx;
 
+    if (current_sctx.sc_sid <= 0)
+	return NULL;
+    si = SCRIPT_ITEM(current_sctx.sc_sid);
     if (cctx != NULL)
 	for (idx = 0; idx < cctx->ctx_imports.ga_len; ++idx)
 	{
@@ -2610,7 +2613,8 @@ compile_load_scriptvar(
 	if (import->imp_all)
 	{
 	    char_u	*p = skipwhite(*end);
-	    int		name_len;
+	    char_u	*exp_name;
+	    int		cc;
 	    ufunc_T	*ufunc;
 	    type_T	*type;
 
@@ -2627,7 +2631,17 @@ compile_load_scriptvar(
 		return FAIL;
 	    }
 
-	    idx = find_exported(import->imp_sid, &p, &name_len, &ufunc, &type);
+	    // isolate one name
+	    exp_name = p;
+	    while (eval_isnamec(*p))
+		++p;
+	    cc = *p;
+	    *p = NUL;
+
+	    idx = find_exported(import->imp_sid, exp_name, &ufunc, &type);
+	    *p = cc;
+	    p = skipwhite(p);
+
 	    // TODO: what if it is a function?
 	    if (idx < 0)
 		return FAIL;
@@ -2865,9 +2879,9 @@ compile_call(
 
 	argvars[0].v_type = VAR_UNKNOWN;
 	if (*s == '"')
-	    (void)get_string_tv(&s, &argvars[0], TRUE);
+	    (void)eval_string(&s, &argvars[0], TRUE);
 	else if (*s == '\'')
-	    (void)get_lit_string_tv(&s, &argvars[0], TRUE);
+	    (void)eval_lit_string(&s, &argvars[0], TRUE);
 	s = skipwhite(s);
 	if (*s == ')' && argvars[0].v_type == VAR_STRING)
 	{
@@ -2978,6 +2992,7 @@ to_name_end(char_u *arg, int namespace)
 
 /*
  * Like to_name_end() but also skip over a list or dict constant.
+ * This intentionally does not handle line continuation.
  */
     char_u *
 to_name_const_end(char_u *arg)
@@ -2989,24 +3004,24 @@ to_name_const_end(char_u *arg)
     {
 
 	// Can be "[1, 2, 3]->Func()".
-	if (get_list_tv(&p, &rettv, 0, FALSE) == FAIL)
+	if (eval_list(&p, &rettv, NULL, FALSE) == FAIL)
 	    p = arg;
     }
     else if (p == arg && *arg == '#' && arg[1] == '{')
     {
 	// Can be "#{a: 1}->Func()".
 	++p;
-	if (eval_dict(&p, &rettv, 0, TRUE) == FAIL)
+	if (eval_dict(&p, &rettv, NULL, TRUE) == FAIL)
 	    p = arg;
     }
     else if (p == arg && *arg == '{')
     {
-	int	    ret = get_lambda_tv(&p, &rettv, FALSE);
+	int	    ret = get_lambda_tv(&p, &rettv, NULL);
 
 	// Can be "{x -> ret}()".
 	// Can be "{'a': 1}->Func()".
 	if (ret == NOTDONE)
-	    ret = eval_dict(&p, &rettv, 0, FALSE);
+	    ret = eval_dict(&p, &rettv, NULL, FALSE);
 	if (ret != OK)
 	    p = arg;
     }
@@ -3065,7 +3080,7 @@ compile_lambda(char_u **arg, cctx_T *cctx)
     ufunc_T	*ufunc;
 
     // Get the funcref in "rettv".
-    if (get_lambda_tv(arg, &rettv, TRUE) != OK)
+    if (get_lambda_tv(arg, &rettv, &EVALARG_EVALUATE) != OK)
 	return FAIL;
 
     ufunc = rettv.vval.v_partial->pt_func;
@@ -3095,7 +3110,7 @@ compile_lambda_call(char_u **arg, cctx_T *cctx)
     int		ret = FAIL;
 
     // Get the funcref in "rettv".
-    if (get_lambda_tv(arg, &rettv, TRUE) == FAIL)
+    if (get_lambda_tv(arg, &rettv, &EVALARG_EVALUATE) == FAIL)
 	return FAIL;
 
     if (**arg != '(')
@@ -3267,10 +3282,10 @@ compile_get_option(char_u **arg, cctx_T *cctx)
 
     // parse the option and get the current value to get the type.
     rettv.v_type = VAR_UNKNOWN;
-    ret = get_option_tv(arg, &rettv, TRUE);
+    ret = eval_option(arg, &rettv, TRUE);
     if (ret == OK)
     {
-	// include the '&' in the name, get_option_tv() expects it.
+	// include the '&' in the name, eval_option() expects it.
 	char_u *name = vim_strnsave(start, *arg - start);
 	type_T	*type = rettv.v_type == VAR_NUMBER ? &t_number : &t_string;
 
@@ -3301,7 +3316,7 @@ compile_get_env(char_u **arg, cctx_T *cctx)
 	return FAIL;
     }
 
-    // include the '$' in the name, get_env_tv() expects it.
+    // include the '$' in the name, eval_env_var() expects it.
     name = vim_strnsave(start, len + 1);
     ret = generate_LOAD(cctx, ISN_LOADENV, 0, name, &t_string);
     vim_free(name);
@@ -3758,21 +3773,21 @@ compile_expr7(
 	case '7':
 	case '8':
 	case '9':
-	case '.':   if (get_number_tv(arg, rettv, TRUE, FALSE) == FAIL)
+	case '.':   if (eval_number(arg, rettv, TRUE, FALSE) == FAIL)
 			return FAIL;
 		    break;
 
 	/*
 	 * String constant: "string".
 	 */
-	case '"':   if (get_string_tv(arg, rettv, TRUE) == FAIL)
+	case '"':   if (eval_string(arg, rettv, TRUE) == FAIL)
 			return FAIL;
 		    break;
 
 	/*
 	 * Literal string constant: 'str''ing'.
 	 */
-	case '\'':  if (get_lit_string_tv(arg, rettv, TRUE) == FAIL)
+	case '\'':  if (eval_lit_string(arg, rettv, TRUE) == FAIL)
 			return FAIL;
 		    break;
 
@@ -5629,7 +5644,7 @@ compile_unletlock(char_u *arg, exarg_T *eap, cctx_T *cctx)
     static char_u *
 compile_import(char_u *arg, cctx_T *cctx)
 {
-    return handle_import(arg, &cctx->ctx_imports, 0, cctx);
+    return handle_import(arg, &cctx->ctx_imports, 0, NULL, cctx);
 }
 
 /*
