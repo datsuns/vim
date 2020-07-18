@@ -22,7 +22,9 @@ static char e_needs_vim9[] = N_("E1042: export can only be used in vim9script");
     int
 in_vim9script(void)
 {
-    // TODO: go up the stack?
+    // Do not go up the stack, a ":function" inside vim9script uses legacy
+    // syntax.  "sc_version" is also set when compiling a ":def" function in
+    // legacy script.
     return current_sctx.sc_version == SCRIPT_VERSION_VIM9;
 }
 
@@ -67,7 +69,7 @@ ex_vim9script(exarg_T *eap)
     void
 ex_export(exarg_T *eap)
 {
-    if (current_sctx.sc_version != SCRIPT_VERSION_VIM9)
+    if (!in_vim9script())
     {
 	emsg(_(e_needs_vim9));
 	return;
@@ -126,7 +128,7 @@ free_imports(int sid)
     }
     ga_clear(&si->sn_imports);
     ga_clear(&si->sn_var_vals);
-    ga_clear(&si->sn_type_list);
+    clear_type_list(&si->sn_type_list);
 }
 
 /*
@@ -324,7 +326,7 @@ handle_import(
 	    if (eval_isnamec1(*arg))
 		while (eval_isnamec(*arg))
 		    ++arg;
-	    if (check_defined(p, (int)(arg - p), cctx) == FAIL)
+	    if (check_defined(p, arg - p, cctx) == FAIL)
 		goto erret;
 	    as_name = vim_strnsave(p, arg - p);
 	    arg = skipwhite_and_linebreak(arg, evalarg);

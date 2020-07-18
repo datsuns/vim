@@ -1,4 +1,4 @@
-*options.txt*	For Vim version 8.2.  Last change: 2020 Jun 10
+*options.txt*	For Vim version 8.2.  Last change: 2020 Jul 05
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -6733,7 +6733,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 	 flag	meaning when present	~
 	  f	use "(3 of 5)" instead of "(file 3 of 5)"
 	  i	use "[noeol]" instead of "[Incomplete last line]"
-	  l	use "999L, 888C" instead of "999 lines, 888 characters"
+	  l	use "999L, 888B" instead of "999 lines, 888 bytes"
 	  m	use "[+]" instead of "[Modified]"
 	  n	use "[New]" instead of "[New File]"
 	  r	use "[RO]" instead of "[readonly]"
