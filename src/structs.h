@@ -1546,6 +1546,7 @@ typedef enum {
 
 /*
  * Structure to hold info for a user function.
+ * When adding a field check copy_func().
  */
 typedef struct
 {
@@ -1593,7 +1594,9 @@ typedef struct
     int		uf_tml_execed;	// line being timed was executed
 # endif
     sctx_T	uf_script_ctx;	// SCTX where function was defined,
-				// used for s: variables
+				// used for s: variables; sc_version changed
+				// for :function
+    int		uf_script_ctx_version;  // original sc_version of SCTX
     int		uf_refcount;	// reference count, see func_name_refcount()
 
     funccall_T	*uf_scoped;	// l: local variables for closure
@@ -1618,6 +1621,7 @@ typedef struct
 #define FC_NOARGS   0x200	// no a: variables in lambda
 #define FC_VIM9	    0x400	// defined in vim9 script file
 #define FC_CFUNC    0x800	// defined as Lua C func
+#define FC_COPY	    0x1000	// copy of another function by copy_func()
 
 #define MAX_FUNC_ARGS	20	// maximum number of function arguments
 #define VAR_SHORT_LEN	20	// short variable name length
@@ -3302,6 +3306,7 @@ struct window_S
     int		w_minwidth;	    // "minwidth" for popup window
     int		w_maxheight;	    // "maxheight" for popup window
     int		w_maxwidth;	    // "maxwidth" for popup window
+    int		w_maxwidth_opt;	    // maxwidth from option
     int		w_wantline;	    // "line" for popup window
     int		w_wantcol;	    // "col" for popup window
     int		w_firstline;	    // "firstline" for popup window
