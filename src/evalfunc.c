@@ -402,6 +402,15 @@ ret_getreg(int argcount, type_T **argtypes UNUSED)
     return &t_string;
 }
 
+    static type_T *
+ret_maparg(int argcount, type_T **argtypes UNUSED)
+{
+    // Assume that if the fourth argument is passed it's non-zero
+    if (argcount == 4)
+	return &t_dict_any;
+    return &t_string;
+}
+
 static type_T *ret_f_function(int argcount, type_T **argtypes);
 
 /*
@@ -485,7 +494,7 @@ static funcentry_T global_functions[] =
     {"assert_equal",	2, 3, FEARG_2,	  ret_number,	f_assert_equal},
     {"assert_equalfile", 2, 3, FEARG_1,	  ret_number,	f_assert_equalfile},
     {"assert_exception", 1, 2, 0,	  ret_number,	f_assert_exception},
-    {"assert_fails",	1, 3, FEARG_1,	  ret_number,	f_assert_fails},
+    {"assert_fails",	1, 4, FEARG_1,	  ret_number,	f_assert_fails},
     {"assert_false",	1, 2, FEARG_1,	  ret_number,	f_assert_false},
     {"assert_inrange",	3, 4, FEARG_3,	  ret_number,	f_assert_inrange},
     {"assert_match",	2, 3, FEARG_2,	  ret_number,	f_assert_match},
@@ -555,6 +564,7 @@ static funcentry_T global_functions[] =
     {"ch_status",	1, 2, FEARG_1,	  ret_string,	JOB_FUNC(f_ch_status)},
     {"changenr",	0, 0, 0,	  ret_number,	f_changenr},
     {"char2nr",		1, 2, FEARG_1,	  ret_number,	f_char2nr},
+    {"charclass",	1, 1, FEARG_1,	  ret_number,	f_charclass},
     {"chdir",		1, 1, FEARG_1,	  ret_string,	f_chdir},
     {"cindent",		1, 1, FEARG_1,	  ret_number,	f_cindent},
     {"clearmatches",	0, 1, FEARG_1,	  ret_void,	f_clearmatches},
@@ -706,7 +716,7 @@ static funcentry_T global_functions[] =
     {"js_encode",	1, 1, FEARG_1,	  ret_string,	f_js_encode},
     {"json_decode",	1, 1, FEARG_1,	  ret_any,	f_json_decode},
     {"json_encode",	1, 1, FEARG_1,	  ret_string,	f_json_encode},
-    {"keys",		1, 1, FEARG_1,	  ret_list_any,	f_keys},
+    {"keys",		1, 1, FEARG_1,	  ret_list_string, f_keys},
     {"last_buffer_nr",	0, 0, 0,	  ret_number,	f_last_buffer_nr}, // obsolete
     {"len",		1, 1, FEARG_1,	  ret_number,	f_len},
     {"libcall",		3, 3, FEARG_3,	  ret_string,	f_libcall},
@@ -729,7 +739,7 @@ static funcentry_T global_functions[] =
 #endif
 			},
     {"map",		2, 2, FEARG_1,	  ret_any,	f_map},
-    {"maparg",		1, 4, FEARG_1,	  ret_string,	f_maparg},
+    {"maparg",		1, 4, FEARG_1,	  ret_maparg,	f_maparg},
     {"mapcheck",	1, 3, FEARG_1,	  ret_string,	f_mapcheck},
     {"mapset",		3, 3, FEARG_1,	  ret_void,	f_mapset},
     {"match",		2, 4, FEARG_1,	  ret_any,	f_match},
@@ -877,6 +887,7 @@ static funcentry_T global_functions[] =
     {"serverlist",	0, 0, 0,	  ret_string,	f_serverlist},
     {"setbufline",	3, 3, FEARG_3,	  ret_number,	f_setbufline},
     {"setbufvar",	3, 3, FEARG_3,	  ret_void,	f_setbufvar},
+    {"setcellwidths",	1, 1, FEARG_1,	  ret_void,	f_setcellwidths},
     {"setcharsearch",	1, 1, FEARG_1,	  ret_void,	f_setcharsearch},
     {"setcmdpos",	1, 1, FEARG_1,	  ret_number,	f_setcmdpos},
     {"setenv",		2, 2, FEARG_2,	  ret_void,	f_setenv},
@@ -941,7 +952,7 @@ static funcentry_T global_functions[] =
     {"stridx",		2, 3, FEARG_1,	  ret_number,	f_stridx},
     {"string",		1, 1, FEARG_1,	  ret_string,	f_string},
     {"strlen",		1, 1, FEARG_1,	  ret_number,	f_strlen},
-    {"strpart",		2, 3, FEARG_1,	  ret_string,	f_strpart},
+    {"strpart",		2, 4, FEARG_1,	  ret_string,	f_strpart},
     {"strptime",	2, 2, FEARG_1,	  ret_number,
 #ifdef HAVE_STRPTIME
 	    f_strptime
@@ -1037,7 +1048,7 @@ static funcentry_T global_functions[] =
     {"test_settime",	1, 1, FEARG_1,	  ret_void,	f_test_settime},
     {"test_srand_seed",	0, 1, FEARG_1,	  ret_void,	f_test_srand_seed},
     {"test_unknown",	0, 0, 0,	  ret_any,	f_test_unknown},
-    {"test_void",	0, 0, 0,	  ret_any,	f_test_void},
+    {"test_void",	0, 0, 0,	  ret_void,	f_test_void},
     {"timer_info",	0, 1, FEARG_1,	  ret_list_dict_any, TIMER_FUNC(f_timer_info)},
     {"timer_pause",	2, 2, FEARG_1,	  ret_void,	TIMER_FUNC(f_timer_pause)},
     {"timer_start",	2, 3, FEARG_1,	  ret_number,	TIMER_FUNC(f_timer_start)},
@@ -2189,13 +2200,12 @@ execute_redir_str(char_u *value, int value_len)
  * Called by do_cmdline() to get the next line.
  * Returns allocated string, or NULL for end of function.
  */
-
     static char_u *
 get_list_line(
     int	    c UNUSED,
     void    *cookie,
     int	    indent UNUSED,
-    int	    do_concat UNUSED)
+    getline_opt_T options UNUSED)
 {
     listitem_T **p = (listitem_T **)cookie;
     listitem_T *item = *p;
@@ -3911,13 +3921,7 @@ f_has(typval_T *argvars, typval_T *rettv)
 		0
 #endif
 		},
-	{"gui_mac",
-#ifdef FEAT_GUI_MAC
-		1
-#else
-		0
-#endif
-		},
+	{"gui_mac", 0},
 	{"gui_motif",
 #ifdef FEAT_GUI_MOTIF
 		1
@@ -7425,7 +7429,7 @@ f_setreg(typval_T *argvars, typval_T *rettv)
 		regname = pointreg;
 	    }
 	}
-	else if (dict_get_number(d, (char_u *)"isunnamed"))
+	else if (dict_get_bool(d, (char_u *)"isunnamed", -1) > 0)
 	    pointreg = regname;
     }
     else
@@ -8268,10 +8272,8 @@ f_strpart(typval_T *argvars, typval_T *rettv)
     else
 	len = slen - n;	    // default len: all bytes that are available.
 
-    /*
-     * Only return the overlap between the specified part and the actual
-     * string.
-     */
+    // Only return the overlap between the specified part and the actual
+    // string.
     if (n < 0)
     {
 	len += n;
@@ -8283,6 +8285,16 @@ f_strpart(typval_T *argvars, typval_T *rettv)
 	len = 0;
     else if (n + len > slen)
 	len = slen - n;
+
+    if (argvars[2].v_type != VAR_UNKNOWN && argvars[3].v_type != VAR_UNKNOWN)
+    {
+	int off;
+
+	// length in characters
+	for (off = n; off < slen && len > 0; --len)
+	    off += mb_ptr2len(p + off);
+	len = off - n;
+    }
 
     rettv->v_type = VAR_STRING;
     rettv->vval.v_string = vim_strnsave(p + n, len);
