@@ -524,7 +524,7 @@ list_vim_vars(int *first)
     static void
 list_script_vars(int *first)
 {
-    if (current_sctx.sc_sid > 0 && current_sctx.sc_sid <= script_items.ga_len)
+    if (SCRIPT_ID_VALID(current_sctx.sc_sid))
 	list_hashtable_vars(&SCRIPT_VARS(current_sctx.sc_sid),
 							   "s:", FALSE, first);
 }
@@ -778,7 +778,7 @@ ex_let(exarg_T *eap)
 	evalarg_T   evalarg;
 	int	    len = 1;
 
-	rettv.v_type = VAR_UNKNOWN;
+	CLEAR_FIELD(rettv);
 	i = FAIL;
 	if (has_assign || concat)
 	{
@@ -2609,7 +2609,7 @@ get_script_local_ht(void)
 {
     scid_T sid = current_sctx.sc_sid;
 
-    if (sid > 0 && sid <= script_items.ga_len)
+    if (SCRIPT_ID_VALID(sid))
 	return &SCRIPT_VARS(sid);
     return NULL;
 }
@@ -2935,10 +2935,12 @@ set_var(
 set_var_const(
     char_u	*name,
     type_T	*type,
-    typval_T	*tv,
+    typval_T	*tv_arg,
     int		copy,	    // make copy of value in "tv"
     int		flags)	    // LET_IS_CONST and/or LET_NO_COMMAND
 {
+    typval_T	*tv = tv_arg;
+    typval_T	bool_tv;
     dictitem_T	*di;
     char_u	*varname;
     hashtab_T	*ht;
@@ -2948,7 +2950,7 @@ set_var_const(
     if (ht == NULL || *varname == NUL)
     {
 	semsg(_(e_illvar), name);
-	return;
+	goto failed;
     }
     is_script_local = ht == get_script_local_ht();
 
@@ -2958,7 +2960,7 @@ set_var_const(
 	    && name[1] == ':')
     {
 	vim9_declare_error(name);
-	return;
+	goto failed;
     }
 
     di = find_var_in_ht(ht, 0, varname, TRUE);
@@ -2969,7 +2971,16 @@ set_var_const(
 
     if ((tv->v_type == VAR_FUNC || tv->v_type == VAR_PARTIAL)
 				      && var_wrong_func_name(name, di == NULL))
-	return;
+	goto failed;
+
+    if (need_convert_to_bool(type, tv))
+    {
+	// Destination is a bool and the value is not, but it can be converted.
+	CLEAR_FIELD(bool_tv);
+	bool_tv.v_type = VAR_BOOL;
+	bool_tv.vval.v_number = tv2bool(tv) ? VVAL_TRUE : VVAL_FALSE;
+	tv = &bool_tv;
+    }
 
     if (di != NULL)
     {
@@ -2978,7 +2989,7 @@ set_var_const(
 	    if (flags & LET_IS_CONST)
 	    {
 		emsg(_(e_cannot_mod));
-		return;
+		goto failed;
 	    }
 
 	    if (is_script_local && in_vim9script())
@@ -2986,17 +2997,17 @@ set_var_const(
 		if ((flags & LET_NO_COMMAND) == 0)
 		{
 		    semsg(_(e_redefining_script_item_str), name);
-		    return;
+		    goto failed;
 		}
 
-		// check the type
+		// check the type and adjust to bool if needed
 		if (check_script_var_type(&di->di_tv, tv, name) == FAIL)
-		    return;
+		    goto failed;
 	    }
 
 	    if (var_check_ro(di->di_flags, name, FALSE)
 			       || var_check_lock(di->di_tv.v_lock, name, FALSE))
-		return;
+		goto failed;
 	}
 	else
 	    // can only redefine once
@@ -3026,7 +3037,7 @@ set_var_const(
 		    di->di_tv.vval.v_string = tv->vval.v_string;
 		    tv->vval.v_string = NULL;
 		}
-		return;
+		goto failed;
 	    }
 	    else if (di->di_tv.v_type == VAR_NUMBER)
 	    {
@@ -3040,12 +3051,12 @@ set_var_const(
 		    redraw_all_later(SOME_VALID);
 		}
 #endif
-		return;
+		goto failed;
 	    }
 	    else if (di->di_tv.v_type != tv->v_type)
 	    {
 		semsg(_("E963: setting %s to value with wrong type"), name);
-		return;
+		goto failed;
 	    }
 	}
 
@@ -3057,21 +3068,21 @@ set_var_const(
 	if (ht == &vimvarht || ht == get_funccal_args_ht())
 	{
 	    semsg(_(e_illvar), name);
-	    return;
+	    goto failed;
 	}
 
 	// Make sure the variable name is valid.
 	if (!valid_varname(varname))
-	    return;
+	    goto failed;
 
 	di = alloc(sizeof(dictitem_T) + STRLEN(varname));
 	if (di == NULL)
-	    return;
+	    goto failed;
 	STRCPY(di->di_key, varname);
 	if (hash_add(ht, DI2HIKEY(di)) == FAIL)
 	{
 	    vim_free(di);
-	    return;
+	    goto failed;
 	}
 	di->di_flags = DI_FLAGS_ALLOC;
 	if (flags & LET_IS_CONST)
@@ -3117,6 +3128,10 @@ set_var_const(
 	// if the reference count is up to one.  That locks only literal
 	// values.
 	item_lock(&di->di_tv, DICT_MAXNEST, TRUE, TRUE);
+    return;
+failed:
+    if (!copy)
+	clear_tv(tv_arg);
 }
 
 /*
@@ -3662,10 +3677,8 @@ f_getbufvar(typval_T *argvars, typval_T *rettv)
     dictitem_T	*v;
     int		done = FALSE;
 
-    (void)tv_get_number(&argvars[0]);	    // issue errmsg if type error
     varname = tv_get_string_chk(&argvars[1]);
-    ++emsg_off;
-    buf = tv_get_buf(&argvars[0], FALSE);
+    buf = tv_get_buf_from_arg(&argvars[0]);
 
     rettv->v_type = VAR_STRING;
     rettv->vval.v_string = NULL;
@@ -3717,8 +3730,6 @@ f_getbufvar(typval_T *argvars, typval_T *rettv)
     if (!done && argvars[2].v_type != VAR_UNKNOWN)
 	// use the default value
 	copy_tv(&argvars[2], rettv);
-
-    --emsg_off;
 }
 
 /*
@@ -3789,9 +3800,8 @@ f_setbufvar(typval_T *argvars, typval_T *rettv UNUSED)
 
     if (check_secure())
 	return;
-    (void)tv_get_number(&argvars[0]);	    // issue errmsg if type error
     varname = tv_get_string_chk(&argvars[1]);
-    buf = tv_get_buf(&argvars[0], FALSE);
+    buf = tv_get_buf_from_arg(&argvars[0]);
     varp = &argvars[2];
 
     if (buf != NULL && varname != NULL && varp != NULL)

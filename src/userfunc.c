@@ -808,11 +808,12 @@ find_func_even_dead(char_u *name, int is_global, cctx_T *cctx)
 
     if (!is_global)
     {
-	int	vim9script = in_vim9script();
 	char_u	*after_script = NULL;
 	long	sid = 0;
+	int	find_script_local = in_vim9script()
+				     && eval_isnamec1(*name) && name[1] != ':';
 
-	if (vim9script)
+	if (find_script_local)
 	{
 	    // Find script-local function before global one.
 	    func = find_func_with_sid(name, current_sctx.sc_sid);
@@ -833,7 +834,7 @@ find_func_even_dead(char_u *name, int is_global, cctx_T *cctx)
 	    else
 		after_script = NULL;
 	}
-	if (vim9script || after_script != NULL)
+	if (find_script_local || after_script != NULL)
 	{
 	    // Find imported function before global one.
 	    if (after_script != NULL && sid != current_sctx.sc_sid)
@@ -874,6 +875,15 @@ find_func(char_u *name, int is_global, cctx_T *cctx)
 }
 
 /*
+ * Return TRUE if "ufunc" is a global function.
+ */
+    int
+func_is_global(ufunc_T *ufunc)
+{
+    return ufunc->uf_name[0] != K_SPECIAL;
+}
+
+/*
  * Copy the function name of "fp" to buffer "buf".
  * "buf" must be able to hold the function name plus three bytes.
  * Takes care of script-local function names.
@@ -881,7 +891,7 @@ find_func(char_u *name, int is_global, cctx_T *cctx)
     static void
 cat_func_name(char_u *buf, ufunc_T *fp)
 {
-    if (fp->uf_name[0] == K_SPECIAL)
+    if (!func_is_global(fp))
     {
 	STRCPY(buf, "<SNR>");
 	STRCAT(buf, fp->uf_name + 3);
@@ -3582,7 +3592,8 @@ ex_function(exarg_T *eap)
 }
 
 /*
- * :defcompile - compile all :def functions in the current script.
+ * :defcompile - compile all :def functions in the current script that need to
+ * be compiled.  Except dead functions.
  */
     void
 ex_defcompile(exarg_T *eap UNUSED)
@@ -3599,7 +3610,8 @@ ex_defcompile(exarg_T *eap UNUSED)
 	    --todo;
 	    ufunc = HI2UF(hi);
 	    if (ufunc->uf_script_ctx.sc_sid == current_sctx.sc_sid
-		    && ufunc->uf_def_status == UF_TO_BE_COMPILED)
+		    && ufunc->uf_def_status == UF_TO_BE_COMPILED
+		    && (ufunc->uf_flags & FC_DEAD) == 0)
 	    {
 		compile_def_function(ufunc, FALSE, NULL);
 

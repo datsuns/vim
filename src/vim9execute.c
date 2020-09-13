@@ -614,6 +614,7 @@ call_partial(typval_T *tv, int argcount_arg, ectx_T *ectx)
     int		argcount = argcount_arg;
     char_u	*name = NULL;
     int		called_emsg_before = called_emsg;
+    int		res;
 
     if (tv->v_type == VAR_PARTIAL)
     {
@@ -650,7 +651,23 @@ call_partial(typval_T *tv, int argcount_arg, ectx_T *ectx)
     }
     else if (tv->v_type == VAR_FUNC)
 	name = tv->vval.v_string;
-    if (name == NULL || call_by_name(name, argcount, ectx, NULL) == FAIL)
+    if (name != NULL)
+    {
+	char_u	fname_buf[FLEN_FIXED + 1];
+	char_u	*tofree = NULL;
+	int	error = FCERR_NONE;
+	char_u	*fname;
+
+	// May need to translate <SNR>123_ to K_SNR.
+	fname = fname_trans_sid(name, fname_buf, &tofree, &error);
+	if (error != FCERR_NONE)
+	    res = FAIL;
+	else
+	    res = call_by_name(fname, argcount, ectx, NULL);
+	vim_free(tofree);
+    }
+
+    if (name == NULL || res == FAIL)
     {
 	if (called_emsg == called_emsg_before)
 	    semsg(_(e_unknownfunc),
@@ -775,8 +792,8 @@ call_def_function(
     for (idx = 0; idx < argc; ++idx)
     {
 	if (ufunc->uf_arg_types != NULL && idx < ufunc->uf_args.ga_len
-		&& check_typval_type(ufunc->uf_arg_types[idx], &argv[idx])
-								       == FAIL)
+		&& check_typval_type(ufunc->uf_arg_types[idx], &argv[idx],
+							      idx + 1) == FAIL)
 	    goto failed_early;
 	copy_tv(&argv[idx], STACK_TV_BOT(0));
 	++ectx.ec_stack.ga_len;
@@ -805,7 +822,8 @@ call_def_function(
 
 	    for (idx = 0; idx < vararg_count; ++idx)
 	    {
-		if (check_typval_type(expected, &li->li_tv) == FAIL)
+		if (check_typval_type(expected, &li->li_tv,
+						       argc + idx + 1) == FAIL)
 		    goto failed_early;
 		li = li->li_next;
 	    }
@@ -1647,6 +1665,7 @@ call_def_function(
 
 	    // call a :def function
 	    case ISN_DCALL:
+		SOURCING_LNUM = iptr->isn_lnum;
 		if (call_dfunc(iptr->isn_arg.dfunc.cdf_idx,
 			      iptr->isn_arg.dfunc.cdf_argcount,
 			      &ectx) == FAIL)
@@ -2491,11 +2510,23 @@ call_def_function(
 				|| (tv->v_type == VAR_FUNC
 					       && ct->ct_type == VAR_PARTIAL)))
 		    {
-			SOURCING_LNUM = iptr->isn_lnum;
-			semsg(_(e_expected_str_but_got_str),
-				    vartype_name(ct->ct_type),
-				    vartype_name(tv->v_type));
-			goto on_error;
+			if (tv->v_type == VAR_NUMBER && ct->ct_type == VAR_BOOL
+				&& (tv->vval.v_number == 0
+						    || tv->vval.v_number == 1))
+			{
+			    // number 0 is FALSE, number 1 is TRUE
+			    tv->v_type = VAR_BOOL;
+			    tv->vval.v_number = tv->vval.v_number
+						      ? VVAL_TRUE : VVAL_FALSE;
+			}
+			else
+			{
+			    SOURCING_LNUM = iptr->isn_lnum;
+			    semsg(_(e_expected_str_but_got_str),
+					vartype_name(ct->ct_type),
+					vartype_name(tv->v_type));
+			    goto on_error;
+			}
 		    }
 		}
 		break;
@@ -2560,6 +2591,36 @@ call_def_function(
 			tv->v_type = VAR_STRING;
 			tv->vval.v_string = str;
 		    }
+		}
+		break;
+
+	    case ISN_PUT:
+		{
+		    int		regname = iptr->isn_arg.put.put_regname;
+		    linenr_T	lnum = iptr->isn_arg.put.put_lnum;
+		    char_u	*expr = NULL;
+		    int		dir = FORWARD;
+
+		    if (regname == '=')
+		    {
+			tv = STACK_TV_BOT(-1);
+			if (tv->v_type == VAR_STRING)
+			    expr = tv->vval.v_string;
+			else
+			{
+			    expr = typval_tostring(tv);  // allocates value
+			    clear_tv(tv);
+			}
+			--ectx.ec_stack.ga_len;
+		    }
+		    if (lnum == -2)
+			// :put! above cursor
+			dir = BACKWARD;
+		    else if (lnum >= 0)
+			curwin->w_cursor.lnum = iptr->isn_arg.put.put_lnum;
+		    check_cursor();
+		    do_put(regname, expr, dir, 1L, PUT_LINE|PUT_CURSLINE);
+		    vim_free(expr);
 		}
 		break;
 
@@ -3209,6 +3270,10 @@ ex_disassemble(exarg_T *eap)
 	    case ISN_2STRING_ANY: smsg("%4d 2STRING_ANY stack[%lld]", current,
 					 (long long)(iptr->isn_arg.number));
 			      break;
+	    case ISN_PUT:
+		smsg("%4d PUT %c %ld", current, iptr->isn_arg.put.put_regname,
+					     (long)iptr->isn_arg.put.put_lnum);
+		break;
 
 	    case ISN_SHUFFLE: smsg("%4d SHUFFLE %d up %d", current,
 					 iptr->isn_arg.shuffle.shfl_item,
