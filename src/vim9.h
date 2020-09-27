@@ -58,6 +58,8 @@ typedef enum {
     ISN_UNLET,		// unlet variable isn_arg.unlet.ul_name
     ISN_UNLETENV,	// unlet environment variable isn_arg.unlet.ul_name
 
+    ISN_LOCKCONST,	// lock constant value
+
     // constants
     ISN_PUSHNR,		// push number isn_arg.number
     ISN_PUSHBOOL,	// push bool value isn_arg.number
@@ -205,7 +207,7 @@ typedef struct {
 
 // arguments to ISN_CHECKTYPE
 typedef struct {
-    vartype_T	ct_type;
+    type_T	*ct_type;
     int		ct_off;	    // offset in stack, -1 is bottom
 } checktype_T;
 
@@ -242,7 +244,6 @@ typedef struct {
 // arguments to ISN_FUNCREF
 typedef struct {
     int		fr_func;	// function index
-    int		fr_var_idx;	// variable to store partial
 } funcref_T;
 
 // arguments to ISN_NEWFUNC
@@ -321,7 +322,7 @@ struct dfunc_S {
     int		df_instr_count;
 
     int		df_varcount;	    // number of local variables
-    int		df_closure_count;   // number of closures created
+    int		df_has_closure;	    // one if a closure was created
 };
 
 // Number of entries used by stack frame for a function call.

@@ -354,7 +354,7 @@ endfunc
 " Locked variables
 func Test_list_locked_var()
   let expected = [
-	      \ [['0000-000', 'ppppppp'],
+	      \ [['1000-000', 'ppppppF'],
 	      \  ['0000-000', 'ppppppp'],
 	      \  ['0000-000', 'ppppppp']],
 	      \ [['1000-000', 'ppppppF'],
@@ -381,7 +381,7 @@ func Test_list_locked_var()
         exe "unlockvar " . depth . " l"
       endif
       let ps = islocked("l").islocked("l[1]").islocked("l[1][1]").islocked("l[1][1][0]").'-'.islocked("l[2]").islocked("l[2]['6']").islocked("l[2]['6'][7]")
-      call assert_equal(expected[depth][u][0], ps)
+      call assert_equal(expected[depth][u][0], ps, 'depth: ' .. depth)
       let ps = ''
       try
         let l[1][1][0] = 99
@@ -425,7 +425,7 @@ func Test_list_locked_var()
       catch
         let ps .= 'F'
       endtry
-      call assert_equal(expected[depth][u][1], ps)
+      call assert_equal(expected[depth][u][1], ps, 'depth: ' .. depth)
     endfor
   endfor
   call assert_fails("let x=islocked('a b')", 'E488:')
@@ -438,7 +438,7 @@ endfunc
 " Unletting locked variables
 func Test_list_locked_var_unlet()
   let expected = [
-	      \ [['0000-000', 'ppppppp'],
+	      \ [['1000-000', 'ppppppp'],
 	      \  ['0000-000', 'ppppppp'],
 	      \  ['0000-000', 'ppppppp']],
 	      \ [['1000-000', 'ppFppFp'],
@@ -466,7 +466,7 @@ func Test_list_locked_var_unlet()
         exe "unlockvar " . depth . " l"
       endif
       let ps = islocked("l").islocked("l[1]").islocked("l[1][1]").islocked("l[1][1][0]").'-'.islocked("l[2]").islocked("l[2]['6']").islocked("l[2]['6'][7]")
-      call assert_equal(expected[depth][u][0], ps)
+      call assert_equal(expected[depth][u][0], ps, 'depth: ' .. depth)
       let ps = ''
       try
         unlet l[2]['6'][7]
@@ -666,6 +666,9 @@ func Test_func_arg_list()
   call s:arg_list_test(1, 2, [3, 4], {5: 6})
 endfunc
 
+func Test_dict_item_locked()
+endfunc
+
 " Tests for reverse(), sort(), uniq()
 func Test_reverse_sort_uniq()
   let l = ['-0', 'A11', 2, 2, 'xaaa', 4, 'foo', 'foo6', 'foo', [0, 1, 2], 'x8', [0, 1, 2], 1.5]
@@ -750,6 +753,7 @@ func Test_str_split()
   call assert_equal(['', 'a', '', 'b', '', 'c', ''], split('abc', '\zs', 1))
   call assert_fails("call split('abc', [])", 'E730:')
   call assert_fails("call split('abc', 'b', [])", 'E745:')
+  call assert_equal(['abc'], split('abc', '\\%('))
 endfunc
 
 " compare recursively linked list and dict

@@ -291,6 +291,7 @@ static void	ex_tag_cmd(exarg_T *eap, char_u *name);
 # define ex_function		ex_ni
 # define ex_if			ex_ni
 # define ex_let			ex_ni
+# define ex_var			ex_ni
 # define ex_lockvar		ex_ni
 # define ex_oldfiles		ex_ni
 # define ex_options		ex_ni
@@ -1779,9 +1780,7 @@ do_one_cmd(
     may_have_range = !vim9script || starts_with_colon;
     if (may_have_range)
 #endif
-	ea.cmd = skip_range(ea.cmd, NULL);
-    if (*ea.cmd == '*' && vim_strchr(p_cpo, CPO_STAR) == NULL)
-	ea.cmd = skipwhite(ea.cmd + 1);
+	ea.cmd = skip_range(ea.cmd, TRUE, NULL);
 
 #ifdef FEAT_EVAL
     if (vim9script && !starts_with_colon)
@@ -2423,6 +2422,7 @@ do_one_cmd(
 	    case CMD_eval:
 	    case CMD_execute:
 	    case CMD_filter:
+	    case CMD_final:
 	    case CMD_help:
 	    case CMD_hide:
 	    case CMD_ijump:
@@ -2444,9 +2444,9 @@ do_one_cmd(
 	    case CMD_noswapfile:
 	    case CMD_perl:
 	    case CMD_psearch:
-	    case CMD_python:
 	    case CMD_py3:
 	    case CMD_python3:
+	    case CMD_python:
 	    case CMD_return:
 	    case CMD_rightbelow:
 	    case CMD_ruby:
@@ -2462,6 +2462,7 @@ do_one_cmd(
 	    case CMD_topleft:
 	    case CMD_unlet:
 	    case CMD_unlockvar:
+	    case CMD_var:
 	    case CMD_verbose:
 	    case CMD_vertical:
 	    case CMD_wincmd:
@@ -2683,7 +2684,7 @@ parse_command_modifiers(exarg_T *eap, char **errormsg, int skip_only)
 	    return FAIL;
 	}
 
-	p = skip_range(eap->cmd, NULL);
+	p = skip_range(eap->cmd, TRUE, NULL);
 	switch (*p)
 	{
 	    // When adding an entry, also modify cmd_exists().
@@ -3226,16 +3227,30 @@ find_ex_command(
 			    // "g:varname" is an expression.
 			 || eap->cmd[1] == ':'
 			    )
-			: (
-			    // "varname[]" is an expression.
-			    *p == '['
 			    // "varname->func()" is an expression.
-			 || (*p == '-' && p[1] == '>')
-			    // "varname.expr" is an expression.
-			 || (*p == '.' && ASCII_ISALPHA(p[1]))
-			 )))
+			: (*p == '-' && p[1] == '>')))
 	    {
 		eap->cmdidx = CMD_eval;
+		return eap->cmd;
+	    }
+
+	    if (p != eap->cmd && (
+			    // "varname[]" is an expression.
+			    *p == '['
+			    // "varname.key" is an expression.
+			 || (*p == '.' && ASCII_ISALPHA(p[1]))))
+	    {
+		char_u	*after = p;
+
+		// When followed by "=" or "+=" then it is an assignment.
+		++emsg_silent;
+		if (skip_expr(&after) == OK
+				  && (*after == '='
+				      || (*after != NUL && after[1] == '=')))
+		    eap->cmdidx = CMD_var;
+		else
+		    eap->cmdidx = CMD_eval;
+		--emsg_silent;
 		return eap->cmd;
 	    }
 
@@ -3256,7 +3271,7 @@ find_ex_command(
 		}
 		if (p > eap->cmd && *skipwhite(p) == '=')
 		{
-		    eap->cmdidx = CMD_let;
+		    eap->cmdidx = CMD_var;
 		    return eap->cmd;
 		}
 	    }
@@ -3275,7 +3290,7 @@ find_ex_command(
 			|| *eap->cmd == '@'
 			|| lookup(eap->cmd, p - eap->cmd, cctx) != NULL)
 		{
-		    eap->cmdidx = CMD_let;
+		    eap->cmdidx = CMD_var;
 		    return eap->cmd;
 		}
 	    }
@@ -3404,6 +3419,10 @@ find_ex_command(
 	if (p == eap->cmd)
 	    eap->cmdidx = CMD_SIZE;
     }
+
+    // ":fina" means ":finally" for backwards compatibility.
+    if (eap->cmdidx == CMD_final && p - eap->cmd == 4)
+	eap->cmdidx = CMD_finally;
 
     return p;
 }
@@ -3534,7 +3553,8 @@ excmd_get_argt(cmdidx_T idx)
     char_u *
 skip_range(
     char_u	*cmd,
-    int		*ctx)	// pointer to xp_context or NULL
+    int		skip_star,	// skip "*" used for Visual range
+    int		*ctx)		// pointer to xp_context or NULL
 {
     unsigned	delim;
 
@@ -3567,6 +3587,10 @@ skip_range(
 
     // Skip ":" and white space.
     while (*cmd == ':')
+	cmd = skipwhite(cmd + 1);
+
+    // Skip "*" used for Visual range.
+    if (skip_star && *cmd == '*' && vim_strchr(p_cpo, CPO_STAR) == NULL)
 	cmd = skipwhite(cmd + 1);
 
     return cmd;
@@ -8013,6 +8037,10 @@ ex_normal(exarg_T *eap)
 
     restore_current_state(&save_state);
     --ex_normal_busy;
+#ifdef FEAT_PROP_POPUP
+    if (ex_normal_busy == 0)
+	ex_normal_busy_done = FALSE;
+#endif
     setmouse();
 #ifdef CURSOR_SHAPE
     ui_cursor_shape();		// may show different cursor shape

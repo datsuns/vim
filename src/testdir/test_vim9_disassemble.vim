@@ -258,7 +258,7 @@ def Test_disassemble_list_assign()
         '\d STORE $2\_s*' ..
         '\[x, y; l\] = g:stringlist\_s*' ..
         '\d LOADG g:stringlist\_s*' ..
-        '\d CHECKTYPE list stack\[-1\]\_s*' ..
+        '\d CHECKTYPE list<any> stack\[-1\]\_s*' ..
         '\d CHECKLEN >= 2\_s*' ..
         '\d\+ ITEM 0\_s*' ..
         '\d\+ CHECKTYPE string stack\[-1\]\_s*' ..
@@ -708,7 +708,7 @@ def Test_disassemble_lambda()
   let instr = execute('disassemble WithLambda')
   assert_match('WithLambda\_s*' ..
         'let F = {a -> "X" .. a .. "X"}\_s*' ..
-        '\d FUNCREF <lambda>\d\+ $1\_s*' ..
+        '\d FUNCREF <lambda>\d\+\_s*' ..
         '\d STORE $0\_s*' ..
         'return F("x")\_s*' ..
         '\d PUSHS "x"\_s*' ..
@@ -829,7 +829,7 @@ def Test_disassemble_for_loop_eval()
         '\d STORE -1 in $1\_s*' ..
         '\d PUSHS "\["one", "two"\]"\_s*' ..
         '\d BCALL eval(argc 1)\_s*' ..
-        '\d CHECKTYPE list stack\[-1\]\_s*' ..
+        '\d CHECKTYPE list<any> stack\[-1\]\_s*' ..
         '\d FOR $1 -> \d\+\_s*' ..
         '\d STORE $2\_s*' ..
         'res ..= str\_s*' ..
@@ -1144,7 +1144,7 @@ def Test_disassemble_any_slice()
         '\d STORE $0\_s*' ..
         'return res\_s*' ..
         '\d LOAD $0\_s*' ..
-        '\d CHECKTYPE list stack\[-1\]\_s*' ..
+        '\d CHECKTYPE list<number> stack\[-1\]\_s*' ..
         '\d RETURN',
         instr)
   assert_equal([2, 3, 4], AnySlice())
