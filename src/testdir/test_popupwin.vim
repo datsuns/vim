@@ -1539,13 +1539,14 @@ func Test_popup_filter()
   call popup_clear()
 endfunc
 
-" this tests that the "ex_normal_busy_done" flag works
+" this tests that the filter is not used for :normal command
 func Test_popup_filter_normal_cmd()
   CheckScreendump
 
   let lines =<< trim END
-      let g:winid = popup_create('some text', {'filter': 'invalidfilter'})
-      call timer_start(0, {-> win_execute(g:winid, 'norm! zz')})
+      let text = range(1, 20)->map({_, v -> string(v)})
+      let g:winid = popup_create(text, #{maxheight: 5, minwidth: 3, filter: 'invalidfilter'})
+      call timer_start(0, {-> win_execute(g:winid, 'norm! 10Gzz')})
   END
   call writefile(lines, 'XtestPopupNormal')
   let buf = RunVimInTerminal('-S XtestPopupNormal', #{rows: 10})
@@ -2168,6 +2169,21 @@ func Test_popup_scrollbar()
       endif
     endfunc
 
+    def CreatePopup(text: list<string>)
+      popup_create(text, #{
+	    \ minwidth: 30,
+	    \ maxwidth: 30,
+	    \ minheight: 4,
+	    \ maxheight: 4,
+	    \ firstline: 1,
+	    \ lastline: 4,
+	    \ wrap: true,
+	    \ scrollbar: true,
+	    \ mapping: false,
+	    \ filter: Popup_filter,
+	    \ })
+    enddef
+
     func PopupScroll()
       call popup_clear()
       let text =<< trim END
@@ -2179,18 +2195,7 @@ func Test_popup_scrollbar()
 	  long line long line long line long line long line long line
 	  long line long line long line long line long line long line
       END
-      call popup_create(text, #{
-	    \ minwidth: 30,
-	    \ maxwidth: 30,
-	    \ minheight: 4,
-	    \ maxheight: 4,
-	    \ firstline: 1,
-	    \ lastline: 4,
-	    \ wrap: v:true,
-	    \ scrollbar: v:true,
-	    \ mapping: v:false,
-	    \ filter: funcref('Popup_filter')
-	    \ })
+      call CreatePopup(text)
     endfunc
     map <silent> <F3> :call test_setmouse(5, 36)<CR>
     map <silent> <F4> :call test_setmouse(4, 42)<CR>
@@ -2686,7 +2691,7 @@ def Popupwin_close_prevwin()
   split
   wincmd b
   assert_equal(2, winnr())
-  let buf = term_start(&shell, #{hidden: 1})
+  var buf = term_start(&shell, #{hidden: 1})
   popup_create(buf, {})
   TermWait(buf, 100)
   popup_clear(true)

@@ -706,6 +706,25 @@ generate_2BOOL(cctx_T *cctx, int invert)
     return OK;
 }
 
+/*
+ * Generate an ISN_COND2BOOL instruction.
+ */
+    static int
+generate_COND2BOOL(cctx_T *cctx)
+{
+    isn_T	*isn;
+    garray_T	*stack = &cctx->ctx_type_stack;
+
+    RETURN_OK_IF_SKIP(cctx);
+    if ((isn = generate_instr(cctx, ISN_COND2BOOL)) == NULL)
+	return FAIL;
+
+    // type becomes bool
+    ((type_T **)stack->ga_data)[stack->ga_len - 1] = &t_bool;
+
+    return OK;
+}
+
     static int
 generate_TYPECHECK(
 	cctx_T	    *cctx,
@@ -2549,7 +2568,7 @@ compile_list(char_u **arg, cctx_T *cctx)
 	    break;
 	}
 	if (compile_expr0(&p, cctx) == FAIL)
-	    break;
+	    return FAIL;
 	++count;
 	if (*p == ',')
 	{
@@ -3333,7 +3352,10 @@ compile_subscript(
 
 	    *arg = p + 1;
 	    if (may_get_next_line(*arg, arg, cctx) == FAIL)
+	    {
+		emsg(_(e_missing_name_after_dot));
 		return FAIL;
+	    }
 	    // dictionary member: dict.name
 	    p = *arg;
 	    if (eval_isdictc(*p))
@@ -4000,7 +4022,7 @@ compile_and_or(
 	garray_T	*instr = &cctx->ctx_instr;
 	garray_T	end_ga;
 	garray_T	*stack = &cctx->ctx_type_stack;
-	type_T		**typep;
+	int		all_bool_values = TRUE;
 
 	/*
 	 * Repeat until there is no following "||" or "&&"
@@ -4020,8 +4042,12 @@ compile_and_or(
 		return FAIL;
 	    }
 
-	    // TODO: use ppconst if the value is a constant
+	    // TODO: use ppconst if the value is a constant and check
+	    // evaluating to bool
 	    generate_ppconst(cctx, ppconst);
+
+	    if (((type_T **)stack->ga_data)[stack->ga_len - 1] != &t_bool)
+		all_bool_values = FALSE;
 
 	    if (ga_grow(&end_ga, 1) == FAIL)
 	    {
@@ -4031,7 +4057,7 @@ compile_and_or(
 	    *(((int *)end_ga.ga_data) + end_ga.ga_len) = instr->ga_len;
 	    ++end_ga.ga_len;
 	    generate_JUMP(cctx, opchar == '|'
-			 ?  JUMP_AND_KEEP_IF_TRUE : JUMP_AND_KEEP_IF_FALSE, 0);
+				 ?  JUMP_IF_COND_TRUE : JUMP_IF_COND_FALSE, 0);
 
 	    // eval the next expression
 	    *arg = skipwhite(p + 2);
@@ -4061,19 +4087,9 @@ compile_and_or(
 	}
 	ga_clear(&end_ga);
 
-	// The resulting type can be used as a bool.
-	typep = ((type_T **)stack->ga_data) + stack->ga_len - 1;
-	if (*typep != &t_bool)
-	{
-	    type_T *type = get_type_ptr(cctx->ctx_type_list);
-
-	    if (type != NULL)
-	    {
-		*type = **typep;
-		type->tt_flags |= TTFLAG_BOOL_OK;
-		*typep = type;
-	    }
-	}
+	// The resulting type is converted to bool if needed.
+	if (!all_bool_values)
+	    generate_COND2BOOL(cctx);
     }
 
     return OK;
@@ -4084,10 +4100,11 @@ compile_and_or(
  *
  * Produces instructions:
  *	EVAL expr4a		Push result of "expr4a"
- *	JUMP_AND_KEEP_IF_FALSE end
+ *	JUMP_IF_COND_FALSE end
  *	EVAL expr4b		Push result of "expr4b"
- *	JUMP_AND_KEEP_IF_FALSE end
+ *	JUMP_IF_COND_FALSE end
  *	EVAL expr4c		Push result of "expr4c"
+ *	COND2BOOL
  * end:
  */
     static int
@@ -4108,10 +4125,11 @@ compile_expr3(char_u **arg, cctx_T *cctx, ppconst_T *ppconst)
  *
  * Produces instructions:
  *	EVAL expr3a		Push result of "expr3a"
- *	JUMP_AND_KEEP_IF_TRUE end
+ *	JUMP_IF_COND_TRUE end
  *	EVAL expr3b		Push result of "expr3b"
- *	JUMP_AND_KEEP_IF_TRUE end
+ *	JUMP_IF_COND_TRUE end
  *	EVAL expr3c		Push result of "expr3c"
+ *	COND2BOOL
  * end:
  */
     static int
@@ -4129,13 +4147,19 @@ compile_expr2(char_u **arg, cctx_T *cctx, ppconst_T *ppconst)
 
 /*
  * Toplevel expression: expr2 ? expr1a : expr1b
- *
  * Produces instructions:
- *	EVAL expr2		Push result of "expr"
+ *	EVAL expr2		Push result of "expr2"
  *      JUMP_IF_FALSE alt	jump if false
  *      EVAL expr1a
  *      JUMP_ALWAYS end
  * alt:	EVAL expr1b
+ * end:
+ *
+ * Toplevel expression: expr2 ?? expr1
+ * Produces instructions:
+ *	EVAL expr2		    Push result of "expr2"
+ *      JUMP_AND_KEEP_IF_TRUE end   jump if true
+ *      EVAL expr1
  * end:
  */
     static int
@@ -4159,13 +4183,13 @@ compile_expr1(char_u **arg,  cctx_T *cctx, ppconst_T *ppconst)
     p = may_peek_next_line(cctx, *arg, &next);
     if (*p == '?')
     {
+	int		op_falsy = p[1] == '?';
 	garray_T	*instr = &cctx->ctx_instr;
 	garray_T	*stack = &cctx->ctx_type_stack;
 	int		alt_idx = instr->ga_len;
 	int		end_idx = 0;
 	isn_T		*isn;
 	type_T		*type1 = NULL;
-	type_T		*type2;
 	int		has_const_expr = FALSE;
 	int		const_value = FALSE;
 	int		save_skip = cctx->ctx_skip;
@@ -4176,9 +4200,10 @@ compile_expr1(char_u **arg,  cctx_T *cctx, ppconst_T *ppconst)
 	    p = skipwhite(*arg);
 	}
 
-	if (!IS_WHITE_OR_NUL(**arg) || !IS_WHITE_OR_NUL(p[1]))
+	if (!IS_WHITE_OR_NUL(**arg) || !IS_WHITE_OR_NUL(p[1 + op_falsy]))
 	{
-	    semsg(_(e_white_space_required_before_and_after_str), "?");
+	    semsg(_(e_white_space_required_before_and_after_str),
+							op_falsy ? "??" : "?");
 	    return FAIL;
 	}
 
@@ -4188,20 +4213,32 @@ compile_expr1(char_u **arg,  cctx_T *cctx, ppconst_T *ppconst)
 	    // expression is to be evaluated.
 	    has_const_expr = TRUE;
 	    const_value = tv2bool(&ppconst->pp_tv[ppconst_used]);
-	    clear_tv(&ppconst->pp_tv[ppconst_used]);
-	    --ppconst->pp_used;
-	    cctx->ctx_skip = save_skip == SKIP_YES || !const_value
-							 ? SKIP_YES : SKIP_NOT;
+	    cctx->ctx_skip = save_skip == SKIP_YES ||
+		 (op_falsy ? const_value : !const_value) ? SKIP_YES : SKIP_NOT;
+
+	    if (op_falsy && cctx->ctx_skip == SKIP_YES)
+		// "left ?? right" and "left" is truthy: produce "left"
+		generate_ppconst(cctx, ppconst);
+	    else
+	    {
+		clear_tv(&ppconst->pp_tv[ppconst_used]);
+		--ppconst->pp_used;
+	    }
 	}
 	else
 	{
 	    generate_ppconst(cctx, ppconst);
-	    generate_JUMP(cctx, JUMP_IF_FALSE, 0);
+	    if (op_falsy)
+		end_idx = instr->ga_len;
+	    generate_JUMP(cctx, op_falsy
+				   ? JUMP_AND_KEEP_IF_TRUE : JUMP_IF_FALSE, 0);
+	    if (op_falsy)
+		type1 = ((type_T **)stack->ga_data)[stack->ga_len];
 	}
 
 	// evaluate the second expression; any type is accepted
-	*arg = skipwhite(p + 1);
-	if (may_get_next_line(p + 1, arg, cctx) == FAIL)
+	*arg = skipwhite(p + 1 + op_falsy);
+	if (may_get_next_line(p + 1 + op_falsy, arg, cctx) == FAIL)
 	    return FAIL;
 	if (compile_expr1(arg, cctx, ppconst) == FAIL)
 	    return FAIL;
@@ -4210,56 +4247,64 @@ compile_expr1(char_u **arg,  cctx_T *cctx, ppconst_T *ppconst)
 	{
 	    generate_ppconst(cctx, ppconst);
 
-	    // remember the type and drop it
-	    --stack->ga_len;
-	    type1 = ((type_T **)stack->ga_data)[stack->ga_len];
+	    if (!op_falsy)
+	    {
+		// remember the type and drop it
+		--stack->ga_len;
+		type1 = ((type_T **)stack->ga_data)[stack->ga_len];
 
-	    end_idx = instr->ga_len;
-	    generate_JUMP(cctx, JUMP_ALWAYS, 0);
+		end_idx = instr->ga_len;
+		generate_JUMP(cctx, JUMP_ALWAYS, 0);
 
-	    // jump here from JUMP_IF_FALSE
-	    isn = ((isn_T *)instr->ga_data) + alt_idx;
-	    isn->isn_arg.jump.jump_where = instr->ga_len;
+		// jump here from JUMP_IF_FALSE
+		isn = ((isn_T *)instr->ga_data) + alt_idx;
+		isn->isn_arg.jump.jump_where = instr->ga_len;
+	    }
 	}
 
-	// Check for the ":".
-	p = may_peek_next_line(cctx, *arg, &next);
-	if (*p != ':')
+	if (!op_falsy)
 	{
-	    emsg(_(e_missing_colon));
-	    return FAIL;
-	}
-	if (next != NULL)
-	{
-	    *arg = next_line_from_context(cctx, TRUE);
-	    p = skipwhite(*arg);
-	}
+	    // Check for the ":".
+	    p = may_peek_next_line(cctx, *arg, &next);
+	    if (*p != ':')
+	    {
+		emsg(_(e_missing_colon));
+		return FAIL;
+	    }
+	    if (next != NULL)
+	    {
+		*arg = next_line_from_context(cctx, TRUE);
+		p = skipwhite(*arg);
+	    }
 
-	if (!IS_WHITE_OR_NUL(**arg) || !IS_WHITE_OR_NUL(p[1]))
-	{
-	    semsg(_(e_white_space_required_before_and_after_str), ":");
-	    return FAIL;
-	}
+	    if (!IS_WHITE_OR_NUL(**arg) || !IS_WHITE_OR_NUL(p[1]))
+	    {
+		semsg(_(e_white_space_required_before_and_after_str), ":");
+		return FAIL;
+	    }
 
-	// evaluate the third expression
-	if (has_const_expr)
-	    cctx->ctx_skip = save_skip == SKIP_YES || const_value
+	    // evaluate the third expression
+	    if (has_const_expr)
+		cctx->ctx_skip = save_skip == SKIP_YES || const_value
 							 ? SKIP_YES : SKIP_NOT;
-	*arg = skipwhite(p + 1);
-	if (may_get_next_line(p + 1, arg, cctx) == FAIL)
-	    return FAIL;
-	if (compile_expr1(arg, cctx, ppconst) == FAIL)
-	    return FAIL;
+	    *arg = skipwhite(p + 1);
+	    if (may_get_next_line(p + 1, arg, cctx) == FAIL)
+		return FAIL;
+	    if (compile_expr1(arg, cctx, ppconst) == FAIL)
+		return FAIL;
+	}
 
 	if (!has_const_expr)
 	{
+	    type_T	**typep;
+
 	    generate_ppconst(cctx, ppconst);
 
 	    // If the types differ, the result has a more generic type.
-	    type2 = ((type_T **)stack->ga_data)[stack->ga_len - 1];
-	    common_type(type1, type2, &type2, cctx->ctx_type_list);
+	    typep = ((type_T **)stack->ga_data) + stack->ga_len - 1;
+	    common_type(type1, *typep, typep, cctx->ctx_type_list);
 
-	    // jump here from JUMP_ALWAYS
+	    // jump here from JUMP_ALWAYS or JUMP_AND_KEEP_IF_TRUE
 	    isn = ((isn_T *)instr->ga_data) + end_idx;
 	    isn->isn_arg.jump.jump_where = instr->ga_len;
 	}
@@ -4360,7 +4405,7 @@ exarg_getline(
 
     for (;;)
     {
-	if (cctx->ctx_lnum == cctx->ctx_ufunc->uf_lines.ga_len)
+	if (cctx->ctx_lnum >= cctx->ctx_ufunc->uf_lines.ga_len - 1)
 	    return NULL;
 	++cctx->ctx_lnum;
 	p = ((char_u **)cctx->ctx_ufunc->uf_lines.ga_data)[cctx->ctx_lnum];
@@ -4632,6 +4677,8 @@ compile_assignment(char_u *arg, exarg_T *eap, cmdidx_T cmdidx, cctx_T *cctx)
 	eap->getline = exarg_getline;
 	eap->cookie = cctx;
 	l = heredoc_get(eap, op + 3, FALSE);
+	if (l == NULL)
+	    return NULL;
 
 	if (cctx->ctx_skip != SKIP_YES)
 	{
@@ -4897,7 +4944,7 @@ compile_assignment(char_u *arg, exarg_T *eap, cmdidx_T cmdidx, cctx_T *cctx)
 			{
 			    scriptvar_idx = get_script_item_idx(scriptvar_sid,
 								rawname, TRUE);
-			    if (scriptvar_idx > 0)
+			    if (scriptvar_idx >= 0)
 			    {
 				scriptitem_T *si = SCRIPT_ITEM(scriptvar_sid);
 				svar_T	     *sv =
@@ -6977,6 +7024,12 @@ compile_def_function(ufunc_T *ufunc, int set_return_type, cctx_T *outer_cctx)
 		    break;
 
 	    case CMD_let:
+		    if (get_vim_var_nr(VV_DISALLOW_LET))
+		    {
+			emsg(_(e_cannot_use_let_in_vim9_script));
+			break;
+		    }
+		    // FALLTHROUGH
 	    case CMD_var:
 	    case CMD_final:
 	    case CMD_const:
@@ -7377,6 +7430,7 @@ delete_instr(isn_T *isn)
 	case ISN_COMPARESPECIAL:
 	case ISN_COMPARESTRING:
 	case ISN_CONCAT:
+	case ISN_COND2BOOL:
 	case ISN_DROP:
 	case ISN_ECHO:
 	case ISN_ECHOERR:
