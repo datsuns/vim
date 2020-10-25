@@ -145,6 +145,15 @@ def Test_wrong_type()
   CheckDefFailure(['var Ref: string', 'var res = Ref()'], 'E1085:')
 enddef
 
+def Test_script_wrong_type()
+  var lines =<< trim END
+      vim9script
+      var s:dict: dict<string>
+      s:dict['a'] = ['x']
+  END
+  CheckScriptFailure(lines, 'E1012: Type mismatch; expected string but got list<string>', 3)
+enddef
+
 def Test_const()
   CheckDefFailure(['final name = 234', 'name = 99'], 'E1018:')
   CheckDefFailure(['final one = 234', 'var one = 99'], 'E1017:')
@@ -239,6 +248,71 @@ def Test_block_failure()
   CheckDefFailure(['{', 'var inner = 1', '}', 'echo inner'], 'E1001:')
   CheckDefFailure(['}'], 'E1025:')
   CheckDefFailure(['{', 'echo 1'], 'E1026:')
+enddef
+
+def Test_block_local_vars()
+  var lines =<< trim END
+      vim9script
+      v:testing = 1
+      if true
+        var text = ['hello']
+        def SayHello(): list<string>
+          return text
+        enddef
+        def SetText(v: string)
+          text = [v]
+        enddef
+      endif
+
+      if true
+        var text = ['again']
+        def SayAgain(): list<string>
+          return text
+        enddef
+      endif
+
+      # test that the "text" variables are not cleaned up
+      test_garbagecollect_now()
+
+      defcompile
+
+      assert_equal(['hello'], SayHello())
+      assert_equal(['again'], SayAgain())
+
+      SetText('foobar')
+      assert_equal(['foobar'], SayHello())
+
+      call writefile(['ok'], 'Xdidit')
+      qall!
+  END
+
+  # need to execute this with a separate Vim instance to avoid the current
+  # context gets garbage collected.
+  writefile(lines, 'Xscript')
+  RunVim([], [], '-S Xscript')
+  assert_equal(['ok'], readfile('Xdidit'))
+
+  delete('Xscript')
+  delete('Xdidit')
+enddef
+
+def Test_block_local_vars_with_func()
+  var lines =<< trim END
+      vim9script
+      if true
+        var foo = 'foo'
+        if true
+          var bar = 'bar'
+          def Func(): list<string>
+            return [foo, bar]
+          enddef
+        endif
+      endif
+      # function is compiled here, after blocks have finished, can still access
+      # "foo" and "bar"
+      assert_equal(['foo', 'bar'], Func())
+  END
+  CheckScriptSuccess(lines)
 enddef
 
 func g:NoSuchFunc()
@@ -543,7 +617,7 @@ def Test_try_catch_fails()
   CheckDefFailure(['endtry'], 'E602:')
   CheckDefFailure(['while 1', 'endtry'], 'E170:')
   CheckDefFailure(['for i in range(5)', 'endtry'], 'E170:')
-  CheckDefFailure(['if 2', 'endtry'], 'E171:')
+  CheckDefFailure(['if 1', 'endtry'], 'E171:')
   CheckDefFailure(['try', 'echo 1', 'endtry'], 'E1032:')
 
   CheckDefFailure(['throw'], 'E1015:')
@@ -560,6 +634,22 @@ def Test_throw_vimscript()
       catch
         assert_equal('onetwo', v:exception)
       endtry
+  END
+  CheckScriptSuccess(lines)
+
+  lines =<< trim END
+    vim9script
+    @r = ''
+    def Func()
+      throw @r
+    enddef
+    var result = ''
+    try
+      Func()
+    catch /E1129:/
+      result = 'caught'
+    endtry
+    assert_equal('caught', result)
   END
   CheckScriptSuccess(lines)
 enddef
@@ -1256,15 +1346,16 @@ def Test_import_absolute()
 
   assert_equal(9876, g:imported_abs)
   assert_equal(8888, g:imported_after)
-  assert_match('<SNR>\d\+_UseExported.*' ..
-          'g:imported_abs = exported.*' ..
-          '0 LOADSCRIPT exported from .*Xexport_abs.vim.*' ..
-          '1 STOREG g:imported_abs.*' ..
-          'exported = 8888.*' ..
-          '3 STORESCRIPT exported in .*Xexport_abs.vim.*' ..
-          'g:imported_after = exported.*' ..
-          '4 LOADSCRIPT exported from .*Xexport_abs.vim.*' ..
-          '5 STOREG g:imported_after.*',
+  assert_match('<SNR>\d\+_UseExported\_s*' ..
+          'g:imported_abs = exported\_s*' ..
+          '0 LOADSCRIPT exported-2 from .*Xexport_abs.vim\_s*' ..
+          '1 STOREG g:imported_abs\_s*' ..
+          'exported = 8888\_s*' ..
+          '2 PUSHNR 8888\_s*' ..
+          '3 STORESCRIPT exported-2 in .*Xexport_abs.vim\_s*' ..
+          'g:imported_after = exported\_s*' ..
+          '4 LOADSCRIPT exported-2 from .*Xexport_abs.vim\_s*' ..
+          '5 STOREG g:imported_after',
         g:import_disassembled)
 
   Undo_export_script_lines()
@@ -2674,6 +2765,98 @@ def Run_Test_define_func_at_command_line()
   call StopVimInTerminal(buf)
   delete('XcallFunc')
   delete('Xdidcmd')
+enddef
+
+def Test_script_var_scope()
+  var lines =<< trim END
+      vim9script
+      if true
+        if true
+          var one = 'one'
+          echo one
+        endif
+        echo one
+      endif
+  END
+  CheckScriptFailure(lines, 'E121:', 7)
+
+  lines =<< trim END
+      vim9script
+      if true
+        if false
+          var one = 'one'
+          echo one
+        else
+          var one = 'one'
+          echo one
+        endif
+        echo one
+      endif
+  END
+  CheckScriptFailure(lines, 'E121:', 10)
+
+  lines =<< trim END
+      vim9script
+      while true
+        var one = 'one'
+        echo one
+        break
+      endwhile
+      echo one
+  END
+  CheckScriptFailure(lines, 'E121:', 7)
+
+  lines =<< trim END
+      vim9script
+      for i in range(1)
+        var one = 'one'
+        echo one
+      endfor
+      echo one
+  END
+  CheckScriptFailure(lines, 'E121:', 6)
+
+  lines =<< trim END
+      vim9script
+      {
+        var one = 'one'
+        assert_equal('one', one)
+      }
+      assert_false(exists('one'))
+      assert_false(exists('s:one'))
+  END
+  CheckScriptSuccess(lines)
+
+  lines =<< trim END
+      vim9script
+      {
+        var one = 'one'
+        echo one
+      }
+      echo one
+  END
+  CheckScriptFailure(lines, 'E121:', 6)
+enddef
+
+def Test_catch_exception_in_callback()
+  var lines =<< trim END
+    vim9script
+    def Callback(...l: any)
+      try
+        var x: string
+        var y: string
+        # this error should be caught with CHECKLEN
+        [x, y] = ['']
+      catch
+        g:caught = 'yes'
+      endtry
+    enddef
+    popup_menu('popup', #{callback: Callback})
+    feedkeys("\r", 'xt')
+  END
+  CheckScriptSuccess(lines)
+
+  unlet g:caught
 enddef
 
 " Keep this last, it messes up highlighting.

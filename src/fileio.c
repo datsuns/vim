@@ -2501,7 +2501,7 @@ failed:
 	check_cursor_lnum();
 	beginline(BL_WHITE | BL_FIX);	    // on first non-blank
 
-	if (!cmdmod.lockmarks)
+	if ((cmdmod.cmod_flags & CMOD_LOCKMARKS) == 0)
 	{
 	    // Set '[ and '] marks to the newly read lines.
 	    curbuf->b_op_start.lnum = from + 1;
@@ -4743,7 +4743,7 @@ readdir_core(
     if (!ok)
     {
 	failed = TRUE;
-	smsg(_(e_notopen), path);
+	semsg(_(e_notopen), path);
     }
     else
     {
@@ -4813,7 +4813,7 @@ readdir_core(
     if (dirp == NULL)
     {
 	failed = TRUE;
-	smsg(_(e_notopen), path);
+	semsg(_(e_notopen), path);
     }
     else
     {

@@ -625,24 +625,40 @@ typedef struct
  */
 typedef struct
 {
-    int		hide;			// TRUE when ":hide" was used
-# ifdef FEAT_BROWSE_CMD
-    int		browse;			// TRUE to invoke file dialog
-# endif
-    int		split;			// flags for win_split()
-    int		tab;			// > 0 when ":tab" was used
-# if defined(FEAT_GUI_DIALOG) || defined(FEAT_CON_DIALOG)
-    int		confirm;		// TRUE to invoke yes/no dialog
-# endif
-    int		keepalt;		// TRUE when ":keepalt" was used
-    int		keepmarks;		// TRUE when ":keepmarks" was used
-    int		keepjumps;		// TRUE when ":keepjumps" was used
-    int		lockmarks;		// TRUE when ":lockmarks" was used
-    int		keeppatterns;		// TRUE when ":keeppatterns" was used
-    int		noswapfile;		// TRUE when ":noswapfile" was used
-    char_u	*save_ei;		// saved value of 'eventignore'
-    regmatch_T	filter_regmatch;	// set by :filter /pat/
-    int		filter_force;		// set for :filter!
+    int		cmod_flags;		// CMOD_ flags
+#define CMOD_SANDBOX	    0x0001	// ":sandbox"
+#define CMOD_SILENT	    0x0002	// ":silent"
+#define CMOD_ERRSILENT	    0x0004	// ":silent!"
+#define CMOD_UNSILENT	    0x0008	// ":unsilent"
+#define CMOD_NOAUTOCMD	    0x0010	// ":noautocmd"
+#define CMOD_HIDE	    0x0020	// ":hide"
+#define CMOD_BROWSE	    0x0040	// ":browse" - invoke file dialog
+#define CMOD_CONFIRM	    0x0080	// ":confirm" - invoke yes/no dialog
+#define CMOD_KEEPALT	    0x0100	// ":keepalt"
+#define CMOD_KEEPMARKS	    0x0200	// ":keepmarks"
+#define CMOD_KEEPJUMPS	    0x0400	// ":keepjumps"
+#define CMOD_LOCKMARKS	    0x0800	// ":lockmarks"
+#define CMOD_KEEPPATTERNS   0x1000	// ":keeppatterns"
+#define CMOD_NOSWAPFILE	    0x2000	// ":noswapfile"
+
+    int		cmod_split;		// flags for win_split()
+    int		cmod_tab;		// > 0 when ":tab" was used
+    regmatch_T	cmod_filter_regmatch;	// set by :filter /pat/
+    int		cmod_filter_force;	// set for :filter!
+
+    int		cmod_verbose;		// non-zero to set 'verbose'
+
+    // values for undo_cmdmod()
+    char_u	*cmod_save_ei;		// saved value of 'eventignore'
+#ifdef HAVE_SANDBOX
+    int		cmod_did_sandbox;	// set when "sandbox" was incremented
+#endif
+    long	cmod_verbose_save;	// if 'verbose' was set: value of
+					// p_verbose plus one
+    int		cmod_save_msg_silent;	// if non-zero: saved value of
+					// msg_silent + 1
+    int		cmod_save_msg_scroll;	// for restoring msg_scroll
+    int		cmod_did_esilent;	// incremented when emsg_silent is
 } cmdmod_T;
 
 #define MF_SEED_LEN	8
@@ -889,6 +905,9 @@ typedef struct {
     }		cs_pend;
     void	*cs_forinfo[CSTACK_LEN]; // info used by ":for"
     int		cs_line[CSTACK_LEN];	// line nr of ":while"/":for" line
+    int		cs_block_id[CSTACK_LEN];    // block ID stack
+    int		cs_script_var_len[CSTACK_LEN];	// value of sn_var_vals.ga_len
+						// when entering the block
     int		cs_idx;			// current entry, or -1 if none
     int		cs_looplevel;		// nr of nested ":while"s and ":for"s
     int		cs_trylevel;		// nr of nested ":try"s
@@ -905,6 +924,7 @@ typedef struct {
 # define CSF_ELSE	0x0004	// ":else" has been passed
 # define CSF_WHILE	0x0008	// is a ":while"
 # define CSF_FOR	0x0010	// is a ":for"
+# define CSF_BLOCK	0x0020	// is a "{" block
 
 # define CSF_TRY	0x0100	// is a ":try"
 # define CSF_FINALLY	0x0200	// ":finally" has been passed
@@ -913,6 +933,8 @@ typedef struct {
 # define CSF_SILENT	0x1000	// "emsg_silent" reset by ":try"
 // Note that CSF_ELSE is only used when CSF_TRY and CSF_WHILE are unset
 // (an ":if"), and CSF_SILENT is only used when CSF_TRY is set.
+//
+#define CSF_FUNC_DEF	0x2000	// a function was defined in this block
 
 /*
  * What's pending for being reactivated at the ":endtry" of this try
@@ -1578,6 +1600,8 @@ typedef struct
     char_u	*uf_va_name;	// name from "...name" or NULL
     type_T	*uf_va_type;	// type from "...name: type" or NULL
     type_T	*uf_func_type;	// type of the function, &t_func_any if unknown
+    int		uf_block_depth;	// nr of entries in uf_block_ids
+    int		*uf_block_ids;	// blocks a :def function is defined inside
 # if defined(FEAT_LUA)
     cfunc_T     uf_cb;		// callback function for cfunc
     cfunc_free_T uf_cb_free;    // callback function to free cfunc
@@ -1698,18 +1722,47 @@ struct funccal_entry {
  * Holds the hashtab with variables local to each sourced script.
  * Each item holds a variable (nameless) that points to the dict_T.
  */
-typedef struct
-{
+typedef struct {
     dictitem_T	sv_var;
     dict_T	sv_dict;
 } scriptvar_T;
 
 /*
+ * Entry for "sn_all_vars".  Contains the s: variables from sn_vars plus the
+ * block-local ones.
+ */
+typedef struct sallvar_S sallvar_T;
+struct sallvar_S {
+    sallvar_T	*sav_next;	  // var with same name but different block
+    int		sav_block_id;	  // block ID where declared
+    int		sav_var_vals_idx; // index in sn_var_vals
+
+    // So long as the variable is valid (block it was defined in is still
+    // active) "sav_di" is used.  It is set to NULL when leaving the block,
+    // then sav_tv and sav_flags are used.
+    dictitem_T *sav_di;		// dictitem with di_key and di_tv
+    typval_T	sav_tv;		// type and value of the variable
+    char_u	sav_flags;	// DI_FLAGS_ flags (only used for variable)
+    char_u	sav_key[1];	// key (actually longer!)
+};
+
+/*
+ * In the sn_all_vars hashtab item "hi_key" points to "sav_key" in a sallvar_T.
+ * This makes it possible to store and find the sallvar_T.
+ * SAV2HIKEY() converts a sallvar_T pointer to a hashitem key pointer.
+ * HIKEY2SAV() converts a hashitem key pointer to a sallvar_T pointer.
+ * HI2SAV() converts a hashitem pointer to a sallvar_T pointer.
+ */
+#define SAV2HIKEY(sav) ((sav)->sav_key)
+#define HIKEY2SAV(p)  ((sallvar_T *)(p - offsetof(sallvar_T, sav_key)))
+#define HI2SAV(hi)     HIKEY2SAV((hi)->hi_key)
+
+/*
  * Entry for "sn_var_vals".  Used for script-local variables.
  */
 typedef struct {
-    char_u	*sv_name;	// points into "sn_vars" di_key
-    typval_T	*sv_tv;		// points into "sn_vars" di_tv
+    char_u	*sv_name;	// points into "sn_all_vars" di_key
+    typval_T	*sv_tv;		// points into "sn_vars" or "sn_all_vars" di_tv
     type_T	*sv_type;
     int		sv_const;
     int		sv_export;	// "export let var = val"
@@ -1739,12 +1792,28 @@ typedef struct
 {
     char_u	*sn_name;
 
-    scriptvar_T	*sn_vars;	// stores s: variables for this script
-    garray_T	sn_var_vals;	// same variables as a list of svar_T
+    // "sn_vars" stores the s: variables currently valid.  When leaving a block
+    // variables local to that block are removed.
+    scriptvar_T	*sn_vars;
+
+    // Specific for a Vim9 script.
+    // "sn_all_vars" stores all script variables ever declared.  So long as the
+    // variable is still valid the value is in "sn_vars->sv_dict...di_tv".
+    // When the block of a declaration is left the value is moved to
+    // "sn_all_vars..sav_tv".
+    // Variables with duplicate names are possible, the sav_block_id must be
+    // used to check that which variable is valid.
+    dict_T	sn_all_vars;	// all script variables, dict of sallvar_T
+
+    // Stores the same variables as in "sn_all_vars" as a list of svar_T, so
+    // that they can be quickly found by index instead of a hash table lookup.
+    // Also stores the type.
+    garray_T	sn_var_vals;
 
     garray_T	sn_imports;	// imported items, imported_T
-
     garray_T	sn_type_list;	// keeps types used by variables
+    int		sn_current_block_id; // ID for current block, 0 for outer
+    int		sn_last_block_id;  // Unique ID for each script block
 
     int		sn_version;	// :scriptversion
     int		sn_had_command;	// TRUE if any command was executed
@@ -1869,8 +1938,11 @@ typedef struct funcstack_S
 				// - arguments
 				// - frame
 				// - local variables
+    int		fs_var_offset;	// count of arguments + frame size == offset to
+				// local variables
 
     int		fs_refcount;	// nr of closures referencing this funcstack
+    int		fs_min_refcount; // nr of closures on this funcstack
     int		fs_copyID;	// for garray_T collection
 } funcstack_T;
 
@@ -4055,6 +4127,7 @@ typedef struct lval_S
     dict_T	*ll_dict;	// The Dictionary or NULL
     dictitem_T	*ll_di;		// The dictitem or NULL
     char_u	*ll_newkey;	// New key for Dict in alloc. mem or NULL.
+    type_T	*ll_valtype;	// type expected for the value or NULL
     blob_T	*ll_blob;	// The Blob or NULL
 } lval_T;
 

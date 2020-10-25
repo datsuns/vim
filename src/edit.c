@@ -3607,13 +3607,16 @@ ins_esc(
 	undisplay_dollar();
     }
 
+    if (cmdchar != 'r' && cmdchar != 'v')
+	ins_apply_autocmds(EVENT_INSERTLEAVEPRE);
+
     // When an autoindent was removed, curswant stays after the
     // indent
     if (restart_edit == NUL && (colnr_T)temp == curwin->w_cursor.col)
 	curwin->w_set_curswant = TRUE;
 
     // Remember the last Insert position in the '^ mark.
-    if (!cmdmod.keepjumps)
+    if ((cmdmod.cmod_flags & CMOD_KEEPJUMPS) == 0)
 	curbuf->b_last_insert = curwin->w_cursor;
 
     /*

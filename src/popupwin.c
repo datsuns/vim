@@ -1595,14 +1595,16 @@ popup_set_buffer_text(buf_T *buf, typval_T text)
     // Add text to the buffer.
     if (text.v_type == VAR_STRING)
     {
+	char_u *s = text.vval.v_string;
+
 	// just a string
-	ml_append_buf(buf, 0, text.vval.v_string, (colnr_T)0, TRUE);
+	ml_append_buf(buf, 0, s == NULL ? (char_u *)"" : s, (colnr_T)0, TRUE);
     }
     else
     {
 	list_T *l = text.vval.v_list;
 
-	if (l->lv_len > 0)
+	if (l != NULL && l->lv_len > 0)
 	{
 	    if (l->lv_first->li_tv.v_type == VAR_STRING)
 		// list of strings
@@ -2373,7 +2375,8 @@ f_popup_filter_menu(typval_T *argvars, typval_T *rettv)
 	c = TO_SPECIAL(key[1], key[2]);
 
     // consume all keys until done
-    rettv->vval.v_number = 1;
+    rettv->v_type = VAR_BOOL;
+    rettv->vval.v_number = VVAL_TRUE;
     res.v_type = VAR_NUMBER;
 
     old_lnum = wp->w_cursor.lnum;
@@ -2427,7 +2430,8 @@ f_popup_filter_yesno(typval_T *argvars, typval_T *rettv)
 	c = TO_SPECIAL(key[1], key[2]);
 
     // consume all keys until done
-    rettv->vval.v_number = 1;
+    rettv->v_type = VAR_BOOL;
+    rettv->vval.v_number = VVAL_TRUE;
 
     if (c == 'y' || c == 'Y')
 	res.vval.v_number = 1;
@@ -3145,7 +3149,7 @@ invoke_popup_filter(win_T *wp, int c)
     typval_T	argv[3];
     char_u	buf[NUMBUFLEN];
     linenr_T	old_lnum = wp->w_cursor.lnum;
-    int		prev_called_emsg = called_emsg;
+    int		prev_did_emsg = did_emsg;
 
     // Emergency exit: CTRL-C closes the popup.
     if (c == Ctrl_C)
@@ -3189,12 +3193,12 @@ invoke_popup_filter(win_T *wp, int c)
 	if (win_valid_popup(wp) && old_lnum != wp->w_cursor.lnum)
 	    popup_highlight_curline(wp);
 
-	// If an error was given always return FALSE, so that keys are not
-	// consumed and the user can type something.
+	// If an error message was given always return FALSE, so that keys are
+	// not consumed and the user can type something.
 	// If we get three errors in a row then close the popup.  Decrement the
 	// error count by 1/10 if there are no errors, thus allowing up to 1 in
 	// 10 calls to cause an error.
-	if (win_valid_popup(wp) && called_emsg > prev_called_emsg)
+	if (win_valid_popup(wp) && did_emsg > prev_did_emsg)
 	{
 	    wp->w_filter_errors += 10;
 	    if (wp->w_filter_errors >= 30)

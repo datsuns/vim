@@ -349,8 +349,8 @@ handle_closure_in_use(ectx_T *ectx, int free_arguments)
 	// Move them to the called function.
 	if (funcstack == NULL)
 	    return FAIL;
-	funcstack->fs_ga.ga_len = argcount + STACK_FRAME_SIZE
-							  + dfunc->df_varcount;
+	funcstack->fs_var_offset = argcount + STACK_FRAME_SIZE;
+	funcstack->fs_ga.ga_len = funcstack->fs_var_offset + dfunc->df_varcount;
 	stack = ALLOC_CLEAR_MULT(typval_T, funcstack->fs_ga.ga_len);
 	funcstack->fs_ga.ga_data = stack;
 	if (stack == NULL)
@@ -376,27 +376,22 @@ handle_closure_in_use(ectx_T *ectx, int free_arguments)
 	{
 	    tv = STACK_TV(ectx->ec_frame_idx + STACK_FRAME_SIZE + idx);
 
-	    // Do not copy a partial created for a local function.
-	    // TODO: this won't work if the closure actually uses it.  But when
-	    // keeping it it gets complicated: it will create a reference cycle
-	    // inside the partial, thus needs special handling for garbage
-	    // collection.
+	    // A partial created for a local function, that is also used as a
+	    // local variable, has a reference count for the variable, thus
+	    // will never go down to zero.  When all these refcounts are one
+	    // then the funcstack is unused.  We need to count how many we have
+	    // so we need when to check.
 	    if (tv->v_type == VAR_PARTIAL && tv->vval.v_partial != NULL)
 	    {
-		int i;
+		int	    i;
 
 		for (i = 0; i < closure_count; ++i)
-		{
-		    partial_T *pt = ((partial_T **)gap->ga_data)[gap->ga_len
-							  - closure_count + i];
-		    if (tv->vval.v_partial == pt)
-			break;
-		}
-		if (i < closure_count)
-		    continue;
+		    if (tv->vval.v_partial == ((partial_T **)gap->ga_data)[
+					      gap->ga_len - closure_count + i])
+			++funcstack->fs_min_refcount;
 	    }
 
-	    *(stack + argcount + STACK_FRAME_SIZE + idx) = *tv;
+	    *(stack + funcstack->fs_var_offset + idx) = *tv;
 	    tv->v_type = VAR_UNKNOWN;
 	}
 
@@ -422,6 +417,43 @@ handle_closure_in_use(ectx_T *ectx, int free_arguments)
 	ga_clear(gap);
 
     return OK;
+}
+
+/*
+ * Called when a partial is freed or its reference count goes down to one.  The
+ * funcstack may be the only reference to the partials in the local variables.
+ * Go over all of them, the funcref and can be freed if all partials
+ * referencing the funcstack have a reference count of one.
+ */
+    void
+funcstack_check_refcount(funcstack_T *funcstack)
+{
+    int		    i;
+    garray_T	    *gap = &funcstack->fs_ga;
+    int		    done = 0;
+
+    if (funcstack->fs_refcount > funcstack->fs_min_refcount)
+	return;
+    for (i = funcstack->fs_var_offset; i < gap->ga_len; ++i)
+    {
+	typval_T *tv = ((typval_T *)gap->ga_data) + i;
+
+	if (tv->v_type == VAR_PARTIAL && tv->vval.v_partial != NULL
+		&& tv->vval.v_partial->pt_funcstack == funcstack
+		&& tv->vval.v_partial->pt_refcount == 1)
+	    ++done;
+    }
+    if (done == funcstack->fs_min_refcount)
+    {
+	typval_T	*stack = gap->ga_data;
+
+	// All partials referencing the funcstack have a reference count of
+	// one, thus the funcstack is no longer of use.
+	for (i = 0; i < gap->ga_len; ++i)
+	    clear_tv(stack + i);
+	vim_free(stack);
+	vim_free(funcstack);
+    }
 }
 
 /*
@@ -518,7 +550,7 @@ call_bfunc(int func_idx, int argcount, ectx_T *ectx)
 {
     typval_T	argvars[MAX_FUNC_ARGS];
     int		idx;
-    int		did_emsg_before = did_emsg;
+    int		called_emsg_before = called_emsg;
     ectx_T	*prev_ectx = current_ectx;
 
     if (call_prepare(argcount, argvars, ectx) == FAIL)
@@ -534,7 +566,7 @@ call_bfunc(int func_idx, int argcount, ectx_T *ectx)
     for (idx = 0; idx < argcount; ++idx)
 	clear_tv(&argvars[idx]);
 
-    if (did_emsg != did_emsg_before)
+    if (called_emsg != called_emsg_before)
 	return FAIL;
     return OK;
 }
@@ -798,6 +830,10 @@ call_def_function(
     int		breakcheck_count = 0;
     int		called_emsg_before = called_emsg;
     int		save_suppress_errthrow = suppress_errthrow;
+    msglist_T	**saved_msg_list = NULL;
+    msglist_T	*private_msg_list = NULL;
+    cmdmod_T	save_cmdmod;
+    int		restore_cmdmod = FALSE;
 
 // Get pointer to item in the stack.
 #define STACK_TV(idx) (((typval_T *)ectx.ec_stack.ga_data) + idx)
@@ -949,6 +985,11 @@ call_def_function(
     estack_push_ufunc(ufunc, 1);
     current_sctx = ufunc->uf_script_ctx;
     current_sctx.sc_version = SCRIPT_VERSION_VIM9;
+
+    // Use a specific location for storing error messages to be converted to an
+    // exception.
+    saved_msg_list = msg_list;
+    msg_list = &private_msg_list;
 
     // Do turn errors into exceptions.
     suppress_errthrow = FALSE;
@@ -1349,6 +1390,8 @@ call_def_function(
 		tv = STACK_TV_BOT(0);
 		tv->v_type = VAR_STRING;
 		tv->v_lock = 0;
+		// This may result in NULL, which should be equivalent to an
+		// empty string.
 		tv->vval.v_string = get_reg_contents(
 					  iptr->isn_arg.number, GREG_EXPR_SRC);
 		++ectx.ec_stack.ga_len;
@@ -1908,6 +1951,7 @@ call_def_function(
 		    {
 			tv = STACK_TV_BOT(-1);
 			if (when == JUMP_IF_COND_FALSE
+				|| when == JUMP_IF_FALSE
 				|| when == JUMP_IF_COND_TRUE)
 			{
 			    SOURCING_LNUM = iptr->isn_lnum;
@@ -2049,6 +2093,15 @@ call_def_function(
 	    case ISN_THROW:
 		--ectx.ec_stack.ga_len;
 		tv = STACK_TV_BOT(0);
+		if (tv->vval.v_string == NULL
+				       || *skipwhite(tv->vval.v_string) == NUL)
+		{
+		    vim_free(tv->vval.v_string);
+		    SOURCING_LNUM = iptr->isn_lnum;
+		    emsg(_(e_throw_with_empty_string));
+		    goto failed;
+		}
+
 		if (throw_exception(tv->vval.v_string, ET_USER, NULL) == FAIL)
 		{
 		    vim_free(tv->vval.v_string);
@@ -2232,11 +2285,55 @@ call_def_function(
 		    typval_T *tv1 = STACK_TV_BOT(-2);
 		    typval_T *tv2 = STACK_TV_BOT(-1);
 
+		    // add two lists or blobs
 		    if (iptr->isn_type == ISN_ADDLIST)
 			eval_addlist(tv1, tv2);
 		    else
 			eval_addblob(tv1, tv2);
 		    clear_tv(tv2);
+		    --ectx.ec_stack.ga_len;
+		}
+		break;
+
+	    case ISN_LISTAPPEND:
+		{
+		    typval_T	*tv1 = STACK_TV_BOT(-2);
+		    typval_T	*tv2 = STACK_TV_BOT(-1);
+		    list_T	*l = tv1->vval.v_list;
+
+		    // add an item to a list
+		    if (l == NULL)
+		    {
+			SOURCING_LNUM = iptr->isn_lnum;
+			emsg(_(e_cannot_add_to_null_list));
+			goto on_error;
+		    }
+		    if (list_append_tv(l, tv2) == FAIL)
+			goto failed;
+		    clear_tv(tv2);
+		    --ectx.ec_stack.ga_len;
+		}
+		break;
+
+	    case ISN_BLOBAPPEND:
+		{
+		    typval_T	*tv1 = STACK_TV_BOT(-2);
+		    typval_T	*tv2 = STACK_TV_BOT(-1);
+		    blob_T	*b = tv1->vval.v_blob;
+		    int		error = FALSE;
+		    varnumber_T n;
+
+		    // add a number to a blob
+		    if (b == NULL)
+		    {
+			SOURCING_LNUM = iptr->isn_lnum;
+			emsg(_(e_cannot_add_to_null_blob));
+			goto on_error;
+		    }
+		    n = tv_get_number_chk(tv2, &error);
+		    if (error)
+			goto on_error;
+		    ga_append(&b->bv_ga, (int)n);
 		    --ectx.ec_stack.ga_len;
 		}
 		break;
@@ -2719,6 +2816,21 @@ call_def_function(
 		}
 		break;
 
+	    case ISN_CMDMOD:
+		save_cmdmod = cmdmod;
+		restore_cmdmod = TRUE;
+		cmdmod = *iptr->isn_arg.cmdmod.cf_cmdmod;
+		apply_cmdmod(&cmdmod);
+		break;
+
+	    case ISN_CMDMOD_REV:
+		// filter regprog is owned by the instruction, don't free it
+		cmdmod.cmod_filter_regmatch.regprog = NULL;
+		undo_cmdmod(&cmdmod);
+		cmdmod = save_cmdmod;
+		restore_cmdmod = FALSE;
+		break;
+
 	    case ISN_SHUFFLE:
 		{
 		    typval_T	    tmp_tv;
@@ -2776,6 +2888,26 @@ failed:
 
     estack_pop();
     current_sctx = save_current_sctx;
+
+    if (*msg_list != NULL && saved_msg_list != NULL)
+    {
+	msglist_T **plist = saved_msg_list;
+
+	// Append entries from the current msg_list (uncaught exceptions) to
+	// the saved msg_list.
+	while (*plist != NULL)
+	    plist = &(*plist)->next;
+
+	*plist = *msg_list;
+    }
+    msg_list = saved_msg_list;
+
+    if (restore_cmdmod)
+    {
+	cmdmod.cmod_filter_regmatch.regprog = NULL;
+	undo_cmdmod(&cmdmod);
+	cmdmod = save_cmdmod;
+    }
 
 failed_early:
     // Free all local variables, but not arguments.
@@ -2929,8 +3061,10 @@ ex_disassemble(exarg_T *eap)
 		    svar_T *sv = ((svar_T *)si->sn_var_vals.ga_data)
 					     + iptr->isn_arg.script.script_idx;
 
-		    smsg("%4d LOADSCRIPT %s from %s", current,
-						     sv->sv_name, si->sn_name);
+		    smsg("%4d LOADSCRIPT %s-%d from %s", current,
+					    sv->sv_name,
+					    iptr->isn_arg.script.script_idx,
+					    si->sn_name);
 		}
 		break;
 	    case ISN_LOADS:
@@ -3021,8 +3155,10 @@ ex_disassemble(exarg_T *eap)
 		    svar_T *sv = ((svar_T *)si->sn_var_vals.ga_data)
 					     + iptr->isn_arg.script.script_idx;
 
-		    smsg("%4d STORESCRIPT %s in %s", current,
-						     sv->sv_name, si->sn_name);
+		    smsg("%4d STORESCRIPT %s-%d in %s", current,
+					     sv->sv_name,
+					     iptr->isn_arg.script.script_idx,
+					     si->sn_name);
 		}
 		break;
 	    case ISN_STOREOPT:
@@ -3343,6 +3479,8 @@ ex_disassemble(exarg_T *eap)
 	    case ISN_CONCAT: smsg("%4d CONCAT", current); break;
 	    case ISN_STRINDEX: smsg("%4d STRINDEX", current); break;
 	    case ISN_STRSLICE: smsg("%4d STRSLICE", current); break;
+	    case ISN_LISTAPPEND: smsg("%4d LISTAPPEND", current); break;
+	    case ISN_BLOBAPPEND: smsg("%4d BLOBAPPEND", current); break;
 	    case ISN_LISTINDEX: smsg("%4d LISTINDEX", current); break;
 	    case ISN_LISTSLICE: smsg("%4d LISTSLICE", current); break;
 	    case ISN_ANYINDEX: smsg("%4d ANYINDEX", current); break;
@@ -3388,6 +3526,25 @@ ex_disassemble(exarg_T *eap)
 					     (long)iptr->isn_arg.put.put_lnum);
 		break;
 
+		// TODO: summarize modifiers
+	    case ISN_CMDMOD:
+		{
+		    char_u  *buf;
+		    int	    len = produce_cmdmods(
+				  NULL, iptr->isn_arg.cmdmod.cf_cmdmod, FALSE);
+
+		    buf = alloc(len + 1);
+		    if (buf != NULL)
+		    {
+			(void)produce_cmdmods(
+				   buf, iptr->isn_arg.cmdmod.cf_cmdmod, FALSE);
+			smsg("%4d CMDMOD %s", current, buf);
+			vim_free(buf);
+		    }
+		    break;
+		}
+	    case ISN_CMDMOD_REV: smsg("%4d CMDMOD_REV", current); break;
+
 	    case ISN_SHUFFLE: smsg("%4d SHUFFLE %d up %d", current,
 					 iptr->isn_arg.shuffle.shfl_item,
 					 iptr->isn_arg.shuffle.shfl_up);
@@ -3403,7 +3560,7 @@ ex_disassemble(exarg_T *eap)
 }
 
 /*
- * Return TRUE when "tv" is not falsey: non-zero, non-empty string, non-empty
+ * Return TRUE when "tv" is not falsy: non-zero, non-empty string, non-empty
  * list, etc.  Mostly like what JavaScript does, except that empty list and
  * empty dictionary are FALSE.
  */

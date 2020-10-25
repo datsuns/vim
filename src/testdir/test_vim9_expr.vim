@@ -18,27 +18,27 @@ def Test_expr1_trinary()
 			'one' :
 			'two')
   if has('float')
-    assert_equal('one', 0.1 ? 'one' : 'two')
+    assert_equal('one', !!0.1 ? 'one' : 'two')
   endif
-  assert_equal('one', 'x' ? 'one' : 'two')
-  assert_equal('one', 'x'
+  assert_equal('one', !!'x' ? 'one' : 'two')
+  assert_equal('one', !!'x'
   			? 'one'
 			: 'two')
-  assert_equal('one', 0z1234 ? 'one' : 'two')
-  assert_equal('one', [0] ? 'one' : 'two')
-  assert_equal('one', #{x: 0} ? 'one' : 'two')
+  assert_equal('one', !!0z1234 ? 'one' : 'two')
+  assert_equal('one', !![0] ? 'one' : 'two')
+  assert_equal('one', !!#{x: 0} ? 'one' : 'two')
   var name = 1
   assert_equal('one', name ? 'one' : 'two')
 
   assert_equal('two', false ? 'one' : 'two')
   assert_equal('two', 0 ? 'one' : 'two')
   if has('float')
-    assert_equal('two', 0.0 ? 'one' : 'two')
+    assert_equal('two', !!0.0 ? 'one' : 'two')
   endif
-  assert_equal('two', '' ? 'one' : 'two')
-  assert_equal('two', 0z ? 'one' : 'two')
-  assert_equal('two', [] ? 'one' : 'two')
-  assert_equal('two', {} ? 'one' : 'two')
+  assert_equal('two', !!'' ? 'one' : 'two')
+  assert_equal('two', !!0z ? 'one' : 'two')
+  assert_equal('two', !![] ? 'one' : 'two')
+  assert_equal('two', !!{} ? 'one' : 'two')
   name = 0
   assert_equal('two', name ? 'one' : 'two')
 
@@ -90,6 +90,16 @@ def Test_expr1_trinary_vimscript()
   END
   CheckScriptSuccess(lines)
 
+  lines =<< trim END
+      vim9script
+      var name = v:false ?  # comment
+      		'yes' :
+                # comment
+		'no' # comment
+      assert_equal('no', name)
+  END
+  CheckScriptSuccess(lines)
+
   # check white space
   lines =<< trim END
       vim9script
@@ -116,6 +126,24 @@ def Test_expr1_trinary_vimscript()
       var name = v:true ? 1 :2
   END
   CheckScriptFailure(lines, 'E1004:', 2)
+
+  lines =<< trim END
+      vim9script
+      var name = 'x' ? 1 : 2
+  END
+  CheckScriptFailure(lines, 'E1030:', 2)
+
+  lines =<< trim END
+      vim9script
+      var name = [] ? 1 : 2
+  END
+  CheckScriptFailure(lines, 'E745:', 2)
+
+  lines =<< trim END
+      vim9script
+      var name = {} ? 1 : 2
+  END
+  CheckScriptFailure(lines, 'E728:', 2)
 
   # check after failure eval_flags is reset
   lines =<< trim END
@@ -151,6 +179,15 @@ func Test_expr1_trinary_fails()
   call CheckDefFailure(["var x = 1 ? 'one': 'two'"], msg, 1)
   call CheckDefFailure(["var x = 1 ? 'one' :'two'"], msg, 1)
   call CheckDefFailure(["var x = 1 ? 'one':'two'"], msg, 1)
+
+  call CheckDefFailure(["var x = 'x' ? 'one' : 'two'"], 'E1030:', 1)
+  call CheckDefFailure(["var x = 0z1234 ? 'one' : 'two'"], 'E974:', 1)
+  call CheckDefExecFailure(["var x = [] ? 'one' : 'two'"], 'E745:', 1)
+  call CheckDefExecFailure(["var x = {} ? 'one' : 'two'"], 'E728:', 1)
+
+  if has('float')
+    call CheckDefFailure(["var x = 0.1 ? 'one' : 'two'"], 'E805:', 1)
+  endif
 
   " missing argument detected even when common type is used
   call CheckDefFailure([
@@ -248,6 +285,17 @@ def Test_expr2_vimscript()
       var name = v:false ||
       		v:true ||
 		v:false
+      assert_equal(v:true, name)
+  END
+  CheckScriptSuccess(lines)
+
+  lines =<< trim END
+      vim9script
+      var name = v:false || # comment
+                # comment
+      		v:true ||
+                # comment
+		v:false # comment
       assert_equal(v:true, name)
   END
   CheckScriptSuccess(lines)
@@ -373,6 +421,17 @@ def Test_expr3_vimscript()
       vim9script
       var name = v:true &&
       		v:true &&
+      		v:true
+      assert_equal(v:true, name)
+  END
+  CheckScriptSuccess(lines)
+
+  lines =<< trim END
+      vim9script
+      var name = v:true &&  # comment
+                # comment
+      		v:true &&
+                # comment
       		v:true
       assert_equal(v:true, name)
   END
@@ -773,6 +832,7 @@ def Test_expr4_vim9script()
   lines =<< trim END
       vim9script
       var name = 123
+                # comment
       		!= 123
       assert_equal(false, name)
   END
@@ -790,6 +850,16 @@ def Test_expr4_vim9script()
       vim9script
       var list = [1, 2, 3]
       var name = list
+      		is list
+      assert_equal(true, name)
+  END
+  CheckScriptSuccess(lines)
+
+  lines =<< trim END
+      vim9script
+      var list = [1, 2, 3]
+      var name = list # comment
+                 # comment
       		is list
       assert_equal(true, name)
   END
@@ -1032,6 +1102,16 @@ def Test_expr5_vim9script()
 
   lines =<< trim END
       vim9script
+      var name = 11 +  # comment
+		  77 -
+                  # comment
+		  22
+      assert_equal(66, name)
+  END
+  CheckScriptSuccess(lines)
+
+  lines =<< trim END
+      vim9script
       var name = 'one'
       		.. 'two'
       assert_equal('onetwo', name)
@@ -1043,6 +1123,24 @@ def Test_expr5_vim9script()
       echo 'abc' is# 'abc'
   END
   CheckScriptFailure(lines, 'E15:', 2)
+
+  lines =<< trim END
+      vim9script
+      echo {} - 22
+  END
+  CheckScriptFailure(lines, 'E728:', 2)
+
+  lines =<< trim END
+      vim9script
+      echo [] - 33
+  END
+  CheckScriptFailure(lines, 'E745:', 2)
+
+  lines =<< trim END
+      vim9script
+      echo 0z1234 - 44
+  END
+  CheckScriptFailure(lines, 'E974:', 2)
 
   lines =<< trim END
       vim9script
@@ -1271,6 +1369,17 @@ def Test_expr6_vim9script()
   lines =<< trim END
       vim9script
       var name = 25
+      		% 10
+      assert_equal(5, name)
+  END
+  CheckScriptSuccess(lines)
+
+  lines =<< trim END
+      vim9script
+      var name = 25
+                # comment
+
+                # comment
       		% 10
       assert_equal(5, name)
   END
@@ -1591,6 +1700,12 @@ def Test_expr7_list_vim9script()
       echo [1,
 	    2] [3,
 		    4]
+
+      echo [1, # comment
+            # comment
+	    2] [3,
+            # comment
+		    4]
   END
   CheckScriptSuccess(lines)
 
@@ -1708,6 +1823,13 @@ def Test_expr7_lambda()
   CheckDefExecFailure(["var s = 'asdf'->{a -> a}('x', 'y')"],
         'E1106: 2 arguments too many')
   CheckDefFailure(["echo 'asdf'->{a -> a}(x)"], 'E1001:', 1)
+
+  CheckDefSuccess(['var Fx = {a -> #{k1: 0,', ' k2: 1}}'])
+  CheckDefFailure(['var Fx = {a -> #{k1: 0', ' k2: 1}}'], 'E722:', 2)
+  CheckDefFailure(['var Fx = {a -> #{k1: 0,', ' k2 1}}'], 'E720:', 2)
+
+  CheckDefSuccess(['var Fx = {a -> [0,', ' 1]}'])
+  CheckDefFailure(['var Fx = {a -> [0', ' 1]}'], 'E696:', 2)
 enddef
 
 def Test_expr7_lambda_vim9script()
@@ -1776,6 +1898,7 @@ def Test_expr7_dict()
   CheckDefFailure(["var x = #{a : 8}"], 'E1068:', 1)
   CheckDefFailure(["var x = #{a :8}"], 'E1068:', 1)
   CheckDefFailure(["var x = #{a: 8 , b: 9}"], 'E1068:', 1)
+  CheckDefFailure(["var x = #{a: 1,b: 2}"], 'E1069:', 1)
 
   CheckDefFailure(["var x = #{8: 8}"], 'E1014:', 1)
   CheckDefFailure(["var x = #{xxx}"], 'E720:', 1)
@@ -1792,6 +1915,8 @@ def Test_expr7_dict()
   CheckDefExecFailure(['var x: dict<number> = #{a: "x", b: 134}'], 'E1012:', 1)
   CheckDefExecFailure(['var x: dict<string> = #{a: 234, b: "1"}'], 'E1012:', 1)
   CheckDefExecFailure(['var x: dict<string> = #{a: "x", b: 134}'], 'E1012:', 1)
+
+  CheckDefFailure(['var x = ({'], 'E723:', 2)
 enddef
 
 def Test_expr7_dict_vim9script()
@@ -1800,6 +1925,17 @@ def Test_expr7_dict_vim9script()
       var d = {
 		'one':
 		   1,
+		'two': 2,
+		   }
+      assert_equal({'one': 1, 'two': 2}, d)
+
+      d = {  # comment
+		'one':
+                # comment
+
+		   1,
+                # comment
+                # comment
 		'two': 2,
 		   }
       assert_equal({'one': 1, 'two': 2}, d)
@@ -2182,6 +2318,22 @@ def Test_expr7_not()
       assert_equal(true, !!'asdf')
       assert_equal(true, !![2])
 
+      assert_equal(true, ! false)
+      assert_equal(true, !! true)
+      assert_equal(true, ! ! true)
+      assert_equal(true, !!! false)
+      assert_equal(true, ! ! ! false)
+
+      g:true = true
+      g:false = false
+      assert_equal(true, ! g:false)
+      assert_equal(true, !! g:true)
+      assert_equal(true, ! ! g:true)
+      assert_equal(true, !!! g:false)
+      assert_equal(true, ! ! ! g:false)
+      unlet g:true
+      unlet g:false
+
       assert_equal(true, !test_null_partial())
       assert_equal(false, !{-> 'yes'})
 
@@ -2204,8 +2356,7 @@ def Test_expr7_not()
       assert_equal(false, ![1, 2, 3]->reverse())
       assert_equal(true, ![]->reverse())
   END
-  CheckDefSuccess(lines)
-  CheckScriptSuccess(['vim9script'] + lines)
+  CheckDefAndScriptSuccess(lines)
 enddef
 
 func Test_expr7_fails()
@@ -2246,7 +2397,7 @@ func Test_expr7_fails()
   call CheckDefFailure(["'yes'->", "Echo()"], 'E488: Trailing characters: ->', 1)
 
   call CheckDefExecFailure(["[1, 2->len()"], 'E697:', 2)
-  call CheckDefExecFailure(["#{a: 1->len()"], 'E488:', 1)
+  call CheckDefExecFailure(["#{a: 1->len()"], 'E722:', 1)
   call CheckDefExecFailure(["{'a': 1->len()"], 'E723:', 2)
 endfunc
 

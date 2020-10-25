@@ -191,7 +191,7 @@ eval_to_bool(
 	if (!skip)
 	{
 	    if (in_vim9script())
-		retval = tv2bool(&tv);
+		retval = tv_get_bool_chk(&tv, error);
 	    else
 		retval = (tv_get_number_chk(&tv, error) != 0);
 	    clear_tv(&tv);
@@ -368,12 +368,12 @@ eval_to_string_skip(
  * Return FAIL for an error, OK otherwise.
  */
     int
-skip_expr(char_u **pp)
+skip_expr(char_u **pp, evalarg_T *evalarg)
 {
     typval_T	rettv;
 
     *pp = skipwhite(*pp);
-    return eval1(pp, &rettv, NULL);
+    return eval1(pp, &rettv, evalarg);
 }
 
 /*
@@ -887,6 +887,17 @@ get_lval(
 	    return NULL;
 	}
 
+	if (in_vim9script() && lp->ll_valtype == NULL
+		&& lp->ll_tv == &v->di_tv
+		&& ht != NULL && ht == get_script_local_ht())
+	{
+	    svar_T  *sv = find_typval_in_script(lp->ll_tv);
+
+	    // Vim9 script local variable: get the type
+	    if (sv != NULL)
+		lp->ll_valtype = sv->sv_type;
+	}
+
 	len = -1;
 	if (*p == '.')
 	{
@@ -1037,6 +1048,10 @@ get_lval(
 		}
 	    }
 
+	    if (lp->ll_valtype != NULL)
+		// use the type of the member
+		lp->ll_valtype = lp->ll_valtype->tt_member;
+
 	    if (lp->ll_di == NULL)
 	    {
 		// Can't add "v:" or "a:" variable.
@@ -1147,6 +1162,10 @@ get_lval(
 		    semsg(_(e_listidx), lp->ll_n1);
 		return NULL;
 	    }
+
+	    if (lp->ll_valtype != NULL)
+		// use the type of the member
+		lp->ll_valtype = lp->ll_valtype->tt_member;
 
 	    /*
 	     * May need to find the item or absolute index for the second
@@ -1383,6 +1402,11 @@ set_var_lval(
 	    emsg(_("E996: Cannot lock a list or dict"));
 	    return;
 	}
+
+	if (lp->ll_valtype != NULL
+			&& check_typval_type(lp->ll_valtype, rettv, 0) == FAIL)
+	    return;
+
 	if (lp->ll_newkey != NULL)
 	{
 	    if (op != NULL && *op != '=')
@@ -1944,6 +1968,29 @@ eval_func(
 }
 
 /*
+ * Get the next line source line without advancing.  But do skip over comment
+ * lines.
+ */
+    static char_u *
+getline_peek_skip_comments(evalarg_T *evalarg)
+{
+    for (;;)
+    {
+	char_u *next = getline_peek(evalarg->eval_getline,
+							 evalarg->eval_cookie);
+	char_u *p;
+
+	if (next == NULL)
+	    break;
+	p = skipwhite(next);
+	if (*p != NUL && !vim9_comment_start(p))
+	    return next;
+	(void)eval_next_line(evalarg);
+    }
+    return NULL;
+}
+
+/*
  * If inside Vim9 script, "arg" points to the end of a line (ignoring a #
  * comment) and there is a next line, return the next line (skipping blanks)
  * and set "getnext".
@@ -1964,7 +2011,7 @@ eval_next_non_blank(char_u *arg, evalarg_T *evalarg, int *getnext)
 	char_u *next;
 
 	if (evalarg->eval_cookie != NULL)
-	    next = getline_peek(evalarg->eval_getline, evalarg->eval_cookie);
+	    next = getline_peek_skip_comments(evalarg);
 	else
 	    next = peek_next_line_from_context(evalarg->eval_cctx);
 
@@ -2143,6 +2190,7 @@ eval1(char_u **arg, typval_T *rettv, evalarg_T *evalarg)
 	evalarg_T	local_evalarg;
 	int		orig_flags;
 	int		evaluate;
+	int		vim9script = in_vim9script();
 
 	if (evalarg == NULL)
 	{
@@ -2156,7 +2204,7 @@ eval1(char_u **arg, typval_T *rettv, evalarg_T *evalarg)
 	    *arg = eval_next_line(evalarg_used);
 	else
 	{
-	    if (evaluate && in_vim9script() && !VIM_ISWHITE(p[-1]))
+	    if (evaluate && vim9script && !VIM_ISWHITE(p[-1]))
 	    {
 		error_white_both(p, 1);
 		clear_tv(rettv);
@@ -2170,8 +2218,10 @@ eval1(char_u **arg, typval_T *rettv, evalarg_T *evalarg)
 	{
 	    int		error = FALSE;
 
-	    if (in_vim9script() || op_falsy)
+	    if (op_falsy)
 		result = tv2bool(rettv);
+	    else if (vim9script)
+		result = tv_get_bool_chk(rettv, &error);
 	    else if (tv_get_number_chk(rettv, &error) != 0)
 		result = TRUE;
 	    if (error || !op_falsy || !result)
@@ -2185,7 +2235,7 @@ eval1(char_u **arg, typval_T *rettv, evalarg_T *evalarg)
 	 */
 	if (op_falsy)
 	    ++*arg;
-	if (evaluate && in_vim9script() && !IS_WHITE_OR_NUL((*arg)[1]))
+	if (evaluate && vim9script && !IS_WHITE_OR_NUL((*arg)[1]))
 	{
 	    error_white_both(p, 1);
 	    clear_tv(rettv);
@@ -2220,7 +2270,7 @@ eval1(char_u **arg, typval_T *rettv, evalarg_T *evalarg)
 		*arg = eval_next_line(evalarg_used);
 	    else
 	    {
-		if (evaluate && in_vim9script() && !VIM_ISWHITE(p[-1]))
+		if (evaluate && vim9script && !VIM_ISWHITE(p[-1]))
 		{
 		    error_white_both(p, 1);
 		    clear_tv(rettv);
@@ -2233,7 +2283,7 @@ eval1(char_u **arg, typval_T *rettv, evalarg_T *evalarg)
 	    /*
 	     * Get the third variable.  Recursive!
 	     */
-	    if (evaluate && in_vim9script() && !IS_WHITE_OR_NUL((*arg)[1]))
+	    if (evaluate && vim9script && !IS_WHITE_OR_NUL((*arg)[1]))
 	    {
 		error_white_both(p, 1);
 		clear_tv(rettv);
@@ -2629,6 +2679,9 @@ eval4(char_u **arg, typval_T *rettv, evalarg_T *evalarg)
     return OK;
 }
 
+/*
+ * Make a copy of blob "tv1" and append blob "tv2".
+ */
     void
 eval_addblob(typval_T *tv1, typval_T *tv2)
 {
@@ -2649,6 +2702,9 @@ eval_addblob(typval_T *tv1, typval_T *tv2)
     }
 }
 
+/*
+ * Make a copy of list "tv1" and append list "tv2".
+ */
     int
 eval_addlist(typval_T *tv1, typval_T *tv2)
 {
@@ -2727,8 +2783,10 @@ eval5(char_u **arg, typval_T *rettv, evalarg_T *evalarg)
 #ifdef FEAT_FLOAT
 		&& (op == '.' || rettv->v_type != VAR_FLOAT)
 #endif
-		)
+		&& evaluate)
 	{
+	    int		error = FALSE;
+
 	    // For "list + ...", an illegal use of the first operand as
 	    // a number cannot be determined before evaluating the 2nd
 	    // operand: if this is also a list, all is ok.
@@ -2736,7 +2794,9 @@ eval5(char_u **arg, typval_T *rettv, evalarg_T *evalarg)
 	    // we know that the first operand needs to be a string or number
 	    // without evaluating the 2nd operand.  So check before to avoid
 	    // side effects after an error.
-	    if (evaluate && tv_get_string_chk(rettv) == NULL)
+	    if (op != '.')
+		tv_get_number_chk(rettv, &error);
+	    if ((op == '.' && tv_get_string_chk(rettv) == NULL) || error)
 	    {
 		clear_tv(rettv);
 		return FAIL;
@@ -3340,10 +3400,14 @@ eval7_leader(
 	f = rettv->vval.v_float;
     else
 #endif
+    {
+	while (VIM_ISWHITE(end_leader[-1]))
+	    --end_leader;
 	if (in_vim9script() && end_leader[-1] == '!')
 	    val = tv2bool(rettv);
 	else
 	    val = tv_get_number_chk(rettv, &error);
+    }
     if (error)
     {
 	clear_tv(rettv);
@@ -3957,21 +4021,12 @@ partial_free(partial_T *pt)
     else
 	func_ptr_unref(pt->pt_func);
 
+    // Decrease the reference count for the context of a closure.  If down
+    // to the minimum it may be time to free it.
     if (pt->pt_funcstack != NULL)
     {
-	// Decrease the reference count for the context of a closure.  If down
-	// to zero free it and clear the variables on the stack.
-	if (--pt->pt_funcstack->fs_refcount == 0)
-	{
-	    garray_T	*gap = &pt->pt_funcstack->fs_ga;
-	    typval_T	*stack = gap->ga_data;
-
-	    for (i = 0; i < gap->ga_len; ++i)
-		clear_tv(stack + i);
-	    ga_clear(gap);
-	    vim_free(pt->pt_funcstack);
-	}
-	pt->pt_funcstack = NULL;
+	--pt->pt_funcstack->fs_refcount;
+	funcstack_check_refcount(pt->pt_funcstack);
     }
 
     vim_free(pt);
@@ -3984,8 +4039,16 @@ partial_free(partial_T *pt)
     void
 partial_unref(partial_T *pt)
 {
-    if (pt != NULL && --pt->pt_refcount <= 0)
-	partial_free(pt);
+    if (pt != NULL)
+    {
+	if (--pt->pt_refcount <= 0)
+	    partial_free(pt);
+
+	// If the reference count goes down to one, the funcstack may be the
+	// only reference and can be freed if no other partials reference it.
+	else if (pt->pt_refcount == 1 && pt->pt_funcstack != NULL)
+	    funcstack_check_refcount(pt->pt_funcstack);
+    }
 }
 
 /*

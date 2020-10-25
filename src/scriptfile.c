@@ -979,7 +979,7 @@ cmd_source(char_u *fname, exarg_T *eap)
 ex_source(exarg_T *eap)
 {
 #ifdef FEAT_BROWSE
-    if (cmdmod.browse)
+    if (cmdmod.cmod_flags & CMOD_BROWSE)
     {
 	char_u *fname = NULL;
 
@@ -1009,7 +1009,7 @@ ex_options(
     int	    multi_mods = 0;
 
     buf[0] = NUL;
-    (void)add_win_cmd_modifers(buf, &multi_mods);
+    (void)add_win_cmd_modifers(buf, &cmdmod, &multi_mods);
 
     vim_setenv((char_u *)"OPTWIN_CMD", buf);
     cmd_source((char_u *)SYS_OPTWIN_FILE, NULL);
@@ -1348,8 +1348,8 @@ do_source(
 		}
 	}
 
-	// old imports are no longer valid
-	free_imports(sid);
+	// old imports and script variables are no longer valid
+	free_imports_and_script_vars(sid);
 
 	// in Vim9 script functions are marked deleted
 	if (is_vim9)
@@ -1375,6 +1375,7 @@ do_source(
 	    // Allocate the local script variables to use for this script.
 	    new_script_vars(script_items.ga_len);
 	    ga_init2(&si->sn_var_vals, sizeof(svar_T), 10);
+	    hash_init(&si->sn_all_vars.dv_hashtab);
 	    ga_init2(&si->sn_imports, sizeof(imported_T), 10);
 	    ga_init2(&si->sn_type_list, sizeof(type_T), 10);
 # ifdef FEAT_PROFILE
@@ -1592,7 +1593,7 @@ free_scriptnames(void)
 	vim_free(si->sn_vars);
 
 	vim_free(si->sn_name);
-	free_imports(i);
+	free_imports_and_script_vars(i);
 	free_string_option(si->sn_save_cpo);
 #  ifdef FEAT_PROFILE
 	ga_clear(&si->sn_prl_ga);

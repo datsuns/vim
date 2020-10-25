@@ -1134,6 +1134,7 @@ func_clear_items(ufunc_T *fp)
     ga_clear_strings(&(fp->uf_lines));
     VIM_CLEAR(fp->uf_arg_types);
     VIM_CLEAR(fp->uf_def_arg_idx);
+    VIM_CLEAR(fp->uf_block_ids);
     VIM_CLEAR(fp->uf_va_name);
     clear_type_list(&fp->uf_type_list);
 
@@ -2374,6 +2375,7 @@ trans_function_name(
     int		extra = 0;
     lval_T	lv;
     int		vim9script;
+    static char *e_function_name = N_("E129: Function name required");
 
     if (fdp != NULL)
 	CLEAR_POINTER(fdp);
@@ -2401,7 +2403,7 @@ trans_function_name(
     if (end == start)
     {
 	if (!skip)
-	    emsg(_("E129: Function name required"));
+	    emsg(_(e_function_name));
 	goto theend;
     }
     if (end == NULL || (lv.ll_tv != NULL && (lead > 2 || lv.ll_range)))
@@ -2516,6 +2518,12 @@ trans_function_name(
 	    lv.ll_name += 2;
 	}
 	len = (int)(end - lv.ll_name);
+    }
+    if (len <= 0)
+    {
+	if (!skip)
+	    emsg(_(e_function_name));
+	goto theend;
     }
 
     // In Vim9 script a user function is script-local by default.
@@ -2651,7 +2659,7 @@ list_functions(regmatch_T *regmatch)
  * Returns a pointer to the function or NULL if no function defined.
  */
     ufunc_T *
-def_function(exarg_T *eap, char_u *name_arg)
+define_function(exarg_T *eap, char_u *name_arg)
 {
     char_u	*theline;
     char_u	*line_to_free = NULL;
@@ -3463,16 +3471,39 @@ def_function(exarg_T *eap, char_u *name_arg)
 
     if (eap->cmdidx == CMD_def)
     {
-	int	lnum_save = SOURCING_LNUM;
+	int	    lnum_save = SOURCING_LNUM;
+	cstack_T    *cstack = eap->cstack;
 
 	fp->uf_def_status = UF_TO_BE_COMPILED;
 
 	// error messages are for the first function line
 	SOURCING_LNUM = sourcing_lnum_top;
 
+	if (cstack != NULL && cstack->cs_idx >= 0)
+	{
+	    int	    count = cstack->cs_idx + 1;
+	    int	    i;
+
+	    // The block context may be needed for script variables declared in
+	    // a block that is visible now but not when the function is called
+	    // later.
+	    fp->uf_block_ids = ALLOC_MULT(int, count);
+	    if (fp->uf_block_ids != NULL)
+	    {
+		mch_memmove(fp->uf_block_ids, cstack->cs_block_id,
+							  sizeof(int) * count);
+		fp->uf_block_depth = count;
+	    }
+
+	    // Set flag in each block to indicate a function was defined.  This
+	    // is used to keep the variable when leaving the block, see
+	    // hide_script_var().
+	    for (i = 0; i <= cstack->cs_idx; ++i)
+		cstack->cs_flags[i] |= CSF_FUNC_DEF;
+	}
+
 	// parse the argument types
 	ga_init2(&fp->uf_type_list, sizeof(type_T *), 10);
-
 	if (argtypes.ga_len > 0)
 	{
 	    // When "varargs" is set the last name/type goes into uf_va_name
@@ -3601,7 +3632,7 @@ ret_free:
     void
 ex_function(exarg_T *eap)
 {
-    (void)def_function(eap, NULL);
+    (void)define_function(eap, NULL);
 }
 
 /*
