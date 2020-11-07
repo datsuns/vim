@@ -2569,7 +2569,12 @@ win_close(win_T *win, int free_buf)
 
     // Now we are really going to close the window.  Disallow any autocommand
     // to split a window to avoid trouble.
+    // Also bail out of parse_queued_messages() to avoid it tries to update the
+    // screen.
     ++split_disallowed;
+#ifdef MESSAGE_QUEUE
+    ++dont_parse_messages;
+#endif
 
     // Free the memory used for the window and get the window that received
     // the screen space.
@@ -2626,6 +2631,9 @@ win_close(win_T *win, int free_buf)
     }
 
     --split_disallowed;
+#ifdef MESSAGE_QUEUE
+    --dont_parse_messages;
+#endif
 
     /*
      * If last window has a status line now and we don't want one,
@@ -5015,7 +5023,26 @@ win_free(
     FOR_ALL_BUFFERS(buf)
 	FOR_ALL_BUF_WININFO(buf, wip)
 	    if (wip->wi_win == wp)
+	    {
+		wininfo_T	*wip2;
+
+		// If there already is an entry with "wi_win" set to NULL it
+		// must be removed, it would never be used.
+		for (wip2 = buf->b_wininfo; wip2 != NULL; wip2 = wip2->wi_next)
+		    if (wip2->wi_win == NULL)
+		    {
+			if (wip2->wi_next != NULL)
+			    wip2->wi_next->wi_prev = wip2->wi_prev;
+			if (wip2->wi_prev == NULL)
+			    buf->b_wininfo = wip2->wi_next;
+			else
+			    wip2->wi_prev->wi_next = wip2->wi_next;
+			free_wininfo(wip2);
+			break;
+		    }
+
 		wip->wi_win = NULL;
+	    }
 
 #ifdef FEAT_SEARCH_EXTRA
     clear_matches(wp);

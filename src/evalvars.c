@@ -1981,7 +1981,13 @@ get_user_var_name(expand_T *xp, int idx)
     }
 
     // b: variables
-    ht = &curbuf->b_vars->dv_hashtab;
+    ht =
+#ifdef FEAT_CMDWIN
+	// In cmdwin, the alternative buffer should be used.
+	(cmdwin_type != 0 && get_cmdline_type() == NUL) ?
+	&prevwin->w_buffer->b_vars->dv_hashtab :
+#endif
+	&curbuf->b_vars->dv_hashtab;
     if (bdone < ht->ht_used)
     {
 	if (bdone++ == 0)
@@ -1994,7 +2000,13 @@ get_user_var_name(expand_T *xp, int idx)
     }
 
     // w: variables
-    ht = &curwin->w_vars->dv_hashtab;
+    ht =
+#ifdef FEAT_CMDWIN
+	// In cmdwin, the alternative window should be used.
+	(cmdwin_type != 0 && get_cmdline_type() == NUL) ?
+	&prevwin->w_vars->dv_hashtab :
+#endif
+	&curwin->w_vars->dv_hashtab;
     if (wdone < ht->ht_used)
     {
 	if (wdone++ == 0)
@@ -2541,7 +2553,22 @@ eval_variable(
 	    ret = FAIL;
 	}
 	else if (rettv != NULL)
+	{
+	    // If a list or dict variable wasn't initialized, do it now.
+	    if (tv->v_type == VAR_DICT && tv->vval.v_dict == NULL)
+	    {
+		tv->vval.v_dict = dict_alloc();
+		if (tv->vval.v_dict != NULL)
+		    ++tv->vval.v_dict->dv_refcount;
+	    }
+	    else if (tv->v_type == VAR_LIST && tv->vval.v_list == NULL)
+	    {
+		tv->vval.v_list = list_alloc();
+		if (tv->vval.v_list != NULL)
+		    ++tv->vval.v_list->lv_refcount;
+	    }
 	    copy_tv(tv, rettv);
+	}
     }
 
     name[len] = cc;

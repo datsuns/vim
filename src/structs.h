@@ -1229,14 +1229,15 @@ struct mapblock
 #endif
 };
 
+
 /*
  * Used for highlighting in the status line.
  */
-struct stl_hlrec
+typedef struct
 {
     char_u	*start;
     int		userhl;		// 0: no HL, 1-9: User HL, < 0 for syn ID
-};
+} stl_hlrec_T;
 
 
 /*
@@ -1687,7 +1688,8 @@ struct funccall_S
 #ifdef FEAT_PROFILE
     proftime_T	prof_child;	// time spent in a child
 #endif
-    funccall_T	*caller;	// calling function or NULL
+    funccall_T	*caller;	// calling function or NULL; or next funccal in
+				// list pointed to by previous_funccal.
 
     // for closure
     int		fc_refcount;	// number of user functions that reference this

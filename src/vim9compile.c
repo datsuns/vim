@@ -1687,13 +1687,37 @@ generate_PCALL(
 
 	    if (argcount < type->tt_min_argcount - varargs)
 	    {
-		semsg(_(e_toofewarg), "[reference]");
+		semsg(_(e_toofewarg), name);
 		return FAIL;
 	    }
 	    if (!varargs && argcount > type->tt_argcount)
 	    {
-		semsg(_(e_toomanyarg), "[reference]");
+		semsg(_(e_toomanyarg), name);
 		return FAIL;
+	    }
+	    if (type->tt_args != NULL)
+	    {
+		int i;
+
+		for (i = 0; i < argcount; ++i)
+		{
+		    int	    offset = -argcount + i - 1;
+		    type_T *actual = ((type_T **)stack->ga_data)[
+						       stack->ga_len + offset];
+		    type_T *expected;
+
+		    if (varargs && i >= type->tt_min_argcount - 1)
+			expected = type->tt_args[
+					 type->tt_min_argcount - 1]->tt_member;
+		    else
+			expected = type->tt_args[i];
+		    if (need_type(actual, expected, offset,
+						    cctx, TRUE, FALSE) == FAIL)
+		    {
+			arg_type_mismatch(expected, actual, i + 1);
+			return FAIL;
+		    }
+		}
 	    }
 	}
 	ret_type = type->tt_member;
@@ -2642,6 +2666,7 @@ compile_call(
 		type_T	    *type = ((type_T **)stack->ga_data)[
 							    stack->ga_len - 2];
 
+		// add() can be compiled to instructions if we know the type
 		if (type->tt_type == VAR_LIST)
 		{
 		    // inline "add(list, item)" so that the type can be checked
@@ -2834,7 +2859,7 @@ compile_lambda(char_u **arg, cctx_T *cctx)
     evalarg.eval_cctx = cctx;
 
     // Get the funcref in "rettv".
-    if (get_lambda_tv(arg, &rettv, &evalarg) != OK)
+    if (get_lambda_tv(arg, &rettv, TRUE, &evalarg) != OK)
     {
 	clear_evalarg(&evalarg, NULL);
 	return FAIL;
@@ -2843,7 +2868,6 @@ compile_lambda(char_u **arg, cctx_T *cctx)
     ufunc = rettv.vval.v_partial->pt_func;
     ++ufunc->uf_refcount;
     clear_tv(&rettv);
-    ga_init2(&ufunc->uf_type_list, sizeof(type_T *), 10);
 
     // The function will have one line: "return {expr}".
     // Compile it into instructions.
@@ -2879,7 +2903,7 @@ compile_lambda_call(char_u **arg, cctx_T *cctx)
     int		ret = FAIL;
 
     // Get the funcref in "rettv".
-    if (get_lambda_tv(arg, &rettv, &EVALARG_EVALUATE) == FAIL)
+    if (get_lambda_tv(arg, &rettv, TRUE, &EVALARG_EVALUATE) == FAIL)
 	return FAIL;
 
     if (**arg != '(')
@@ -3795,10 +3819,12 @@ compile_expr7(
 	 */
 	case '{':   {
 			char_u *start = skipwhite(*arg + 1);
+			garray_T ga_arg;
 
 			// Find out what comes after the arguments.
 			ret = get_function_args(&start, '-', NULL,
-					   NULL, NULL, NULL, TRUE, NULL, NULL);
+					&ga_arg, TRUE, NULL, NULL,
+							     TRUE, NULL, NULL);
 			if (ret != FAIL && *start == '>')
 			    ret = compile_lambda(arg, cctx);
 			else
@@ -6998,12 +7024,11 @@ compile_def_function(ufunc_T *ufunc, int set_return_type, cctx_T *outer_cctx)
     char	*errormsg = NULL;	// error message
     cctx_T	cctx;
     garray_T	*instr;
-    int		called_emsg_before = called_emsg;
+    int		did_emsg_before = did_emsg;
     int		ret = FAIL;
     sctx_T	save_current_sctx = current_sctx;
     int		save_estack_compiling = estack_compiling;
     int		do_estack_push;
-    int		emsg_before = called_emsg;
     int		new_def_function = FALSE;
 
     // When using a function that was compiled before: Free old instructions.
@@ -7107,7 +7132,7 @@ compile_def_function(ufunc_T *ufunc, int set_return_type, cctx_T *outer_cctx)
 
 	// Bail out on the first error to avoid a flood of errors and report
 	// the right line number when inside try/catch.
-	if (emsg_before != called_emsg)
+	if (did_emsg_before != did_emsg)
 	    goto erret;
 
 	if (line != NULL && *line == '|')
@@ -7127,7 +7152,6 @@ compile_def_function(ufunc_T *ufunc, int set_return_type, cctx_T *outer_cctx)
 		// beyond the last line
 		break;
 	}
-	emsg_before = called_emsg;
 
 	CLEAR_FIELD(ea);
 	ea.cmdlinep = &line;
@@ -7175,10 +7199,6 @@ compile_def_function(ufunc_T *ufunc, int set_return_type, cctx_T *outer_cctx)
 		    continue;
 		}
 		break;
-
-	    case ':':
-		starts_with_colon = TRUE;
-		break;
 	}
 
 	/*
@@ -7196,6 +7216,16 @@ compile_def_function(ufunc_T *ufunc, int set_return_type, cctx_T *outer_cctx)
 	}
 	generate_cmdmods(&cctx, &local_cmdmod);
 	undo_cmdmod(&local_cmdmod);
+
+	// Check if there was a colon after the last command modifier or before
+	// the current position.
+	for (p = ea.cmd; p >= line; --p)
+	{
+	    if (*p == ':')
+		starts_with_colon = TRUE;
+	    if (p < ea.cmd && !VIM_ISWHITE(*p))
+		break;
+	}
 
 	// Skip ":call" to get to the function name.
 	p = ea.cmd;
@@ -7585,7 +7615,7 @@ erret:
 
 	if (errormsg != NULL)
 	    emsg(errormsg);
-	else if (called_emsg == called_emsg_before)
+	else if (did_emsg == did_emsg_before)
 	    emsg(_(e_compiling_def_function_failed));
     }
 
