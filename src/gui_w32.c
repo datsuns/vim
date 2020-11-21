@@ -2183,7 +2183,10 @@ gui_mch_wait_for_chars(int wtime)
 		break;
 	    }
 	    else if (input_available()
-		    || MsgWaitForMultipleObjects(0, NULL, FALSE, 100,
+		    // TODO: The 10 msec is a compromise between laggy response
+		    // and consuming more CPU time.  Better would be to handle
+		    // channel messages when they arrive.
+		    || MsgWaitForMultipleObjects(0, NULL, FALSE, 10,
 						  QS_ALLINPUT) != WAIT_TIMEOUT)
 		break;
 	}
@@ -8511,7 +8514,7 @@ make_tooltip(BalloonEval *beval, char *text, POINT pt)
     TOOLINFOW	*pti;
     int		ToolInfoSize;
 
-    if (multiline_balloon_available() == TRUE)
+    if (multiline_balloon_available())
 	ToolInfoSize = sizeof(TOOLINFOW_NEW);
     else
 	ToolInfoSize = sizeof(TOOLINFOW);
@@ -8534,7 +8537,7 @@ make_tooltip(BalloonEval *beval, char *text, POINT pt)
     pti->hinst = 0; // Don't use string resources
     pti->uId = ID_BEVAL_TOOLTIP;
 
-    if (multiline_balloon_available() == TRUE)
+    if (multiline_balloon_available())
     {
 	RECT rect;
 	TOOLINFOW_NEW *ptin = (TOOLINFOW_NEW *)pti;

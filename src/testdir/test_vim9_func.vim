@@ -49,6 +49,36 @@ def TestCompilingError()
   call delete('XTest_compile_error')
 enddef
 
+def CallRecursive(n: number): number
+  return CallRecursive(n + 1)
+enddef
+
+def CallMapRecursive(l: list<number>): number
+  return map(l, {_, v -> CallMapRecursive([v])})[0]
+enddef
+
+def Test_funcdepth_error()
+  set maxfuncdepth=10
+
+  var caught = false
+  try
+    CallRecursive(1)
+  catch /E132:/
+    caught = true
+  endtry
+  assert_true(caught)
+
+  caught = false
+  try
+    CallMapRecursive([1])
+  catch /E132:/
+    caught = true
+  endtry
+  assert_true(caught)
+
+  set maxfuncdepth&
+enddef
+
 def ReturnString(): string
   return 'string'
 enddef
@@ -1426,6 +1456,15 @@ def Test_nested_lambda()
   CheckScriptSuccess(lines)
 enddef
 
+def Shadowed(): list<number>
+  var FuncList: list<func: number> = [{ -> 42}]
+  return FuncList->map({_, Shadowed -> Shadowed()})
+enddef
+
+def Test_lambda_arg_shadows_func()
+  assert_equal([42], Shadowed())
+enddef
+
 def Line_continuation_in_def(dir: string = ''): string
   var path: string = empty(dir)
           \ ? 'empty'
@@ -1435,6 +1474,15 @@ enddef
 
 def Test_line_continuation_in_def()
   Line_continuation_in_def('.')->assert_equal('full')
+enddef
+
+def Test_script_var_in_lambda()
+  var lines =<< trim END
+      vim9script
+      var script = 'test'
+      assert_equal(['test'], map(['one'], {-> script}))
+  END
+  CheckScriptSuccess(lines)
 enddef
 
 def Line_continuation_in_lambda(): list<string>
@@ -1530,7 +1578,7 @@ enddef
 def TreeWalk(dir: string): list<any>
   return readdir(dir)->map({_, val ->
             fnamemodify(dir .. '/' .. val, ':p')->isdirectory()
-               ? {val: TreeWalk(dir .. '/' .. val)}
+               ? {[val]: TreeWalk(dir .. '/' .. val)}
                : val
              })
 enddef
@@ -1654,6 +1702,20 @@ def Test_block_scoped_var()
       Func()
   END
   CheckScriptSuccess(lines)
+enddef
+
+def Test_reset_did_emsg()
+  var lines =<< trim END
+      @s = 'blah'
+      au BufWinLeave * #
+      def Func()
+        var winid = popup_create('popup', {})
+        exe '*s'
+        popup_close(winid)
+      enddef
+      Func()
+  END
+  CheckScriptFailure(lines, 'E492:', 8)
 enddef
 
 

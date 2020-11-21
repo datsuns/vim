@@ -747,6 +747,9 @@ do_cmdline(
      * cancel the whole command line, and any if/endif or loop.
      * If force_abort is set, we cancel everything.
      */
+#ifdef FEAT_EVAL
+    did_emsg_cumul += did_emsg;
+#endif
     did_emsg = FALSE;
 
     /*
@@ -778,7 +781,12 @@ do_cmdline(
 		&& !(getline_is_func && func_has_abort(real_cookie))
 #endif
 							)
+	{
+#ifdef FEAT_EVAL
+	    did_emsg_cumul += did_emsg;
+#endif
 	    did_emsg = FALSE;
+	}
 
 	/*
 	 * 1. If repeating a line in a loop, get a line from lines_ga.
@@ -1026,7 +1034,10 @@ do_cmdline(
 	if (did_emsg && !force_abort
 		&& getline_equal(fgetline, cookie, get_func_line)
 					      && !func_has_abort(real_cookie))
+	{
+	    // did_emsg_cumul is not set here
 	    did_emsg = FALSE;
+	}
 
 	if (cstack.cs_looplevel > 0)
 	{
@@ -3470,6 +3481,11 @@ find_ex_command(
 #endif
 		break;
 	    }
+
+	// Not not recognize ":*" as the star command unless '*' is in
+	// 'cpoptions'.
+	if (eap->cmdidx == CMD_star && vim_strchr(p_cpo, CPO_STAR) == NULL)
+	    p = eap->cmd;
 
 	// Look for a user defined command as a last resort.  Let ":Print" be
 	// overruled by a user defined command.
@@ -6506,7 +6522,7 @@ ex_open(exarg_T *eap)
 }
 
 /*
- * ":edit", ":badd", ":visual".
+ * ":edit", ":badd", ":balt", ":visual".
  */
     static void
 ex_edit(exarg_T *eap)
@@ -6621,7 +6637,8 @@ do_exedit(
 		    + (eap->forceit ? ECMD_FORCEIT : 0)
 		      // after a split we can use an existing buffer
 		    + (old_curwin != NULL ? ECMD_OLDBUF : 0)
-		    + (eap->cmdidx == CMD_badd ? ECMD_ADDBUF : 0 )
+		    + (eap->cmdidx == CMD_badd ? ECMD_ADDBUF : 0)
+		    + (eap->cmdidx == CMD_balt ? ECMD_ALTBUF : 0)
 		    , old_curwin == NULL ? curwin : NULL) == FAIL)
 	{
 	    // Editing the file failed.  If the window was split, close it.
@@ -8147,6 +8164,9 @@ ex_startinsert(exarg_T *eap)
 	    restart_edit = 'i';
 	curwin->w_curswant = 0;	    // avoid MAXCOL
     }
+
+    if (VIsual_active)
+	showmode();
 }
 
 /*
@@ -8472,7 +8492,7 @@ find_cmdline_var(char_u *src, int *usedlen)
  * Evaluate cmdline variables.
  *
  * change '%'	    to curbuf->b_ffname
- *	  '#'	    to curwin->w_altfile
+ *	  '#'	    to curwin->w_alt_fnum
  *	  '<cword>' to word under the cursor
  *	  '<cWORD>' to WORD under the cursor
  *	  '<cexpr>' to C-expression under the cursor

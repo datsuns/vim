@@ -295,7 +295,7 @@ arg_float_or_nr(type_T *type, argcontext_T *context)
     static int
 arg_number(type_T *type, argcontext_T *context)
 {
-    return check_type(&t_number, type, TRUE, context->arg_idx + 1);
+    return check_arg_type(&t_number, type, context->arg_idx + 1);
 }
 
 /*
@@ -304,7 +304,7 @@ arg_number(type_T *type, argcontext_T *context)
     static int
 arg_string(type_T *type, argcontext_T *context)
 {
-    return check_type(&t_string, type, TRUE, context->arg_idx + 1);
+    return check_arg_type(&t_string, type, context->arg_idx + 1);
 }
 
 /*
@@ -342,7 +342,7 @@ arg_same_as_prev(type_T *type, argcontext_T *context)
 {
     type_T *prev_type = context->arg_types[context->arg_idx - 1];
 
-    return check_type(prev_type, type, TRUE, context->arg_idx + 1);
+    return check_arg_type(prev_type, type, context->arg_idx + 1);
 }
 
 /*
@@ -363,7 +363,7 @@ arg_item_of_prev(type_T *type, argcontext_T *context)
 	// probably VAR_ANY, can't check
 	return OK;
 
-    return check_type(expected, type, TRUE, context->arg_idx + 1);
+    return check_arg_type(expected, type, context->arg_idx + 1);
 }
 
 /*
@@ -479,13 +479,24 @@ ret_job(int argcount UNUSED, type_T **argtypes UNUSED)
 {
     return &t_job;
 }
-
     static type_T *
 ret_first_arg(int argcount, type_T **argtypes)
 {
     if (argcount > 0)
 	return argtypes[0];
     return &t_void;
+}
+// for map(): returns first argument but item type may differ
+    static type_T *
+ret_first_cont(int argcount UNUSED, type_T **argtypes)
+{
+    if (argtypes[0]->tt_type == VAR_LIST)
+	return &t_list_any;
+    if (argtypes[0]->tt_type == VAR_DICT)
+	return &t_dict_any;
+    if (argtypes[0]->tt_type == VAR_BLOB)
+	return argtypes[0];
+    return &t_any;
 }
 
 /*
@@ -1115,11 +1126,13 @@ static funcentry_T global_functions[] =
 #endif
 			},
     {"map",		2, 2, FEARG_1,	    NULL,
-			ret_any,	    f_map},
+			ret_first_cont,	    f_map},
     {"maparg",		1, 4, FEARG_1,	    NULL,
 			ret_maparg,	    f_maparg},
     {"mapcheck",	1, 3, FEARG_1,	    NULL,
 			ret_string,	    f_mapcheck},
+    {"mapnew",		2, 2, FEARG_1,	    NULL,
+			ret_first_cont,	    f_mapnew},
     {"mapset",		3, 3, FEARG_1,	    NULL,
 			ret_void,	    f_mapset},
     {"match",		2, 4, FEARG_1,	    NULL,
@@ -5481,6 +5494,73 @@ f_has(typval_T *argvars, typval_T *rettv)
     else
 	// return whether feature is enabled
 	rettv->vval.v_number = n;
+}
+
+/*
+ * Return TRUE if "feature" can change later.
+ * Also when checking for the feature has side effects, such as loading a DLL.
+ */
+    int
+dynamic_feature(char_u *feature)
+{
+    return (feature == NULL
+#if defined(FEAT_BEVAL) && defined(FEAT_GUI_MSWIN)
+	    || STRICMP(feature, "balloon_multiline") == 0
+#endif
+#if defined(FEAT_GUI) && defined(FEAT_BROWSE)
+	    || (STRICMP(feature, "browse") == 0 && !gui.in_use)
+#endif
+#ifdef VIMDLL
+	    || STRICMP(feature, "filterpipe") == 0
+#endif
+#if defined(FEAT_GUI) && !defined(ALWAYS_USE_GUI) && !defined(VIMDLL)
+	    // this can only change on Unix where the ":gui" command could be
+	    // used.
+	    || (STRICMP(feature, "gui_running") == 0 && !gui.in_use)
+#endif
+#if defined(USE_ICONV) && defined(DYNAMIC_ICONV)
+	    || STRICMP(feature, "iconv") == 0
+#endif
+#ifdef DYNAMIC_LUA
+	    || STRICMP(feature, "lua") == 0
+#endif
+#ifdef FEAT_MOUSE_GPM
+	    || (STRICMP(feature, "mouse_gpm_enabled") == 0 && !gpm_enabled())
+#endif
+#ifdef DYNAMIC_MZSCHEME
+	    || STRICMP(feature, "mzscheme") == 0
+#endif
+#ifdef FEAT_NETBEANS_INTG
+	    || STRICMP(feature, "netbeans_enabled") == 0
+#endif
+#ifdef DYNAMIC_PERL
+	    || STRICMP(feature, "perl") == 0
+#endif
+#ifdef DYNAMIC_PYTHON
+	    || STRICMP(feature, "python") == 0
+#endif
+#ifdef DYNAMIC_PYTHON3
+	    || STRICMP(feature, "python3") == 0
+#endif
+#if defined(DYNAMIC_PYTHON) || defined(DYNAMIC_PYTHON3)
+	    || STRICMP(feature, "pythonx") == 0
+#endif
+#ifdef DYNAMIC_RUBY
+	    || STRICMP(feature, "ruby") == 0
+#endif
+#ifdef FEAT_SYN_HL
+	    || STRICMP(feature, "syntax_items") == 0
+#endif
+#ifdef DYNAMIC_TCL
+	    || STRICMP(feature, "tcl") == 0
+#endif
+	    // once "starting" is zero it will stay that way
+	    || (STRICMP(feature, "vim_starting") == 0 && starting != 0)
+	    || STRICMP(feature, "multi_byte_encoding") == 0
+#if defined(FEAT_TERMINAL) && defined(MSWIN)
+	    || STRICMP(feature, "conpty") == 0
+#endif
+	    );
 }
 
 /*

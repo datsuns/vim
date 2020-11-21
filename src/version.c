@@ -751,6 +751,122 @@ static char *(features[]) =
 static int included_patches[] =
 {   /* Add new patch number below this line */
 /**/
+    2022,
+/**/
+    2021,
+/**/
+    2020,
+/**/
+    2019,
+/**/
+    2018,
+/**/
+    2017,
+/**/
+    2016,
+/**/
+    2015,
+/**/
+    2014,
+/**/
+    2013,
+/**/
+    2012,
+/**/
+    2011,
+/**/
+    2010,
+/**/
+    2009,
+/**/
+    2008,
+/**/
+    2007,
+/**/
+    2006,
+/**/
+    2005,
+/**/
+    2004,
+/**/
+    2003,
+/**/
+    2002,
+/**/
+    2001,
+/**/
+    2000,
+/**/
+    1999,
+/**/
+    1998,
+/**/
+    1997,
+/**/
+    1996,
+/**/
+    1995,
+/**/
+    1994,
+/**/
+    1993,
+/**/
+    1992,
+/**/
+    1991,
+/**/
+    1990,
+/**/
+    1989,
+/**/
+    1988,
+/**/
+    1987,
+/**/
+    1986,
+/**/
+    1985,
+/**/
+    1984,
+/**/
+    1983,
+/**/
+    1982,
+/**/
+    1981,
+/**/
+    1980,
+/**/
+    1979,
+/**/
+    1978,
+/**/
+    1977,
+/**/
+    1976,
+/**/
+    1975,
+/**/
+    1974,
+/**/
+    1973,
+/**/
+    1972,
+/**/
+    1971,
+/**/
+    1970,
+/**/
+    1969,
+/**/
+    1968,
+/**/
+    1967,
+/**/
+    1966,
+/**/
+    1965,
+/**/
     1964,
 /**/
     1963,
@@ -4709,11 +4825,21 @@ highest_patch(void)
     int
 has_patch(int n)
 {
-    int		i;
+    int		h, m, l;
 
-    for (i = 0; included_patches[i] != 0; ++i)
-	if (included_patches[i] == n)
+    // Perform a binary search.
+    l = 0;
+    h = (int)(sizeof(included_patches) / sizeof(included_patches[0])) - 1;
+    while (l < h)
+    {
+	m = (l + h) / 2;
+	if (included_patches[m] == n)
 	    return TRUE;
+	if (included_patches[m] < n)
+	    h = m;
+	else
+	    l = m + 1;
+    }
     return FALSE;
 }
 #endif
@@ -4925,9 +5051,7 @@ list_version(void)
     {
 	msg_puts(_("\nIncluded patches: "));
 	first = -1;
-	// find last one
-	for (i = 0; included_patches[i] != 0; ++i)
-	    ;
+	i = (int)(sizeof(included_patches) / sizeof(included_patches[0])) - 1;
 	while (--i >= 0)
 	{
 	    if (first < 0)
