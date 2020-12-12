@@ -1,4 +1,4 @@
-*eval.txt*	For Vim version 8.2.  Last change: 2020 Nov 04
+*eval.txt*	For Vim version 8.2.  Last change: 2020 Dec 02
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -1850,6 +1850,13 @@ v:dying		Normally zero.  When a deadly signal is caught it's set to
 <		Note: if another deadly signal is caught when v:dying is one,
 		VimLeave autocommands will not be executed.
 
+					*v:exiting* *exiting-variable*
+v:exiting	Vim exit code.  Normally zero, non-zero when something went
+		wrong.  The value is v:null before invoking the |VimLeavePre|
+		and |VimLeave| autocmds.  See |:q|, |:x| and |:cquit|.
+		Example: >
+			:au VimLeave * echo "Exit value is " .. v:exiting
+<
 					*v:echospace* *echospace-variable*
 v:echospace	Number of screen cells that can be used for an `:echo` message
 		in the last screen line before causing the |hit-enter-prompt|.
@@ -3473,8 +3480,8 @@ byteidx({expr}, {nr})					*byteidx()*
 		Return byte index of the {nr}'th character in the string
 		{expr}.  Use zero for the first character, it then returns
 		zero.
-		This function is only useful when there are multibyte
-		characters, otherwise the returned value is equal to {nr}.
+		If there are no multibyte characters the returned value is
+		equal to {nr}.
 		Composing characters are not counted separately, their byte
 		length is added to the preceding base character.  See
 		|byteidxcomp()| below for counting composing characters
@@ -5052,9 +5059,9 @@ getbufvar({expr}, {varname} [, {def}])				*getbufvar()*
 		The result is the value of option or local buffer variable
 		{varname} in buffer {expr}.  Note that the name without "b:"
 		must be used.
-		When {varname} is empty returns a dictionary with all the
+		When {varname} is empty returns a |Dictionary| with all the
 		buffer-local variables.
-		When {varname} is equal to "&" returns a dictionary with all
+		When {varname} is equal to "&" returns a |Dictionary| with all
 		the buffer-local options.
 		Otherwise, when {varname} starts with "&" returns the value of
 		a buffer-local option.
@@ -5526,8 +5533,8 @@ getloclist({nr} [, {what}])				*getloclist()*
 					|location-list-file-window| for more
 					details.
 
-		Returns a Dictionary with default values if there is no location
-		list for the window {nr}.
+		Returns a |Dictionary| with default values if there is no
+		location list for the window {nr}.
 		Returns an empty Dictionary if window {nr} does not exist.
 
 		Examples (See also |getqflist-examples|): >
@@ -5640,7 +5647,7 @@ getpos({expr})	Get the position for {expr}.  For possible values of {expr}
 
 
 getqflist([{what}])					*getqflist()*
-		Returns a list with all the current quickfix errors.  Each
+		Returns a |List| with all the current quickfix errors.  Each
 		list item is a dictionary with these entries:
 			bufnr	number of buffer that has the file name, use
 				bufname() to get the name
@@ -7146,7 +7153,8 @@ mapcheck({name} [, {mode} [, {abbr}]])			*mapcheck()*
 mapnew({expr1}, {expr2})					*mapnew()*
 		Like |map()| but instead of replacing items in {expr1} a new
 		List or Dictionary is created and returned.  {expr1} remains
-		unchanged.
+		unchanged.  Items can still be changed by {expr2}, if you
+		don't want that use |deepcopy()| first.
 
 
 mapset({mode}, {abbr}, {dict})					*mapset()*
@@ -7375,7 +7383,7 @@ matchend({expr}, {pat} [, {start} [, {count}]])			*matchend()*
 
 
 matchfuzzy({list}, {str} [, {dict}])			*matchfuzzy()*
-		If {list} is a list of strings, then returns a list with all
+		If {list} is a list of strings, then returns a |List| with all
 		the strings in {list} that fuzzy match {str}. The strings in
 		the returned list are sorted based on the matching score.
 
@@ -7433,7 +7441,9 @@ matchfuzzy({list}, {str} [, {dict}])			*matchfuzzy()*
 matchfuzzypos({list}, {str} [, {dict}])			*matchfuzzypos()*
 		Same as |matchfuzzy()|, but returns the list of matched
 		strings and the list of character positions where characters
-		in {str} matches.
+		in {str} matches.  You can use |byteidx()|to convert a
+		character position to a byte position.
+
 
 		If {str} matches multiple times in a string, then only the
 		positions for the best match is returned.
@@ -8728,11 +8738,16 @@ search({pattern} [, {flags} [, {stopline} [, {timeout} [, {skip}]]]])
 
 		'ignorecase', 'smartcase' and 'magic' are used.
 
-		When the 'z' flag is not given, searching always starts in
-		column zero and then matches before the cursor are skipped.
-		When the 'c' flag is present in 'cpo' the next search starts
-		after the match.  Without the 'c' flag the next search starts
-		one column further.
+		When the 'z' flag is not given, forward searching always
+		starts in column zero and then matches before the cursor are
+		skipped.  When the 'c' flag is present in 'cpo' the next
+		search starts after the match.  Without the 'c' flag the next
+		search starts one column further.  This matters for
+		overlapping matches.
+		When searching backwards and the 'z' flag is given then the
+		search starts in column zero, thus no match in the current
+		line will be found (unless wrapping around the end of the
+		file).
 
 		When the {stopline} argument is given then the search stops
 		after searching this line.  This is useful to restrict the
@@ -10646,7 +10661,7 @@ tagfiles()	Returns a |List| with the file names used to search for tags
 
 
 taglist({expr} [, {filename}])				*taglist()*
-		Returns a list of tags matching the regular expression {expr}.
+		Returns a |List| of tags matching the regular expression {expr}.
 
 		If {filename} is passed it is used to prioritize the results
 		in the same way that |:tselect| does. See |tag-priority|.
@@ -10738,7 +10753,7 @@ term_ functions are documented here: |terminal-function-details|
 
 
 terminalprops()						*terminalprops()*
-		Returns a dictionary with properties of the terminal that Vim
+		Returns a |Dictionary| with properties of the terminal that Vim
 		detected from the response to |t_RV| request.  See
 		|v:termresponse| for the response itself.  If |v:termresponse|
 		is empty most values here will be 'u' for unknown.
@@ -11145,7 +11160,7 @@ win_execute({id}, {command} [, {silent}])		*win_execute()*
 			GetCommand()->win_execute(winid)
 
 win_findbuf({bufnr})					*win_findbuf()*
-		Returns a list with |window-ID|s for windows that contain
+		Returns a |List| with |window-ID|s for windows that contain
 		buffer {bufnr}.  When there is none the list is empty.
 
 		Can also be used as a |method|: >

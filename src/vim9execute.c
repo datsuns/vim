@@ -467,6 +467,7 @@ funcstack_check_refcount(funcstack_T *funcstack)
 func_return(ectx_T *ectx)
 {
     int		idx;
+    int		ret_idx;
     dfunc_T	*dfunc = ((dfunc_T *)def_functions.ga_data)
 							  + ectx->ec_dfunc_idx;
     int		argcount = ufunc_argcount(dfunc->df_ufunc);
@@ -490,6 +491,12 @@ func_return(ectx_T *ectx)
 					idx < ectx->ec_stack.ga_len - 1; ++idx)
 	clear_tv(STACK_TV(idx));
 
+    // The return value should be on top of the stack.  However, when aborting
+    // it may not be there and ec_frame_idx is the top of the stack.
+    ret_idx = ectx->ec_stack.ga_len - 1;
+    if (ret_idx == ectx->ec_frame_idx + 4)
+	ret_idx = 0;
+
     // Restore the previous frame.
     ectx->ec_dfunc_idx = STACK_TV(ectx->ec_frame_idx)->vval.v_number;
     ectx->ec_iidx = STACK_TV(ectx->ec_frame_idx + 1)->vval.v_number;
@@ -501,11 +508,16 @@ func_return(ectx_T *ectx)
     dfunc = ((dfunc_T *)def_functions.ga_data) + ectx->ec_dfunc_idx;
     ectx->ec_instr = dfunc->df_instr;
 
-    // Reset the stack to the position before the call, move the return value
-    // to the top of the stack.
-    idx = ectx->ec_stack.ga_len - 1;
-    ectx->ec_stack.ga_len = top + 1;
-    *STACK_TV_BOT(-1) = *STACK_TV(idx);
+    if (ret_idx > 0)
+    {
+	// Reset the stack to the position before the call, with a spot for the
+	// return value, moved there from above the frame.
+	ectx->ec_stack.ga_len = top + 1;
+	*STACK_TV_BOT(-1) = *STACK_TV(ret_idx);
+    }
+    else
+	// Reset the stack to the position before the call.
+	ectx->ec_stack.ga_len = top;
 
     funcdepth_decrement();
     return OK;
@@ -839,6 +851,8 @@ call_def_function(
     msglist_T	*private_msg_list = NULL;
     cmdmod_T	save_cmdmod;
     int		restore_cmdmod = FALSE;
+    int		save_emsg_silent_def = emsg_silent_def;
+    int		save_did_emsg_def = did_emsg_def;
     int		trylevel_at_start = trylevel;
     int		orig_funcdepth;
 
@@ -1008,6 +1022,11 @@ call_def_function(
 
     // Do turn errors into exceptions.
     suppress_errthrow = FALSE;
+
+    // When ":silent!" was used before calling then we still abort the
+    // function.  If ":silent!" is used in the function then we don't.
+    emsg_silent_def = emsg_silent;
+    did_emsg_def = 0;
 
     // Decide where to start execution, handles optional arguments.
     init_instr_idx(ufunc, argc, &ectx);
@@ -1200,7 +1219,10 @@ call_def_function(
 		    }
 		    ectx.ec_stack.ga_len -= count;
 		    if (failed)
+		    {
+			ga_clear(&ga);
 			goto on_error;
+		    }
 
 		    if (ga.ga_data != NULL)
 		    {
@@ -1209,7 +1231,10 @@ call_def_function(
 			    SOURCING_LNUM = iptr->isn_lnum;
 			    do_cmdline_cmd((char_u *)ga.ga_data);
 			    if (did_emsg)
+			    {
+				ga_clear(&ga);
 				goto on_error;
+			    }
 			}
 			else
 			{
@@ -1964,6 +1989,20 @@ call_def_function(
 		}
 		break;
 
+	    // List functions
+	    case ISN_DEF:
+		if (iptr->isn_arg.string == NULL)
+		    list_functions(NULL);
+		else
+		{
+		    exarg_T ea;
+
+		    CLEAR_FIELD(ea);
+		    ea.cmd = ea.arg = iptr->isn_arg.string;
+		    define_function(&ea, NULL);
+		}
+		break;
+
 	    // jump if a condition is met
 	    case ISN_JUMP:
 		{
@@ -2400,6 +2439,7 @@ call_def_function(
 		    else
 #endif
 		    {
+			SOURCING_LNUM = iptr->isn_lnum;
 			n1 = tv_get_number_chk(tv1, &error);
 			if (error)
 			    goto on_error;
@@ -2637,12 +2677,21 @@ call_def_function(
 		    {
 			SOURCING_LNUM = iptr->isn_lnum;
 			semsg(_(e_dictkey), key);
-			goto on_error;
+
+			// If :silent! is used we will continue, make sure the
+			// stack contents makes sense.
+			clear_tv(tv);
+			--ectx.ec_stack.ga_len;
+			tv = STACK_TV_BOT(-1);
+			clear_tv(tv);
+			tv->v_type = VAR_NUMBER;
+			tv->vval.v_number = 0;
+			goto on_fatal_error;
 		    }
 		    clear_tv(tv);
 		    --ectx.ec_stack.ga_len;
-		    // Clear the dict after getting the item, to avoid that it
-		    // make the item invalid.
+		    // Clear the dict only after getting the item, to avoid
+		    // that it makes the item invalid.
 		    tv = STACK_TV_BOT(-1);
 		    temp_tv = *tv;
 		    copy_tv(&di->di_tv, tv);
@@ -2812,6 +2861,26 @@ call_def_function(
 		}
 		break;
 
+	    case ISN_RANGE:
+		{
+		    exarg_T	ea;
+		    char	*errormsg;
+
+		    if (GA_GROW(&ectx.ec_stack, 1) == FAIL)
+			goto failed;
+		    ++ectx.ec_stack.ga_len;
+		    tv = STACK_TV_BOT(-1);
+		    ea.addr_type = ADDR_LINES;
+		    ea.cmd = iptr->isn_arg.string;
+		    if (parse_cmd_address(&ea, &errormsg, FALSE) == FAIL)
+			goto failed;
+		    if (ea.addr_count == 0)
+			tv->vval.v_number = curwin->w_cursor.lnum;
+		    else
+			tv->vval.v_number = ea.line2;
+		}
+		break;
+
 	    case ISN_PUT:
 		{
 		    int		regname = iptr->isn_arg.put.put_regname;
@@ -2831,7 +2900,16 @@ call_def_function(
 			}
 			--ectx.ec_stack.ga_len;
 		    }
-		    if (lnum == -2)
+		    if (lnum < -2)
+		    {
+			// line number was put on the stack by ISN_RANGE
+			tv = STACK_TV_BOT(-1);
+			curwin->w_cursor.lnum = tv->vval.v_number;
+			if (lnum == LNUM_VARIABLE_RANGE_ABOVE)
+			    dir = BACKWARD;
+			--ectx.ec_stack.ga_len;
+		    }
+		    else if (lnum == -2)
 			// :put! above cursor
 			dir = BACKWARD;
 		    else if (lnum >= 0)
@@ -2857,11 +2935,84 @@ call_def_function(
 		restore_cmdmod = FALSE;
 		break;
 
+	    case ISN_UNPACK:
+		{
+		    int		count = iptr->isn_arg.unpack.unp_count;
+		    int		semicolon = iptr->isn_arg.unpack.unp_semicolon;
+		    list_T	*l;
+		    listitem_T	*li;
+		    int		i;
+
+		    // Check there is a valid list to unpack.
+		    tv = STACK_TV_BOT(-1);
+		    if (tv->v_type != VAR_LIST)
+		    {
+			SOURCING_LNUM = iptr->isn_lnum;
+			emsg(_(e_for_argument_must_be_sequence_of_lists));
+			goto on_error;
+		    }
+		    l = tv->vval.v_list;
+		    if (l == NULL
+				|| l->lv_len < (semicolon ? count - 1 : count))
+		    {
+			SOURCING_LNUM = iptr->isn_lnum;
+			emsg(_(e_list_value_does_not_have_enough_items));
+			goto on_error;
+		    }
+		    else if (!semicolon && l->lv_len > count)
+		    {
+			SOURCING_LNUM = iptr->isn_lnum;
+			emsg(_(e_list_value_has_more_items_than_targets));
+			goto on_error;
+		    }
+
+		    CHECK_LIST_MATERIALIZE(l);
+		    if (GA_GROW(&ectx.ec_stack, count - 1) == FAIL)
+			goto failed;
+		    ectx.ec_stack.ga_len += count - 1;
+
+		    // Variable after semicolon gets a list with the remaining
+		    // items.
+		    if (semicolon)
+		    {
+			list_T	*rem_list =
+				  list_alloc_with_items(l->lv_len - count + 1);
+
+			if (rem_list == NULL)
+			    goto failed;
+			tv = STACK_TV_BOT(-count);
+			tv->vval.v_list = rem_list;
+			++rem_list->lv_refcount;
+			tv->v_lock = 0;
+			li = l->lv_first;
+			for (i = 0; i < count - 1; ++i)
+			    li = li->li_next;
+			for (i = 0; li != NULL; ++i)
+			{
+			    list_set_item(rem_list, i, &li->li_tv);
+			    li = li->li_next;
+			}
+			--count;
+		    }
+
+		    // Produce the values in reverse order, first item last.
+		    li = l->lv_first;
+		    for (i = 0; i < count; ++i)
+		    {
+			tv = STACK_TV_BOT(-i - 1);
+			copy_tv(&li->li_tv, tv);
+			li = li->li_next;
+		    }
+
+		    list_unref(l);
+		}
+		break;
+
 	    case ISN_SHUFFLE:
 		{
-		    typval_T	    tmp_tv;
-		    int		    item = iptr->isn_arg.shuffle.shfl_item;
-		    int		    up = iptr->isn_arg.shuffle.shfl_up;
+		    typval_T	tmp_tv;
+		    int		item = iptr->isn_arg.shuffle.shfl_item;
+		    int		up = iptr->isn_arg.shuffle.shfl_up;
 
 		    tmp_tv = *STACK_TV_BOT(-item);
 		    for ( ; up > 0 && item > 1; --up)
@@ -2892,10 +3043,14 @@ func_return:
 	continue;
 
 on_error:
-	// If "emsg_silent" is set then ignore the error.
-	if (did_emsg_cumul + did_emsg == did_emsg_before && emsg_silent)
+	// Jump here for an error that does not require aborting execution.
+	// If "emsg_silent" is set then ignore the error, unless it was set
+	// when calling the function.
+	if (did_emsg_cumul + did_emsg == did_emsg_before
+					   && emsg_silent && did_emsg_def == 0)
 	    continue;
-
+on_fatal_error:
+	// Jump here for an error that messes up the stack.
 	// If we are not inside a try-catch started here, abort execution.
 	if (trylevel <= trylevel_at_start)
 	    goto failed;
@@ -2939,6 +3094,8 @@ failed:
 	undo_cmdmod(&cmdmod);
 	cmdmod = save_cmdmod;
     }
+    emsg_silent_def = save_emsg_silent_def;
+    did_emsg_def += save_did_emsg_def;
 
 failed_early:
     // Free all local variables, but not arguments.
@@ -3365,6 +3522,15 @@ ex_disassemble(exarg_T *eap)
 		}
 		break;
 
+	    case ISN_DEF:
+		{
+		    char_u *name = iptr->isn_arg.string;
+
+		    smsg("%4d DEF %s", current,
+					   name == NULL ? (char_u *)"" : name);
+		}
+		break;
+
 	    case ISN_JUMP:
 		{
 		    char *when = "?";
@@ -3553,8 +3719,18 @@ ex_disassemble(exarg_T *eap)
 	    case ISN_2STRING_ANY: smsg("%4d 2STRING_ANY stack[%lld]", current,
 					 (long long)(iptr->isn_arg.number));
 			      break;
+	    case ISN_RANGE: smsg("%4d RANGE %s", current, iptr->isn_arg.string);
+			    break;
 	    case ISN_PUT:
-		smsg("%4d PUT %c %ld", current, iptr->isn_arg.put.put_regname,
+	        if (iptr->isn_arg.put.put_lnum == LNUM_VARIABLE_RANGE_ABOVE)
+		    smsg("%4d PUT %c above range",
+				       current, iptr->isn_arg.put.put_regname);
+		else if (iptr->isn_arg.put.put_lnum == LNUM_VARIABLE_RANGE)
+		    smsg("%4d PUT %c range",
+				       current, iptr->isn_arg.put.put_regname);
+		else
+		    smsg("%4d PUT %c %ld", current,
+						 iptr->isn_arg.put.put_regname,
 					     (long)iptr->isn_arg.put.put_lnum);
 		break;
 
@@ -3577,6 +3753,10 @@ ex_disassemble(exarg_T *eap)
 		}
 	    case ISN_CMDMOD_REV: smsg("%4d CMDMOD_REV", current); break;
 
+	    case ISN_UNPACK: smsg("%4d UNPACK %d%s", current,
+			iptr->isn_arg.unpack.unp_count,
+			iptr->isn_arg.unpack.unp_semicolon ? " semicolon" : "");
+			      break;
 	    case ISN_SHUFFLE: smsg("%4d SHUFFLE %d up %d", current,
 					 iptr->isn_arg.shuffle.shfl_item,
 					 iptr->isn_arg.shuffle.shfl_up);
