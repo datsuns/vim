@@ -23,6 +23,11 @@ def Test_range_only()
   list
   assert_equal('three$', Screenline(&lines))
   bwipe!
+
+  # won't generate anything
+  if false
+    :123
+  endif
 enddef
 
 let g:alist = [7]
@@ -620,7 +625,7 @@ def Test_try_catch_fails()
   CheckDefFailure(['if 1', 'endtry'], 'E171:')
   CheckDefFailure(['try', 'echo 1', 'endtry'], 'E1032:')
 
-  CheckDefFailure(['throw'], 'E1015:')
+  CheckDefFailure(['throw'], 'E1143:')
   CheckDefFailure(['throw xxx'], 'E1001:')
 enddef
 
@@ -1307,12 +1312,12 @@ def Test_vim9script_reload_delfunc()
   # FuncNo() is not redefined
   writefile(first_lines + nono_lines, 'Xreloaded.vim')
   source Xreloaded.vim
-  g:DoCheck()
+  g:DoCheck(false)
 
   # FuncNo() is back
   writefile(first_lines + withno_lines, 'Xreloaded.vim')
   source Xreloaded.vim
-  g:DoCheck()
+  g:DoCheck(false)
 
   delete('Xreloaded.vim')
 enddef
@@ -1719,6 +1724,10 @@ def Test_nested_if()
 enddef
 
 def Test_execute_cmd()
+  # missing argument is ignored
+  execute
+  execute # comment
+
   new
   setline(1, 'default')
   execute 'setline(1, "execute-string")'
@@ -1886,6 +1895,9 @@ def Test_for_loop()
 enddef
 
 def Test_for_loop_fails()
+  CheckDefFailure(['for '], 'E1097:')
+  CheckDefFailure(['for x'], 'E1097:')
+  CheckDefFailure(['for x in'], 'E1097:')
   CheckDefFailure(['for # in range(5)'], 'E690:')
   CheckDefFailure(['for i In range(5)'], 'E690:')
   CheckDefFailure(['var x = 5', 'for x in range(5)'], 'E1017:')
@@ -2069,7 +2081,21 @@ def Test_vim9_comment()
   CheckScriptSuccess([
       'vim9script',
       '# something',
+      '#something',
+      '#{something',
       ])
+
+  split Xfile
+  CheckScriptSuccess([
+      'vim9script',
+      'edit #something',
+      ])
+  CheckScriptSuccess([
+      'vim9script',
+      'edit #{something',
+      ])
+  close
+
   CheckScriptFailure([
       'vim9script',
       ':# something',
@@ -2106,7 +2132,7 @@ def Test_vim9_comment()
   CheckScriptFailure([
       'vim9script',
       'echo# something',
-      ], 'E121:')
+      ], 'E1144:')
   CheckScriptFailure([
       'echo "yes" # something',
       ], 'E121:')
@@ -2123,13 +2149,10 @@ def Test_vim9_comment()
       'vim9script',
       'exe "echo"# something',
       ], 'E121:')
-  CheckDefFailure([
-      'exe # comment',
-      ], 'E1015:')
   CheckScriptFailure([
       'vim9script',
       'exe# something',
-      ], 'E121:')
+      ], 'E1144:')
   CheckScriptFailure([
       'exe "echo" # something',
       ], 'E121:')
@@ -2139,18 +2162,18 @@ def Test_vim9_comment()
       '  echo "yes"',
       'catch',
       'endtry',
-      ], 'E488:')
+      ], 'E1144:')
   CheckScriptFailure([
       'vim9script',
       'try# comment',
       'echo "yes"',
-      ], 'E488:')
+      ], 'E1144:')
   CheckDefFailure([
       'try',
       '  throw#comment',
       'catch',
       'endtry',
-      ], 'E1015:')
+      ], 'E1144:')
   CheckDefFailure([
       'try',
       '  throw "yes"#comment',
@@ -2162,14 +2185,14 @@ def Test_vim9_comment()
       '  echo "yes"',
       'catch# comment',
       'endtry',
-      ], 'E488:')
+      ], 'E1144:')
   CheckScriptFailure([
       'vim9script',
       'try',
       '  echo "yes"',
       'catch# comment',
       'endtry',
-      ], 'E654:')
+      ], 'E1144:')
   CheckDefFailure([
       'try',
       '  echo "yes"',
@@ -2181,14 +2204,14 @@ def Test_vim9_comment()
       'echo "yes"',
       'catch',
       'endtry# comment',
-      ], 'E488:')
+      ], 'E1144:')
   CheckScriptFailure([
       'vim9script',
       'try',
       '  echo "yes"',
       'catch',
       'endtry# comment',
-      ], 'E488:')
+      ], 'E1144:')
 
   CheckScriptSuccess([
       'vim9script',
@@ -2197,7 +2220,7 @@ def Test_vim9_comment()
   CheckScriptFailure([
       'vim9script',
       'hi# comment',
-      ], 'E416:')
+      ], 'E1144:')
   CheckScriptSuccess([
       'vim9script',
       'hi Search # comment',
@@ -2243,7 +2266,7 @@ def Test_vim9_comment()
   CheckScriptFailure([
       'vim9script',
       'match# comment',
-      ], 'E475:')
+      ], 'E1144:')
   CheckScriptSuccess([
       'vim9script',
       'match none # comment',
@@ -2379,7 +2402,7 @@ def Test_vim9_comment()
       'vim9script',
       'command Echo echo# comment',
       'Echo',
-      ], 'E121:')
+      ], 'E1144:')
   delcommand Echo
 
   var curdir = getcwd()
@@ -2389,7 +2412,7 @@ def Test_vim9_comment()
       'delcommand Echo',
       ])
   CheckScriptSuccess([
-      'vim9script'
+      'vim9script',
       'command Echo cd # comment',
       'Echo',
       'delcommand Echo',
@@ -2424,7 +2447,7 @@ def Test_vim9_comment()
   CheckScriptFailure([
       'vim9script',
       'function# comment',
-      ], 'E129:')
+      ], 'E1144:')
   CheckScriptSuccess([
       'vim9script',
       'function CheckScriptSuccess # comment',
@@ -2493,7 +2516,7 @@ def Test_vim9_comment_gui()
   CheckScriptFailure([
       'vim9script',
       'gui#comment'
-      ], 'E499:')
+      ], 'E1144:')
   CheckScriptFailure([
       'vim9script',
       'gui -f#comment'
@@ -2756,8 +2779,42 @@ def Test_vim9_copen()
   quit
 enddef
 
-" test using a vim9script that is auto-loaded from an autocmd
+" test using an auto-loaded function and variable
 def Test_vim9_autoload()
+  var lines =<< trim END
+     vim9script
+     def some#gettest(): string
+       return 'test'
+     enddef
+     g:some#name = 'name'
+  END
+
+  mkdir('Xdir/autoload', 'p')
+  writefile(lines, 'Xdir/autoload/some.vim')
+  var save_rtp = &rtp
+  exe 'set rtp^=' .. getcwd() .. '/Xdir'
+
+  assert_equal('test', g:some#gettest())
+  assert_equal('name', g:some#name)
+  g:some#other = 'other'
+  assert_equal('other', g:some#other)
+
+  # upper case script name works
+  lines =<< trim END
+     vim9script
+     def Other#getOther(): string
+       return 'other'
+     enddef
+  END
+  writefile(lines, 'Xdir/autoload/Other.vim')
+  assert_equal('other', g:Other#getOther())
+
+  delete('Xdir', 'rf')
+  &rtp = save_rtp
+enddef
+
+" test using a vim9script that is auto-loaded from an autocmd
+def Test_vim9_aucmd_autoload()
   var lines =<< trim END
      vim9script
      def foo#test()
@@ -2819,6 +2876,12 @@ def Test_vim9_autoload_error()
   delete('Xdidit')
   delete('Xscript')
   delete('Xruntime', 'rf')
+
+  lines =<< trim END
+    vim9script
+    var foo#bar = 'asdf'
+  END
+  CheckScriptFailure(lines, 'E461: Illegal variable name: foo#bar', 2)
 enddef
 
 def Test_script_var_in_autocmd()
@@ -2886,6 +2949,7 @@ def Test_restoring_cpo()
   endif
   delete('Xsourced')
   delete('Xclose')
+  delete('Xdone')
 enddef
 
 
@@ -3032,23 +3096,14 @@ def Test_no_unknown_error_after_error()
           source += l
       enddef
       var myjob = job_start('echo burp', {out_cb: Out_cb, exit_cb: Exit_cb, mode: 'raw'})
-      sleep 100m
+      while job_status(myjob) == 'run'
+        sleep 10m
+      endwhile
+      sleep 10m
   END
   writefile(lines, 'Xdef')
   assert_fails('so Xdef', ['E684:', 'E1012:'])
   delete('Xdef')
-enddef
-
-def Test_put_with_linebreak()
-  new
-  var lines =<< trim END
-    vim9script
-    pu=split('abc', '\zs')
-            ->join()
-  END
-  CheckScriptSuccess(lines)
-  getline(2)->assert_equal('a b c')
-  bwipe!
 enddef
 
 def InvokeNormal()
@@ -3062,6 +3117,79 @@ def Test_invoke_normal_in_visual_mode()
   feedkeys("V\<F3>", 'xt')
   assert_equal(['bbb', 'aaa'], getline(1, 2))
   xunmap <F3>
+enddef
+
+def Test_white_space_after_command()
+  var lines =<< trim END
+    exit_cb: Func})
+  END
+  CheckDefAndScriptFailure(lines, 'E1144:', 1)
+
+  lines =<< trim END
+    e#
+  END
+  CheckDefAndScriptFailure(lines, 'E1144:', 1)
+enddef
+
+def Test_script_var_gone_when_sourced_twice()
+  var lines =<< trim END
+      vim9script
+      if exists('g:guard')
+        finish
+      endif
+      g:guard = 1
+      var name = 'thename'
+      def g:GetName(): string
+        return name
+      enddef
+      def g:SetName(arg: string)
+        name = arg
+      enddef
+  END
+  writefile(lines, 'XscriptTwice.vim')
+  so XscriptTwice.vim
+  assert_equal('thename', g:GetName())
+  g:SetName('newname')
+  assert_equal('newname', g:GetName())
+  so XscriptTwice.vim
+  assert_fails('call g:GetName()', 'E1149:')
+  assert_fails('call g:SetName("x")', 'E1149:')
+
+  delfunc g:GetName
+  delfunc g:SetName
+  delete('XscriptTwice.vim')
+  unlet g:guard
+enddef
+
+def Test_import_gone_when_sourced_twice()
+  var exportlines =<< trim END
+      vim9script
+      if exists('g:guard')
+        finish
+      endif
+      g:guard = 1
+      export var name = 'someName'
+  END
+  writefile(exportlines, 'XexportScript.vim')
+
+  var lines =<< trim END
+      vim9script
+      import name from './XexportScript.vim'
+      def g:GetName(): string
+        return name
+      enddef
+  END
+  writefile(lines, 'XscriptImport.vim')
+  so XscriptImport.vim
+  assert_equal('someName', g:GetName())
+
+  so XexportScript.vim
+  assert_fails('call g:GetName()', 'E1149:')
+
+  delfunc g:GetName
+  delete('XexportScript.vim')
+  delete('XscriptImport.vim')
+  unlet g:guard
 enddef
 
 " Keep this last, it messes up highlighting.

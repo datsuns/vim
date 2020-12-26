@@ -20,6 +20,18 @@ def Test_edit_wildcards()
 
   edit X`=filename`xx`=filenr`yy
   assert_equal('XXtestxx77yy', bufname())
+
+  CheckDefFailure(['edit `=xxx`'], 'E1001:')
+  CheckDefFailure(['edit `="foo"'], 'E1083:')
+enddef
+
+def Test_global_backtick_expansion()
+  new
+  setline(1, 'xx')
+  var name = 'foobar'
+  g/^xx/s/.*/`=name`
+  assert_equal('foobar', getline(1))
+  bwipe!
 enddef
 
 def Test_hardcopy_wildcards()
@@ -534,10 +546,17 @@ def Test_modifier_silent_unsilent()
 
   silent EchoThere()
   assert_equal("\nthere", execute(':1messages'))
+
+  try
+    silent eval [][0]
+  catch
+    echomsg "caught"
+  endtry
+  assert_equal("\ncaught", execute(':1messages'))
 enddef
 
 def Test_range_after_command_modifier()
-  CheckScriptFailure(['vim9script', 'silent keepjump 1d _'], 'E1050:', 2)
+  CheckScriptFailure(['vim9script', 'silent keepjump 1d _'], 'E1050: Colon required before a range: 1d _', 2)
   new
   setline(1, 'xxx')
   CheckScriptSuccess(['vim9script', 'silent keepjump :1d _'])
@@ -626,6 +645,20 @@ def Test_put_command()
   assert_equal('aaa', getline(4))
 
   bwipe!
+
+  CheckDefFailure(['put =xxx'], 'E1001:')
+enddef
+
+def Test_put_with_linebreak()
+  new
+  var lines =<< trim END
+    vim9script
+    pu =split('abc', '\zs')
+            ->join()
+  END
+  CheckScriptSuccess(lines)
+  getline(2)->assert_equal('a b c')
+  bwipe!
 enddef
 
 def Test_command_star_range()
@@ -684,5 +717,56 @@ def Test_cmd_argument_without_colon()
   delete('Xfile')
 enddef
 
+def Test_ambiguous_user_cmd()
+  var lines =<< trim END
+      com Cmd1 eval 0
+      com Cmd2 eval 0
+      Cmd
+  END
+  CheckScriptFailure(lines, 'E464:')
+enddef
+
+def Test_command_not_recognized()
+  var lines =<< trim END
+    d.key = 'asdf'
+  END
+  CheckDefFailure(lines, 'E1146:', 1)
+
+  lines =<< trim END
+    d['key'] = 'asdf'
+  END
+  CheckDefFailure(lines, 'E1146:', 1)
+enddef
+
+def Test_magic_not_used()
+  new
+  for cmd in ['set magic', 'set nomagic']
+    exe cmd
+    setline(1, 'aaa')
+    s/.../bbb/
+    assert_equal('bbb', getline(1))
+  endfor
+
+  set magic
+  setline(1, 'aaa')
+  assert_fails('s/.\M../bbb/', 'E486:')
+  assert_fails('snomagic/.../bbb/', 'E486:')
+  assert_equal('aaa', getline(1))
+
+  bwipe!
+enddef
+
+def Test_gdefault_not_used()
+  new
+  for cmd in ['set gdefault', 'set nogdefault']
+    exe cmd
+    setline(1, 'aaa')
+    s/./b/
+    assert_equal('baa', getline(1))
+  endfor
+
+  set nogdefault
+  bwipe!
+enddef
 
 " vim: ts=8 sw=2 sts=2 expandtab tw=80 fdm=marker
