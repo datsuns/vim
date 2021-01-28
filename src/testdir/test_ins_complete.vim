@@ -343,6 +343,8 @@ func Test_compl_feedkeys()
 endfunc
 
 func Test_compl_in_cmdwin()
+  CheckFeature cmdwin
+
   set wildmenu wildchar=<Tab>
   com! -nargs=1 -complete=command GetInput let input = <q-args>
   com! -buffer TestCommand echo 'TestCommand'
@@ -560,25 +562,31 @@ func Test_completefunc_error()
   call setline(1, ['', 'abcd', ''])
   call assert_fails('exe "normal 2G$a\<C-X>\<C-U>"', 'E578:')
 
-  " Jump to a different window from the complete function
-  " TODO: The following test causes an ASAN failure. Once this issue is
-  " addressed, enable the following test.
-  "func! CompleteFunc(findstart, base)
-  "  if a:findstart == 1
-  "    return col('.') - 1
-  "  endif
-  "  wincmd p
-  "  return ['a', 'b']
-  "endfunc
-  "set completefunc=CompleteFunc
-  "new
-  "call assert_fails('exe "normal a\<C-X>\<C-U>"', 'E839:')
-  "close!
-
   set completefunc&
   delfunc CompleteFunc
   delfunc CompleteFunc2
   close!
+endfunc
+
+func Test_completefunc_error_not_asan()
+  " The following test causes an ASAN failure.
+  CheckNotAsan
+
+  " Jump to a different window from the complete function
+  func! CompleteFunc(findstart, base)
+    if a:findstart == 1
+      return col('.') - 1
+    endif
+    wincmd p
+    return ['a', 'b']
+  endfunc
+  set completefunc=CompleteFunc
+  new
+  call assert_fails('exe "normal a\<C-X>\<C-U>"', 'E839:')
+  close!
+
+  set completefunc&
+  delfunc CompleteFunc
 endfunc
 
 " Test for returning non-string values from 'completefunc'

@@ -1232,6 +1232,7 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 #define SID_ENV		-4	// for sourcing environment variable
 #define SID_ERROR	-5	// option was reset because of an error
 #define SID_NONE	-6	// don't set scriptID
+#define SID_WINLAYOUT	-7	// changing window size
 
 /*
  * Events for autocommands.
@@ -1974,32 +1975,34 @@ typedef int sock_T;
 #define VV_TRUE		69
 #define VV_NONE		70
 #define VV_NULL		71
-#define VV_NUMBERSIZE	72
-#define VV_VIM_DID_ENTER 73
-#define VV_TESTING	74
-#define VV_TYPE_NUMBER	75
-#define VV_TYPE_STRING	76
-#define VV_TYPE_FUNC	77
-#define VV_TYPE_LIST	78
-#define VV_TYPE_DICT	79
-#define VV_TYPE_FLOAT	80
-#define VV_TYPE_BOOL	81
-#define VV_TYPE_NONE	82
-#define VV_TYPE_JOB	83
-#define VV_TYPE_CHANNEL	84
-#define VV_TYPE_BLOB	85
-#define VV_TERMRFGRESP	86
-#define VV_TERMRBGRESP	87
-#define VV_TERMU7RESP	88
-#define VV_TERMSTYLERESP 89
-#define VV_TERMBLINKRESP 90
-#define VV_EVENT	91
-#define VV_VERSIONLONG	92
-#define VV_ECHOSPACE	93
-#define VV_ARGV		94
-#define VV_COLLATE      95
-#define VV_EXITING	96
-#define VV_LEN		97	// number of v: vars
+#define VV_NUMBERMAX	72
+#define VV_NUMBERMIN	73
+#define VV_NUMBERSIZE	74
+#define VV_VIM_DID_ENTER 75
+#define VV_TESTING	76
+#define VV_TYPE_NUMBER	77
+#define VV_TYPE_STRING	78
+#define VV_TYPE_FUNC	79
+#define VV_TYPE_LIST	80
+#define VV_TYPE_DICT	81
+#define VV_TYPE_FLOAT	82
+#define VV_TYPE_BOOL	83
+#define VV_TYPE_NONE	84
+#define VV_TYPE_JOB	85
+#define VV_TYPE_CHANNEL	86
+#define VV_TYPE_BLOB	87
+#define VV_TERMRFGRESP	88
+#define VV_TERMRBGRESP	89
+#define VV_TERMU7RESP	90
+#define VV_TERMSTYLERESP 91
+#define VV_TERMBLINKRESP 92
+#define VV_EVENT	93
+#define VV_VERSIONLONG	94
+#define VV_ECHOSPACE	95
+#define VV_ARGV		96
+#define VV_COLLATE      97
+#define VV_EXITING	98
+#define VV_LEN		99	// number of v: vars
 
 // used for v_number in VAR_BOOL and VAR_SPECIAL
 #define VVAL_FALSE	0L	// VAR_BOOL
@@ -2145,6 +2148,7 @@ typedef enum {
 #define ASSIGN_FINAL	1   // ":final"
 #define ASSIGN_CONST	2   // ":const"
 #define ASSIGN_NO_DECL	4   // "name = expr" without ":let"/":const"/":final"
+#define ASSIGN_DECL	8   // may declare variable if it does not exist
 
 #include "ex_cmds.h"	    // Ex command defines
 #include "spell.h"	    // spell checking stuff
@@ -2542,12 +2546,14 @@ typedef enum {
 #define TFN_NO_DEREF	0x08	// do not dereference a Funcref
 #define TFN_READ_ONLY	0x10	// will not change the var
 #define TFN_NO_DECL	0x20	// only used for GLV_NO_DECL
+#define TFN_COMPILING	0x40	// only used for GLV_COMPILING
 
 // Values for get_lval() flags argument:
 #define GLV_QUIET	TFN_QUIET	// no error messages
 #define GLV_NO_AUTOLOAD	TFN_NO_AUTOLOAD	// do not use script autoloading
 #define GLV_READ_ONLY	TFN_READ_ONLY	// will not change the var
 #define GLV_NO_DECL	TFN_NO_DECL	// assignment without :var or :let
+#define GLV_COMPILING	TFN_COMPILING	// variable may be defined later
 
 #define DO_NOT_FREE_CNT 99999	// refcount for dict or list that should not
 				// be freed.

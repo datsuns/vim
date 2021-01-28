@@ -371,8 +371,14 @@ func Test_set_errors()
   call assert_fails('set foldmarker=x', 'E536:')
   call assert_fails('set commentstring=x', 'E537:')
   call assert_fails('set complete=x', 'E539:')
+  call assert_fails('set rulerformat=%-', 'E539:')
+  call assert_fails('set rulerformat=%(', 'E542:')
+  call assert_fails('set rulerformat=%15(%%', 'E542:')
+  call assert_fails('set statusline=%$', 'E539:')
   call assert_fails('set statusline=%{', 'E540:')
   call assert_fails('set statusline=%(', 'E542:')
+  call assert_fails('set statusline=%)', 'E542:')
+
   if has('cursorshape')
     " This invalid value for 'guicursor' used to cause Vim to crash.
     call assert_fails('set guicursor=i-ci,r-cr:h', 'E545:')
@@ -406,11 +412,22 @@ func Test_set_errors()
   call assert_fails('set wildchar=<abc>', 'E474:')
   call assert_fails('set cmdheight=1a', 'E521:')
   call assert_fails('set invcmdheight', 'E474:')
-  if has('python') && has('python3')
+  if has('python') || has('python3')
     call assert_fails('set pyxversion=6', 'E474:')
   endif
   call assert_fails("let &tabstop='ab'", 'E521:')
   call assert_fails('set spellcapcheck=%\\(', 'E54:')
+  call assert_fails('set sessionoptions=curdir,sesdir', 'E474:')
+  call assert_fails('set foldmarker={{{,', 'E474:')
+  call assert_fails('set sessionoptions=sesdir,curdir', 'E474:')
+  call assert_fails('set listchars=trail:· ambiwidth=double', 'E834:')
+  set listchars&
+  call assert_fails('set fillchars=stl:· ambiwidth=double', 'E835:')
+  set fillchars&
+  call assert_fails('set fileencoding=latin1,utf-8', 'E474:')
+  set nomodifiable
+  call assert_fails('set fileencoding=latin1', 'E21:')
+  set modifiable&
 endfunc
 
 func CheckWasSet(name)
@@ -1011,6 +1028,24 @@ func Test_isfname_with_options()
   call assert_equal(':term help.exe', &keywordprg)
   set isfname&
   setlocal keywordprg&
+endfunc
+
+" Test that resetting laststatus does change scroll option
+func Test_opt_reset_scroll()
+  CheckRunVimInTerminal
+  let vimrc =<< trim [CODE]
+    set scroll=2
+    set laststatus=2
+  [CODE]
+  call writefile(vimrc, 'Xscroll')
+  let buf = RunVimInTerminal('-S Xscroll', {'rows': 16, 'cols': 45})
+  call term_sendkeys(buf, ":verbose set scroll?\n")
+  call WaitForAssert({-> assert_match('Last set.*window size', term_getline(buf, 15))})
+  call assert_match('^\s*scroll=7$', term_getline(buf, 14))
+  call StopVimInTerminal(buf)
+
+  " clean up
+  call delete('Xscroll')
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

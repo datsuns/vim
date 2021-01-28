@@ -107,6 +107,8 @@ rettv_dict_set(typval_T *rettv, dict_T *d)
 dict_free_contents(dict_T *d)
 {
     hashtab_free_contents(&d->dv_hashtab);
+    free_type(d->dv_type);
+    d->dv_type = NULL;
 }
 
 /*
@@ -1030,7 +1032,8 @@ eval_dict(char_u **arg, typval_T *rettv, evalarg_T *evalarg, int literal)
 
     if (**arg != '}')
     {
-	semsg(_(e_missing_dict_end), *arg);
+	if (evalarg != NULL)
+	    semsg(_(e_missing_dict_end), *arg);
 failret:
 	if (d != NULL)
 	    dict_free(d);
@@ -1057,6 +1060,12 @@ dict_extend(dict_T *d1, dict_T *d2, char_u *action)
     hashitem_T	*hi2;
     int		todo;
     char_u	*arg_errmsg = (char_u *)N_("extend() argument");
+    type_T	*type;
+
+    if (d1->dv_type != NULL && d1->dv_type->tt_member != NULL)
+	type = d1->dv_type->tt_member;
+    else
+	type = NULL;
 
     todo = (int)d2->dv_hashtab.ht_used;
     for (hi2 = d2->dv_hashtab.ht_array; todo > 0; ++hi2)
@@ -1076,6 +1085,11 @@ dict_extend(dict_T *d1, dict_T *d2, char_u *action)
 		if (!valid_varname(hi2->hi_key, TRUE))
 		    break;
 	    }
+
+	    if (type != NULL
+		     && check_typval_type(type, &HI2DI(hi2)->di_tv, 0) == FAIL)
+		break;
+
 	    if (di1 == NULL)
 	    {
 		di1 = dictitem_copy(HI2DI(hi2));

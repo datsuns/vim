@@ -367,6 +367,8 @@ endfunc
 
 " Test for using the mouse to increaes the height of the cmdline window
 func Test_mouse_cmdwin_resize()
+  CheckFeature cmdwin
+
   let save_mouse = &mouse
   let save_term = &term
   let save_ttymouse = &ttymouse
@@ -851,7 +853,10 @@ func Test_term_mouse_multiple_clicks_to_visually_select()
   let save_term = &term
   let save_ttymouse = &ttymouse
   call test_override('no_query_mouse', 1)
-  set mouse=a term=xterm mousetime=200
+  
+  " 'mousetime' must be sufficiently large, or else the test is flaky when
+  " using a ssh connection with X forwarding; i.e. ssh -X (issue #7563).
+  set mouse=a term=xterm mousetime=600
   new
 
   for ttymouse_val in g:Ttymouse_values + g:Ttymouse_dec

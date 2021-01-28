@@ -25,12 +25,87 @@ def Test_edit_wildcards()
   CheckDefFailure(['edit `="foo"'], 'E1083:')
 enddef
 
+def Test_expand_alternate_file()
+  var lines =<< trim END
+    edit Xfileone
+    var bone = bufnr()
+    edit Xfiletwo
+    var btwo = bufnr()
+    edit Xfilethree
+    var bthree = bufnr()
+
+    edit #
+    assert_equal(bthree, bufnr())
+    edit %%
+    assert_equal(btwo, bufnr())
+    edit %% # comment
+    assert_equal(bthree, bufnr())
+    edit %%yy
+    assert_equal('Xfiletwoyy', bufname())
+
+    exe "edit %%" .. bone
+    assert_equal(bone, bufnr())
+    exe "edit %%" .. btwo .. "xx"
+    assert_equal('Xfiletwoxx', bufname())
+
+    next Xfileone Xfiletwo Xfilethree
+    assert_equal('Xfileone', argv(0))
+    assert_equal('Xfiletwo', argv(1))
+    assert_equal('Xfilethree', argv(2))
+    next %%%zz
+    assert_equal('Xfileone', argv(0))
+    assert_equal('Xfiletwo', argv(1))
+    assert_equal('Xfilethreezz', argv(2))
+
+    v:oldfiles = ['Xonefile', 'Xtwofile']
+    edit %%<1
+    assert_equal('Xonefile', bufname())
+    edit %%<2
+    assert_equal('Xtwofile', bufname())
+    assert_fails('edit %%<3', 'E684:')
+
+    edit Xfileone.vim
+    edit Xfiletwo
+    edit %%:r
+    assert_equal('Xfileone', bufname())
+
+    assert_false(bufexists('altfoo'))
+    edit altfoo
+    edit bar
+    assert_true(bufexists('altfoo'))
+    assert_true(buflisted('altfoo'))
+    bdel %%
+    assert_true(bufexists('altfoo'))
+    assert_false(buflisted('altfoo'))
+    bwipe! altfoo
+    bwipe! bar
+  END
+  CheckDefAndScriptSuccess(lines)
+enddef
+
 def Test_global_backtick_expansion()
   new
   setline(1, 'xx')
   var name = 'foobar'
   g/^xx/s/.*/`=name`
   assert_equal('foobar', getline(1))
+  bwipe!
+enddef
+
+def Test_folddo_backtick_expansion()
+  new
+  var name = 'xxx'
+  folddoopen edit `=name`
+  assert_equal('xxx', bufname())
+  bwipe!
+
+  new
+  setline(1, ['one', 'two'])
+  set nomodified
+  :1,2fold
+  foldclose
+  folddoclose edit `=name`
+  assert_equal('xxx', bufname())
   bwipe!
 enddef
 
@@ -255,10 +330,24 @@ def Test_method_call_linebreak()
   CheckScriptSuccess(lines)
 enddef
 
+def Test_method_call_whitespace()
+  var lines =<< trim END
+    new
+    var yank = 'text'
+    yank->setline(1)
+    yank  ->setline(2)
+    yank->  setline(3)
+    yank  ->  setline(4)
+    assert_equal(['text', 'text', 'text', 'text'], getline(1, 4))
+    bwipe!
+  END
+  CheckDefAndScriptSuccess(lines)
+enddef
+
 def Test_skipped_expr_linebreak()
   if 0
     var x = []
-               ->map({ -> 0})
+               ->map(() => 0)
   endif
 enddef
 
@@ -321,7 +410,7 @@ enddef
 
 def Test_filter_is_not_modifier()
   var tags = [{a: 1, b: 2}, {x: 3, y: 4}]
-  filter(tags, { _, v -> has_key(v, 'x') ? 1 : 0 })
+  filter(tags, ( _, v) => has_key(v, 'x') ? 1 : 0 )
   assert_equal([{x: 3, y: 4}], tags)
 enddef
 
@@ -489,6 +578,37 @@ def Test_command_modifiers_keep()
   quit!
 enddef
 
+def Test_bar_line_continuation()
+  var lines =<< trim END
+      au BufNewFile Xfile g:readFile = 1
+          | g:readExtra = 2
+      g:readFile = 0
+      g:readExtra = 0
+      edit Xfile
+      assert_equal(1, g:readFile)
+      assert_equal(2, g:readExtra)
+      bwipe!
+      au! BufNewFile
+
+      au BufNewFile Xfile g:readFile = 1
+          | g:readExtra = 2
+          | g:readMore = 3
+      g:readFile = 0
+      g:readExtra = 0
+      g:readMore = 0
+      edit Xfile
+      assert_equal(1, g:readFile)
+      assert_equal(2, g:readExtra)
+      assert_equal(3, g:readMore)
+      bwipe!
+      au! BufNewFile
+      unlet g:readFile
+      unlet g:readExtra
+      unlet g:readMore
+  END
+  CheckDefAndScriptSuccess(lines)
+enddef
+
 def Test_command_modifier_other()
   new Xsomefile
   setline(1, 'changed')
@@ -508,9 +628,11 @@ def Test_command_modifier_other()
   g:readFile = 0
   noautocmd edit Xfile
   assert_equal(0, g:readFile)
+  au! BufNewFile
+  unlet g:readFile
 
   noswapfile edit XnoSwap
-  assert_equal(0, &l:swapfile)
+  assert_equal(false, &l:swapfile)
   bwipe!
 
   var caught = false
@@ -561,6 +683,12 @@ def Test_range_after_command_modifier()
   setline(1, 'xxx')
   CheckScriptSuccess(['vim9script', 'silent keepjump :1d _'])
   assert_equal('', getline(1))
+  bwipe!
+enddef
+
+def Test_silent_pattern()
+  new
+  silent! :/pat/put _
   bwipe!
 enddef
 
@@ -633,6 +761,9 @@ def Test_put_command()
   assert_equal('above', getline(3))
   assert_equal('below', getline(4))
 
+  :2put =['a', 'b', 'c']
+  assert_equal(['ppp', 'a', 'b', 'c', 'above'], getline(2, 6))
+
   # compute range at runtime
   setline(1, range(1, 8))
   @a = 'aaa'
@@ -643,6 +774,10 @@ def Test_put_command()
   :2
   :+2put! a
   assert_equal('aaa', getline(4))
+
+  []->mapnew(() => 0)
+  :$put ='end'
+  assert_equal('end', getline('$'))
 
   bwipe!
 
@@ -691,6 +826,24 @@ def Test_f_args()
   CheckScriptSuccess(lines)
 enddef
 
+def Test_user_command_comment()
+  command -nargs=1 Comd echom <q-args>
+
+  var lines =<< trim END
+    vim9script
+    Comd # comment
+  END
+  CheckScriptSuccess(lines)
+
+  lines =<< trim END
+    vim9script
+    Comd# comment
+  END
+  CheckScriptFailure(lines, 'E1144:')
+
+  delcommand Comd
+enddef
+
 def Test_star_command()
   var lines =<< trim END
     vim9script
@@ -718,12 +871,14 @@ def Test_cmd_argument_without_colon()
 enddef
 
 def Test_ambiguous_user_cmd()
+  command Cmd1 eval 0
+  command Cmd2 eval 0
   var lines =<< trim END
-      com Cmd1 eval 0
-      com Cmd2 eval 0
       Cmd
   END
-  CheckScriptFailure(lines, 'E464:')
+  CheckDefAndScriptFailure(lines, 'E464:', 1)
+  delcommand Cmd1
+  delcommand Cmd2
 enddef
 
 def Test_command_not_recognized()
@@ -767,6 +922,42 @@ def Test_gdefault_not_used()
 
   set nogdefault
   bwipe!
+enddef
+
+def g:SomeComplFunc(findstart: number, base: string): any
+  if findstart
+    return 0
+  else
+    return ['aaa', 'bbb']
+  endif
+enddef
+
+def Test_insert_complete()
+  # this was running into an error with the matchparen hack
+  new
+  set completefunc=SomeComplFunc
+  feedkeys("i\<c-x>\<c-u>\<Esc>", 'ntx')
+  assert_equal('aaa', getline(1))
+
+  set completefunc=
+  bwipe!
+enddef
+
+def Test_wincmd()
+  split
+  var id1 = win_getid()
+  if true
+    try | wincmd w | catch | endtry
+  endif
+  assert_notequal(id1, win_getid())
+  close
+enddef
+
+def Test_windo_missing_endif()
+  var lines =<< trim END
+      windo if 1
+  END
+  CheckDefExecFailure(lines, 'E171:', 1)
 enddef
 
 " vim: ts=8 sw=2 sts=2 expandtab tw=80 fdm=marker

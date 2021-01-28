@@ -324,7 +324,7 @@ func g:NoSuchFunc()
   echo 'none'
 endfunc
 
-def Test_try_catch()
+def Test_try_catch_throw()
   var l = []
   try # comment
     add(l, '1')
@@ -360,6 +360,35 @@ def Test_try_catch()
     n = 99
   endtry
   assert_equal(99, n)
+
+  var done = 'no'
+  if 0
+    try | catch | endtry
+  else
+    done = 'yes'
+  endif
+  assert_equal('yes', done)
+
+  done = 'no'
+  if 1
+    done = 'yes'
+  else
+    try | catch | endtry
+    done = 'never'
+  endif
+  assert_equal('yes', done)
+
+  if 1
+  else
+    try | catch /pat/ | endtry
+    try | catch /pat/ 
+    endtry
+    try 
+    catch /pat/ | endtry
+    try 
+    catch /pat/ 
+    endtry
+  endif
 
   try
     # string slice returns a string, not a number
@@ -527,6 +556,62 @@ def Test_try_catch()
     n = 411
   endtry
   assert_equal(411, n)
+enddef
+
+def Test_cnext_works_in_catch()
+  var lines =<< trim END
+      vim9script
+      au BufEnter * eval 0
+      writefile(['text'], 'Xfile1')
+      writefile(['text'], 'Xfile2')
+      var items = [
+          {lnum: 1, filename: 'Xfile1', valid: true},
+          {lnum: 1, filename: 'Xfile2', valid: true}
+        ]
+      setqflist([], ' ', {items: items})
+      cwindow
+
+      def CnextOrCfirst()
+        # if cnext fails, cfirst is used
+        try
+          cnext
+        catch
+          cfirst
+        endtry
+      enddef
+
+      CnextOrCfirst()
+      CnextOrCfirst()
+      writefile([getqflist({idx: 0}).idx], 'Xresult')
+      qall
+  END
+  writefile(lines, 'XCatchCnext')
+  RunVim([], [], '--clean -S XCatchCnext')
+  assert_equal(['1'], readfile('Xresult'))
+
+  delete('Xfile1')
+  delete('Xfile2')
+  delete('XCatchCnext')
+  delete('Xresult')
+enddef
+
+def Test_throw_skipped()
+  if 0
+    throw dontgethere
+  endif
+enddef
+
+def Test_nocatch_throw_silenced()
+  var lines =<< trim END
+    vim9script
+    def Func()
+      throw 'error'
+    enddef
+    silent! Func()
+  END
+  writefile(lines, 'XthrowSilenced')
+  source XthrowSilenced
+  delete('XthrowSilenced')
 enddef
 
 def DeletedFunc(): list<any>
@@ -730,6 +815,12 @@ def Test_list_vimscript()
       # comment 6
   END
   assert_equal(['# comment 1', 'two', '# comment 3', '', 'five', '# comment 6'], lines)
+
+  lines =<< trim END
+    [{
+      a: 0}]->string()->assert_equal("[{'a': 0}]")
+  END
+  CheckDefAndScriptSuccess(lines)
 enddef
 
 if has('channel')
@@ -898,6 +989,16 @@ def Test_vim9_import_export()
   END
   writefile(import_star_as_lines_dot_space, 'Ximport.vim')
   assert_fails('source Ximport.vim', 'E1074:', '', 1, 'Func')
+
+  var import_star_as_duplicated =<< trim END
+    vim9script
+    import * as Export from './Xexport.vim'
+    var some = 'other'
+    import * as Export from './Xexport.vim'
+    defcompile
+  END
+  writefile(import_star_as_duplicated, 'Ximport.vim')
+  assert_fails('source Ximport.vim', 'E1073:', '', 4, 'Ximport.vim')
 
   var import_star_as_lines_missing_name =<< trim END
     vim9script
@@ -1152,10 +1253,57 @@ def Run_Test_import_fails_on_command_line()
 
   var buf = RunVimInTerminal('-c "import Foo from ''./XexportCmd.vim''"', {
                 rows: 6, wait_for_ruler: 0})
-  WaitForAssert({-> assert_match('^E1094:', term_getline(buf, 5))})
+  WaitForAssert(() => assert_match('^E1094:', term_getline(buf, 5)))
 
   delete('XexportCmd.vim')
   StopVimInTerminal(buf)
+enddef
+
+def Test_vim9script_reload_noclear()
+  var lines =<< trim END
+    vim9script
+    export var exported = 'thexport'
+  END
+  writefile(lines, 'XExportReload')
+  lines =<< trim END
+    vim9script noclear
+    g:loadCount += 1
+    var s:reloaded = 'init'
+    import exported from './XExportReload'
+
+    def Again(): string
+      return 'again'
+    enddef
+
+    if exists('s:loaded') | finish | endif
+    var s:loaded = true
+
+    var s:notReloaded = 'yes'
+    s:reloaded = 'first'
+    def g:Values(): list<string>
+      return [s:reloaded, s:notReloaded, Again(), Once(), exported]
+    enddef
+
+    def Once(): string
+      return 'once'
+    enddef
+  END
+  writefile(lines, 'XReloaded')
+  g:loadCount = 0
+  source XReloaded
+  assert_equal(1, g:loadCount)
+  assert_equal(['first', 'yes', 'again', 'once', 'thexport'], g:Values())
+  source XReloaded
+  assert_equal(2, g:loadCount)
+  assert_equal(['init', 'yes', 'again', 'once', 'thexport'], g:Values())
+  source XReloaded
+  assert_equal(3, g:loadCount)
+  assert_equal(['init', 'yes', 'again', 'once', 'thexport'], g:Values())
+
+  delete('XReloaded')
+  delete('XExportReload')
+  delfunc g:Values
+  unlet g:loadCount
 enddef
 
 def Test_vim9script_reload_import()
@@ -1205,6 +1353,32 @@ def Test_vim9script_reload_import()
 
   delete('Xreload.vim')
   delete('Ximport.vim')
+enddef
+
+" if a script is reloaded with a script-local variable that changed its type, a
+" compiled function using that variable must fail.
+def Test_script_reload_change_type()
+  var lines =<< trim END
+    vim9script noclear
+    var str = 'string'
+    def g:GetStr(): string
+      return str .. 'xxx'
+    enddef
+  END
+  writefile(lines, 'Xreload.vim')
+  source Xreload.vim
+  echo g:GetStr()
+
+  lines =<< trim END
+    vim9script noclear
+    var str = 1234
+  END
+  writefile(lines, 'Xreload.vim')
+  source Xreload.vim
+  assert_fails('echo g:GetStr()', 'E1150:')
+
+  delfunc g:GetStr
+  delete('Xreload.vim')
 enddef
 
 def s:RetSome(): string
@@ -1567,7 +1741,7 @@ def Test_if_elseif_else_fails()
   CheckDefFailure(['elseif true'], 'E582:')
   CheckDefFailure(['else'], 'E581:')
   CheckDefFailure(['endif'], 'E580:')
-  CheckDefFailure(['if true', 'elseif xxx'], 'E1001:')
+  CheckDefFailure(['if g:abool', 'elseif xxx'], 'E1001:')
   CheckDefFailure(['if true', 'echo 1'], 'E171:')
 enddef
 
@@ -1892,6 +2066,12 @@ def Test_for_loop()
     total += nr
   endfor
   assert_equal(6, total)
+
+  var res = ""
+  for [n: number, s: string] in [[1, 'a'], [2, 'b']]
+    res ..= n .. s
+  endfor
+  assert_equal('1a2b', res)
 enddef
 
 def Test_for_loop_fails()
@@ -2696,6 +2876,17 @@ def Test_forward_declaration()
 enddef
 
 def Test_source_vim9_from_legacy()
+  var vim9_lines =<< trim END
+    vim9script
+    var local = 'local'
+    g:global = 'global'
+    export var exported = 'exported'
+    export def GetText(): string
+       return 'text'
+    enddef
+  END
+  writefile(vim9_lines, 'Xvim9_script.vim')
+
   var legacy_lines =<< trim END
     source Xvim9_script.vim
 
@@ -2717,19 +2908,7 @@ def Test_source_vim9_from_legacy()
   END
   writefile(legacy_lines, 'Xlegacy_script.vim')
 
-  var vim9_lines =<< trim END
-    vim9script
-    var local = 'local'
-    g:global = 'global'
-    export var exported = 'exported'
-    export def GetText(): string
-       return 'text'
-    enddef
-  END
-  writefile(vim9_lines, 'Xvim9_script.vim')
-
   source Xlegacy_script.vim
-
   assert_equal('global', g:global)
   unlet g:global
 
@@ -2855,7 +3034,7 @@ def Test_vim9_autoload_error()
           invalid
       endfu
       try
-          invalid
+          alsoinvalid
       catch /wontmatch/
       endtry
   END
@@ -2982,7 +3161,7 @@ def Run_Test_define_func_at_command_line()
   # define Afunc() on the command line
   term_sendkeys(buf, ":def Afunc()\<CR>Bfunc()\<CR>enddef\<CR>")
   term_sendkeys(buf, ":call CheckAndQuit()\<CR>")
-  WaitForAssert({-> assert_equal(['errors: []'], readfile('Xdidcmd'))})
+  WaitForAssert(() => assert_equal(['errors: []'], readfile('Xdidcmd')))
 
   call StopVimInTerminal(buf)
   delete('XcallFunc')

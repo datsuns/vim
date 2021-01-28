@@ -55,9 +55,7 @@ typedef struct AutoCmd
     char	    once;		// "One shot": removed after execution
     char	    nested;		// If autocommands nest here.
     char	    last;		// last command in list
-#ifdef FEAT_EVAL
     sctx_T	    script_ctx;		// script context where defined
-#endif
     struct AutoCmd  *next;		// next AutoCmd in list
 } AutoCmd;
 
@@ -958,11 +956,14 @@ do_autocmd(char_u *arg_in, int forceit)
     last_group = AUGROUP_ERROR;		// for listing the group name
     if (*arg == '*' || *arg == NUL || *arg == '|')
     {
-	for (event = (event_T)0; (int)event < (int)NUM_EVENTS;
-					    event = (event_T)((int)event + 1))
-	    if (do_autocmd_event(event, pat,
-				 once, nested, cmd, forceit, group) == FAIL)
-		break;
+	if (!forceit && *cmd != NUL)
+	    emsg(_(e_cannot_define_autocommands_for_all_events));
+	else
+	    for (event = (event_T)0; (int)event < (int)NUM_EVENTS;
+					     event = (event_T)((int)event + 1))
+		if (do_autocmd_event(event, pat,
+				    once, nested, cmd, forceit, group) == FAIL)
+		    break;
     }
     else
     {
@@ -1249,8 +1250,8 @@ do_autocmd_event(
 	    if (ac == NULL)
 		return FAIL;
 	    ac->cmd = vim_strsave(cmd);
-#ifdef FEAT_EVAL
 	    ac->script_ctx = current_sctx;
+#ifdef FEAT_EVAL
 	    ac->script_ctx.sc_lnum += SOURCING_LNUM;
 #endif
 	    if (ac->cmd == NULL)
@@ -1819,8 +1820,8 @@ apply_autocmds_group(
     static int	nesting = 0;
     AutoPatCmd	patcmd;
     AutoPat	*ap;
-#ifdef FEAT_EVAL
     sctx_T	save_current_sctx;
+#ifdef FEAT_EVAL
     funccal_entry_T funccal_entry;
     char_u	*save_cmdarg;
     long	save_cmdbang;
@@ -2029,9 +2030,9 @@ apply_autocmds_group(
     estack_push(ETYPE_AUCMD, NULL, 0);
     ESTACK_CHECK_SETUP
 
-#ifdef FEAT_EVAL
     save_current_sctx = current_sctx;
 
+#ifdef FEAT_EVAL
 # ifdef FEAT_PROFILE
     if (do_profiling == PROF_YES)
 	prof_child_enter(&wait_time); // doesn't count for the caller itself
@@ -2138,8 +2139,8 @@ apply_autocmds_group(
     autocmd_fname_full = save_autocmd_fname_full;
     autocmd_bufnr = save_autocmd_bufnr;
     autocmd_match = save_autocmd_match;
-#ifdef FEAT_EVAL
     current_sctx = save_current_sctx;
+#ifdef FEAT_EVAL
     restore_funccal();
 # ifdef FEAT_PROFILE
     if (do_profiling == PROF_YES)
@@ -2370,9 +2371,7 @@ getnextac(
     if (ac->once)
 	au_del_cmd(ac);
     autocmd_nested = ac->nested;
-#ifdef FEAT_EVAL
     current_sctx = ac->script_ctx;
-#endif
     if (ac->last)
 	acp->nextcmd = NULL;
     else
