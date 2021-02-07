@@ -879,7 +879,7 @@ do_2string(typval_T *tv, int is_2string_any)
 				return FAIL;
 	    }
 	}
-	str = typval_tostring(tv);
+	str = typval_tostring(tv, TRUE);
 	clear_tv(tv);
 	tv->v_type = VAR_STRING;
 	tv->vval.v_string = str;
@@ -897,11 +897,11 @@ allocate_if_null(typval_T *tv)
     {
 	case VAR_LIST:
 	    if (tv->vval.v_list == NULL)
-		rettv_list_alloc(tv);
+		(void)rettv_list_alloc(tv);
 	    break;
 	case VAR_DICT:
 	    if (tv->vval.v_dict == NULL)
-		rettv_dict_alloc(tv);
+		(void)rettv_dict_alloc(tv);
 	    break;
 	default:
 	    break;

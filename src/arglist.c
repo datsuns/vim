@@ -315,10 +315,10 @@ get_arglist_exp(
 	return FAIL;
     if (wig == TRUE)
 	i = expand_wildcards(ga.ga_len, (char_u **)ga.ga_data,
-					fcountp, fnamesp, EW_FILE|EW_NOTFOUND);
+			     fcountp, fnamesp, EW_FILE|EW_NOTFOUND|EW_NOTWILD);
     else
 	i = gen_expand_wildcards(ga.ga_len, (char_u **)ga.ga_data,
-					fcountp, fnamesp, EW_FILE|EW_NOTFOUND);
+			     fcountp, fnamesp, EW_FILE|EW_NOTFOUND|EW_NOTWILD);
 
     ga_clear(&ga);
     return i;
@@ -557,6 +557,8 @@ ex_args(exarg_T *eap)
 
     if (eap->cmdidx != CMD_args)
     {
+	if (check_arglist_locked() == FAIL)
+	    return;
 	alist_unlink(ALIST(curwin));
 	if (eap->cmdidx == CMD_argglobal)
 	    ALIST(curwin) = &global_alist;
@@ -566,6 +568,8 @@ ex_args(exarg_T *eap)
 
     if (*eap->arg != NUL)
     {
+	if (check_arglist_locked() == FAIL)
+	    return;
 	// ":args file ..": define new argument list, handle like ":next"
 	// Also for ":argslocal file .." and ":argsglobal file ..".
 	ex_next(eap);

@@ -450,8 +450,8 @@ def Test_try_catch_throw()
 
   var nd: dict<any>
   try
-    nd = {[g:anumber]: 1}
-  catch /E1012:/
+    nd = {[g:alist]: 1}
+  catch /E1105:/
     n = 266
   endtry
   assert_equal(266, n)
@@ -3278,7 +3278,8 @@ def Test_no_unknown_error_after_error()
       while job_status(myjob) == 'run'
         sleep 10m
       endwhile
-      sleep 10m
+      # wait for Exit_cb() to be called
+      sleep 100m
   END
   writefile(lines, 'Xdef')
   assert_fails('so Xdef', ['E684:', 'E1012:'])
