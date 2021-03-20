@@ -531,6 +531,26 @@ list_find_str(list_T *l, long idx)
 }
 
 /*
+ * Like list_find() but when a negative index is used that is not found use
+ * zero and set "idx" to zero.  Used for first index of a range.
+ */
+    listitem_T *
+list_find_index(list_T *l, long *idx)
+{
+    listitem_T *li = list_find(l, *idx);
+
+    if (li == NULL)
+    {
+	if (*idx < 0)
+	{
+	    *idx = 0;
+	    li = list_find(l, *idx);
+	}
+    }
+    return li;
+}
+
+/*
  * Locate "item" list "l" and return its index.
  * Returns -1 when "item" is not in the list.
  */
@@ -698,7 +718,7 @@ list_insert_tv(list_T *l, typval_T *tv, listitem_T *item)
     listitem_T	*ni;
 
     if (l->lv_type != NULL && l->lv_type->tt_member != NULL
-		    && check_typval_type(l->lv_type->tt_member, tv, 0) == FAIL)
+		&& check_typval_arg_type(l->lv_type->tt_member, tv, 0) == FAIL)
 	return FAIL;
     ni = listitem_alloc();
     if (ni == NULL)
@@ -1311,7 +1331,7 @@ eval_list(char_u **arg, typval_T *rettv, evalarg_T *evalarg, int do_error)
 	{
 	    if (vim9script && !IS_WHITE_OR_NUL((*arg)[1]) && (*arg)[1] != ']')
 	    {
-		semsg(_(e_white_space_required_after_str), ",");
+		semsg(_(e_white_space_required_after_str_str), ",", *arg);
 		goto failret;
 	    }
 	    *arg = skipwhite(*arg + 1);
@@ -1328,7 +1348,8 @@ eval_list(char_u **arg, typval_T *rettv, evalarg_T *evalarg, int do_error)
 	    if (do_error)
 	    {
 		if (**arg == ',')
-		    semsg(_(e_no_white_space_allowed_before_str), ",");
+		    semsg(_(e_no_white_space_allowed_before_str_str),
+								    ",", *arg);
 		else
 		    semsg(_("E696: Missing comma in List: %s"), *arg);
 	    }
@@ -2031,7 +2052,7 @@ filter_map(typval_T *argvars, typval_T *rettv, filtermap_T filtermap)
     {
 	// Check that map() does not change the type of the dict.
 	ga_init2(&type_list, sizeof(type_T *), 10);
-	type = typval2type(argvars, &type_list);
+	type = typval2type(argvars, get_copyID(), &type_list);
     }
 
     if (argvars[0].v_type == VAR_BLOB)
@@ -2124,6 +2145,7 @@ filter_map(typval_T *argvars, typval_T *rettv, filtermap_T filtermap)
 							   arg_errmsg, TRUE)))
 			break;
 		    set_vim_var_string(VV_KEY, di->di_key, -1);
+		    newtv.v_type = VAR_UNKNOWN;
 		    r = filter_map_one(&di->di_tv, expr, filtermap,
 								 &newtv, &rem);
 		    clear_tv(get_vim_var_tv(VV_KEY));
@@ -2134,8 +2156,8 @@ filter_map(typval_T *argvars, typval_T *rettv, filtermap_T filtermap)
 		    }
 		    if (filtermap == FILTERMAP_MAP)
 		    {
-			if (type != NULL && check_typval_type(type->tt_member,
-							    &newtv, 0) == FAIL)
+			if (type != NULL && check_typval_arg_type(
+					   type->tt_member, &newtv, 0) == FAIL)
 			{
 			    clear_tv(&newtv);
 			    break;
@@ -2269,8 +2291,8 @@ filter_map(typval_T *argvars, typval_T *rettv, filtermap_T filtermap)
 		    if (filtermap != FILTERMAP_FILTER)
 		    {
 			if (filtermap == FILTERMAP_MAP && type != NULL
-					  && check_typval_type(type->tt_member,
-							    &newtv, 0) == FAIL)
+				      && check_typval_arg_type(
+					   type->tt_member, &newtv, 0) == FAIL)
 			{
 			    clear_tv(&newtv);
 			    break;
@@ -2313,8 +2335,8 @@ filter_map(typval_T *argvars, typval_T *rettv, filtermap_T filtermap)
 		    }
 		    if (filtermap == FILTERMAP_MAP)
 		    {
-			if (type != NULL && check_typval_type(type->tt_member,
-							    &newtv, 0) == FAIL)
+			if (type != NULL && check_typval_arg_type(
+					   type->tt_member, &newtv, 0) == FAIL)
 			{
 			    clear_tv(&newtv);
 			    break;
@@ -2536,7 +2558,7 @@ extend(typval_T *argvars, typval_T *rettv, char_u *arg_errmsg, int is_new)
     {
 	// Check that map() does not change the type of the dict.
 	ga_init2(&type_list, sizeof(type_T *), 10);
-	type = typval2type(argvars, &type_list);
+	type = typval2type(argvars, get_copyID(), &type_list);
     }
 
     if (argvars[0].v_type == VAR_LIST && argvars[1].v_type == VAR_LIST)
@@ -2583,7 +2605,8 @@ extend(typval_T *argvars, typval_T *rettv, char_u *arg_errmsg, int is_new)
 	    }
 	    else
 		item = NULL;
-	    if (type != NULL && check_typval_type(type, &argvars[1], 2) == FAIL)
+	    if (type != NULL && check_typval_arg_type(
+						 type, &argvars[1], 2) == FAIL)
 		goto theend;
 	    list_extend(l1, l2, item);
 
@@ -2640,7 +2663,8 @@ extend(typval_T *argvars, typval_T *rettv, char_u *arg_errmsg, int is_new)
 	    else
 		action = (char_u *)"force";
 
-	    if (type != NULL && check_typval_type(type, &argvars[1], 2) == FAIL)
+	    if (type != NULL && check_typval_arg_type(
+						 type, &argvars[1], 2) == FAIL)
 		goto theend;
 	    dict_extend(d1, d2, action);
 

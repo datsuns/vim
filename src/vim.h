@@ -1200,6 +1200,7 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 #define OPT_WINONLY	0x10	// only set window-local options
 #define OPT_NOWIN	0x20	// don't set window-local options
 #define OPT_ONECOLUMN	0x40	// list options one per line
+#define OPT_NO_REDRAW	0x80	// ignore redraw flags on option
 
 // Magic chars used in confirm dialog strings
 #define DLG_BUTTON_SEP	'\n'
@@ -1785,6 +1786,12 @@ typedef struct timeval proftime_T;
 # endif
 #else
 typedef int proftime_T;	    // dummy for function prototypes
+#endif
+
+#ifdef FEAT_PROFILE
+# define PROFILING(ufunc) (do_profiling == PROF_YES && (ufunc)->uf_profiling)
+#else
+# define PROFILING(ufunc) FALSE
 #endif
 
 /*
@@ -2458,10 +2465,11 @@ typedef enum {
 #define DOSO_GVIMRC	2	// loading gvimrc file
 
 // flags for read_viminfo() and children
-#define VIF_WANT_INFO		1	// load non-mark info
-#define VIF_WANT_MARKS		2	// load file marks
-#define VIF_FORCEIT		4	// overwrite info already read
-#define VIF_GET_OLDFILES	8	// load v:oldfiles
+#define VIF_WANT_INFO	    1	// load non-mark info
+#define VIF_WANT_MARKS	    2	// load file marks
+#define VIF_ONLY_CURBUF	    4	// bail out after loading marks for curbuf
+#define VIF_FORCEIT	    8	// overwrite info already read
+#define VIF_GET_OLDFILES    16	// load v:oldfiles
 
 // flags for buf_freeall()
 #define BFA_DEL		 1	// buffer is going to be deleted
@@ -2693,5 +2701,10 @@ long elapsed(DWORD start_tick);
 // Flags for mch_delay.
 #define MCH_DELAY_IGNOREINPUT	1
 #define MCH_DELAY_SETTMODE	2
+
+// Flags for eval_variable().
+#define EVAL_VAR_VERBOSE	1   // may give error message
+#define EVAL_VAR_NOAUTOLOAD	2   // do not use script autoloading
+#define EVAL_VAR_IMPORT		4   // may return special variable for import
 
 #endif // VIM__H

@@ -1319,6 +1319,9 @@ do_source(
 	    }
 	// imports can be redefined once
 	mark_imports_for_reload(sid);
+
+	// reset version, "vim9script" may have been added or removed.
+	si->sn_version = 1;
     }
     else
     {
@@ -1456,8 +1459,35 @@ almosttheend:
     si = SCRIPT_ITEM(current_sctx.sc_sid);
     if (si->sn_save_cpo != NULL)
     {
-	set_option_value((char_u *)"cpo", 0L, si->sn_save_cpo, 0);
-	CLEAR_POINTER(si->sn_save_cpo);
+	if (STRCMP(p_cpo, CPO_VIM) != 0)
+	{
+	    char_u *f;
+	    char_u *t;
+
+	    // 'cpo' was changed in the script.  Apply the same change to the
+	    // saved value, if possible.
+	    for (f = (char_u *)CPO_VIM; *f != NUL; ++f)
+		if (vim_strchr(p_cpo, *f) == NULL
+			&& (t = vim_strchr(si->sn_save_cpo, *f)) != NULL)
+		    // flag was removed, also remove it from the saved 'cpo'
+		    mch_memmove(t, t + 1, STRLEN(t));
+	    for (f = p_cpo; *f != NUL; ++f)
+		if (vim_strchr((char_u *)CPO_VIM, *f) == NULL
+			&& vim_strchr(si->sn_save_cpo, *f) == NULL)
+		{
+		    // flag was added, also add it to the saved 'cpo'
+		    t = alloc(STRLEN(si->sn_save_cpo) + 2);
+		    if (t != NULL)
+		    {
+			*t = *f;
+			STRCPY(t + 1, si->sn_save_cpo);
+			vim_free(si->sn_save_cpo);
+			si->sn_save_cpo = t;
+		    }
+		}
+	}
+	set_option_value((char_u *)"cpo", 0L, si->sn_save_cpo, OPT_NO_REDRAW);
+	VIM_CLEAR(si->sn_save_cpo);
     }
 
     restore_funccal();

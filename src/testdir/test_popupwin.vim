@@ -825,6 +825,25 @@ func Test_popup_with_mask()
   " this was causing a crash
   call popup_create('test', #{mask: [[0, 0, 0, 0]]})
   call popup_clear()
+
+  " this was causing an internal error
+  enew
+  set nowrap
+  call repeat('x', &columns)->setline(1)
+  call prop_type_add('textprop', {})
+  call prop_add(1, 1, #{length: &columns, type: 'textprop'})
+  vsplit
+  let opts = popup_create('', #{textprop: 'textprop'})
+	\ ->popup_getoptions()
+	\ ->extend(#{mask: [[1, 1, 1, 1]]})
+  call popup_create('', opts)
+  redraw
+
+  close!
+  bwipe!
+  call prop_type_delete('textprop')
+  call popup_clear()
+  set wrap&
 endfunc
 
 func Test_popup_select()
@@ -2959,6 +2978,10 @@ func Test_popup_cursorline()
   call assert_equal(1, popup_getoptions(winid).cursorline)
   call popup_close(winid)
 
+  let winid = popup_create('some text', #{ cursorline: v:true, })
+  call assert_equal(1, popup_getoptions(winid).cursorline)
+  call popup_close(winid)
+
   let winid = popup_create('some text', #{ cursorline: 0, })
   call assert_equal(0, popup_getoptions(winid).cursorline)
   call popup_close(winid)
@@ -3093,6 +3116,15 @@ func Test_popup_cursorline()
   call delete('XtestPopupCursorLine')
 endfunc
 
+def Test_popup_cursorline_vim9()
+  var winid = popup_create('some text', { cursorline: true, })
+  assert_equal(1, popup_getoptions(winid).cursorline)
+  popup_close(winid)
+
+  assert_fails("popup_create('some text', { cursorline: 2, })", 'E1023:')
+  popup_clear()
+enddef
+
 func Test_previewpopup()
   CheckScreendump
   CheckFeature quickfix
@@ -3127,6 +3159,7 @@ func Test_previewpopup()
 	      \ 'this is another word',
 	      \ 'very long line where the word is also another'])
         set previewpopup=height:4,width:40
+	hi OtherColor ctermbg=lightcyan guibg=lightcyan
 	set path=.
   END
   call writefile(lines, 'XtestPreviewPopup')
@@ -3136,6 +3169,7 @@ func Test_previewpopup()
   call term_sendkeys(buf, ":\<CR>")
   call VerifyScreenDump(buf, 'Test_popupwin_previewpopup_1', {})
 
+  call term_sendkeys(buf, ":set previewpopup+=highlight:OtherColor\<CR>")
   call term_sendkeys(buf, "/another\<CR>\<C-W>}")
   call VerifyScreenDump(buf, 'Test_popupwin_previewpopup_2', {})
 
@@ -3150,6 +3184,7 @@ func Test_previewpopup()
   call VerifyScreenDump(buf, 'Test_popupwin_previewpopup_5', {})
   call term_sendkeys(buf, ":silent cd testdir\<CR>")
 
+  call term_sendkeys(buf, ":set previewpopup-=highlight:OtherColor\<CR>")
   call term_sendkeys(buf, ":pclose\<CR>")
   call term_sendkeys(buf, ":\<BS>")
   call VerifyScreenDump(buf, 'Test_popupwin_previewpopup_6', {})
@@ -3835,5 +3870,48 @@ func Test_popup_setoptions_other_tab()
   bwipe! Xfile
   call prop_type_delete('textprop')
 endfunc
+
+func Test_popup_prop_not_visible()
+  CheckScreendump
+
+  let lines =<< trim END
+      vim9script
+      set nowrap stal=2
+      rightbelow :31vnew
+      setline(1, ['', 'some text', '', 'other text'])
+      prop_type_add('someprop', {})
+      prop_add(2, 9, {type: 'someprop', length: 5})
+      popup_create('attached to "some"', {
+          textprop: 'someprop',
+          highlight: 'ErrorMsg',
+          line: -1,
+          wrap: false,
+          fixed: true,
+          })
+      prop_type_add('otherprop', {})
+      prop_add(4, 10, {type: 'otherprop', length: 5})
+      popup_create('attached to "other"', {
+          textprop: 'otherprop',
+          highlight: 'ErrorMsg',
+          line: -1,
+          wrap: false,
+          fixed: false,
+          })
+  END
+  call writefile(lines, 'XtestPropNotVisble')
+  let buf = RunVimInTerminal('-S XtestPropNotVisble', #{rows: 10})
+  call VerifyScreenDump(buf, 'Test_popup_prop_not_visible_01', {})
+
+  call term_sendkeys(buf, ":vert resize -14\<CR>")
+  call VerifyScreenDump(buf, 'Test_popup_prop_not_visible_02', {})
+
+  call term_sendkeys(buf, ":vert resize -8\<CR>")
+  call VerifyScreenDump(buf, 'Test_popup_prop_not_visible_03', {})
+
+  " clean up
+  call StopVimInTerminal(buf)
+  call delete('XtestPropNotVisble')
+endfunction
+
 
 " vim: shiftwidth=2 sts=2

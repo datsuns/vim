@@ -769,6 +769,11 @@ check_split_disallowed()
 	emsg(_("E242: Can't split a window while closing another"));
 	return FAIL;
     }
+    if (curwin->w_buffer->b_locked_split)
+    {
+	emsg(_(e_cannot_split_window_when_closing_buffer));
+	return FAIL;
+    }
     return OK;
 }
 
@@ -793,6 +798,9 @@ win_split(int size, int flags)
     if (ERROR_IF_ANY_POPUP_WINDOW)
 	return FAIL;
 
+    if (check_split_disallowed() == FAIL)
+	return FAIL;
+
     // When the ":tab" modifier was used open a new tab page instead.
     if (may_open_tabpage() == OK)
 	return OK;
@@ -804,8 +812,6 @@ win_split(int size, int flags)
 	emsg(_("E442: Can't split topleft and botright at the same time"));
 	return FAIL;
     }
-    if (check_split_disallowed() == FAIL)
-	return FAIL;
 
     // When creating the help window make a snapshot of the window layout.
     // Otherwise clear the snapshot, it's now invalid.
@@ -5855,7 +5861,7 @@ win_setminheight(void)
     while (p_wmh > 0)
     {
 	room = Rows - p_ch;
-	needed = frame_minheight(topframe, NULL);
+	needed = min_rows() - 1;  // 1 was added for the cmdline
 	if (room >= needed)
 	    break;
 	--p_wmh;

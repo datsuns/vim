@@ -1,4 +1,4 @@
-*repeat.txt*    For Vim version 8.2.  Last change: 2021 Jan 23
+*repeat.txt*    For Vim version 8.2.  Last change: 2021 Feb 13
 
 
 		  VIM REFERENCE MANUAL    by Bram Moolenaar
@@ -354,13 +354,15 @@ For writing a Vim script, see chapter 41 of the user manual |usr_41.txt|.
 			Vim version, or update Vim to a newer version.  See
 			|vimscript-version| for what changed between versions.
 
-:vim9[script] [noclear]				*:vim9* *:vim9script*
+:vim9s[cript] [noclear]				*:vim9s* *:vim9script*
 			Marks a script file as containing |Vim9-script|
 			commands.  Also see |vim9-namespace|.
 			Must be the first command in the file.
 			For [noclear] see |vim9-reload|.
 			Without the |+eval| feature this changes the syntax
 			for some commands.
+			See |:vim9cmd| for executing one command with Vim9
+			syntax and semantics.
 			 
 						*:scr* *:scriptnames*
 :scr[iptnames]		List all sourced script names, in the order they were
@@ -675,9 +677,9 @@ Your directory layout would be like this:
    opt/fooextra/doc/tags  	        " help tags
 
 This allows for the user to do: >
-	mkdir ~/.vim/pack/myfoobar
-	cd ~/.vim/pack/myfoobar
-	git clone https://github.com/you/foobar.git
+	mkdir ~/.vim/pack
+	cd ~/.vim/pack
+	git clone https://github.com/you/foobar.git myfoobar
 
 Here "myfoobar" is a name that the user can choose, the only condition is that
 it differs from other packages.
@@ -877,7 +879,7 @@ DEFINING BREAKPOINTS
 		valid in the script where it has been defined and if that
 		script is called from several other scripts, this will stop
 		whenever that particular variable will become visible or
-		unaccessible again.
+		inaccessible again.
 
 The [lnum] is the line number of the breakpoint.  Vim will stop at or after
 this line.  When omitted line 1 is used.

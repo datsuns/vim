@@ -709,7 +709,7 @@ def Test_helpgrep_vim9_restore_cpo()
   var dir = 'Xruntime/after'
   &rtp ..= ',' .. dir
   mkdir(dir .. '/ftplugin', 'p')
-  writefile(['vim9'], dir .. '/ftplugin/qf.vim')
+  writefile(['vim9script'], dir .. '/ftplugin/qf.vim')
   filetype plugin on
   silent helpgrep grail
   cwindow
@@ -5360,6 +5360,16 @@ endfunc
 func Test_qfbuf_update()
   call Xqfbuf_update('c')
   call Xqfbuf_update('l')
+endfunc
+
+func Test_vimgrep_noswapfile()
+  set noswapfile
+  call writefile(['one', 'two', 'three'], 'Xgreppie')
+  vimgrep two Xgreppie
+  call assert_equal('two', getline('.'))
+
+  call delete('Xgreppie')
+  set swapfile
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

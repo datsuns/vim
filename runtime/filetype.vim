@@ -1,7 +1,7 @@
 " Vim support file to detect file types
 "
 " Maintainer:	Bram Moolenaar <Bram@vim.org>
-" Last Change:	2021 Jan 21
+" Last Change:	2021 Mar 12
 
 " Listen very carefully, I will say this only once
 if exists("did_load_filetypes")
@@ -168,6 +168,9 @@ au BufNewFile,BufRead *.mar			setf vmasm
 " Atlas
 au BufNewFile,BufRead *.atl,*.as		setf atlas
 
+" Atom is based on XML
+au BufNewFile,BufRead *.atom			setf xml
+
 " Autoit v3
 au BufNewFile,BufRead *.au3			setf autoit
 
@@ -215,6 +218,9 @@ au BufNewFile,BufRead *.bc			setf bc
 
 " BDF font
 au BufNewFile,BufRead *.bdf			setf bdf
+
+" Beancount
+au BufNewFile,BufRead *.beancount		setf beancount
 
 " BibTeX bibliography database file
 au BufNewFile,BufRead *.bib			setf bib
@@ -1331,6 +1337,9 @@ au BufNewFile,BufRead *.pml			setf promela
 au BufNewFile,BufRead *.proto			setf proto
 au BufNewFile,BufRead *.pbtxt			setf pbtxt
 
+" Poke
+au BufNewFile,BufRead *.pk      		setf poke
+
 " Protocols
 au BufNewFile,BufRead */etc/protocols		setf protocols
 
@@ -1387,6 +1396,9 @@ if has("fname_case")
 else
   au BufNewFile,BufRead *.rmd,*.smd			setf rmd
 endif
+
+" RSS looks like XML
+au BufNewFile,BufRead *.rss				setf xml
 
 " R reStructuredText file
 if has("fname_case")
@@ -1487,6 +1499,9 @@ au BufNewFile,BufRead *.sdl,*.pr		setf sdl
 
 " sed
 au BufNewFile,BufRead *.sed			setf sed
+
+" svelte
+au BufNewFile,BufRead *.svelte			setf svelte
 
 " Sieve (RFC 3028, 5228)
 au BufNewFile,BufRead *.siv,*.sieve		setf sieve

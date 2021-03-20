@@ -862,10 +862,24 @@ did_set_string_option(
     {
 	if (check_opt_strings(p_ambw, p_ambw_values, FALSE) != OK)
 	    errmsg = e_invarg;
-	else if (set_chars_option(&p_lcs) != NULL)
-	    errmsg = _("E834: Conflicts with value of 'listchars'");
-	else if (set_chars_option(&p_fcs) != NULL)
+	else if (set_chars_option(curwin, &p_fcs) != NULL)
 	    errmsg = _("E835: Conflicts with value of 'fillchars'");
+	else
+	{
+	    tabpage_T	*tp;
+	    win_T	*wp;
+
+	    FOR_ALL_TAB_WINDOWS(tp, wp)
+	    {
+		if (set_chars_option(wp, &wp->w_p_lcs) != NULL)
+		{
+		    errmsg = _("E834: Conflicts with value of 'listchars'");
+		    goto ambw_end;
+		}
+	    }
+	}
+ambw_end:
+	{}
     }
 
     // 'background'
@@ -1292,16 +1306,37 @@ did_set_string_option(
 	}
     }
 
-    // 'listchars'
+    // global 'listchars'
     else if (varp == &p_lcs)
     {
-	errmsg = set_chars_option(varp);
+	errmsg = set_chars_option(curwin, varp);
+	if (errmsg == NULL)
+	{
+	    tabpage_T	*tp;
+	    win_T		*wp;
+
+	    // The current window is set to use the global 'listchars' value.
+	    // So clear the window-local value.
+	    if (!(opt_flags & OPT_GLOBAL))
+		clear_string_option(&curwin->w_p_lcs);
+	    FOR_ALL_TAB_WINDOWS(tp, wp)
+	    {
+		errmsg = set_chars_option(wp, &wp->w_p_lcs);
+		if (errmsg)
+		    break;
+	    }
+	    redraw_all_later(NOT_VALID);
+	}
     }
+
+    // local 'listchars'
+    else if (varp == &curwin->w_p_lcs)
+	errmsg = set_chars_option(curwin, varp);
 
     // 'fillchars'
     else if (varp == &p_fcs)
     {
-	errmsg = set_chars_option(varp);
+	errmsg = set_chars_option(curwin, varp);
     }
 
 #ifdef FEAT_CMDWIN
@@ -2426,11 +2461,14 @@ did_set_string_option(
 		   && (get_option_flags(opt_idx) & (P_CURSWANT | P_RALL)) != 0)
 	curwin->w_set_curswant = TRUE;
 
+    if ((opt_flags & OPT_NO_REDRAW) == 0)
+    {
 #ifdef FEAT_GUI
-    // check redraw when it's not a GUI option or the GUI is active.
-    if (!redraw_gui_only || gui.in_use)
+	// check redraw when it's not a GUI option or the GUI is active.
+	if (!redraw_gui_only || gui.in_use)
 #endif
-	check_redraw(get_option_flags(opt_idx));
+	    check_redraw(get_option_flags(opt_idx));
+    }
 
 #if defined(FEAT_VTP) && defined(FEAT_TERMGUICOLORS)
     if (did_swaptcap)

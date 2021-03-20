@@ -340,6 +340,26 @@ def Test_extend_list_item_type()
   CheckScriptFailure(['vim9script'] + lines, 'E1012:', 1)
 enddef
 
+def Test_extend_with_error_function()
+  var lines =<< trim END
+      vim9script
+      def F()
+        {
+          var m = 10
+        }
+        echo m
+      enddef
+
+      def Test()
+        var d: dict<any> = {}
+        d->extend({A: 10, Func: function('F', [])})
+      enddef
+
+      Test()
+  END
+  CheckScriptFailure(lines, 'E1001: Variable not found: m')
+enddef
+
 def Test_job_info_return_type()
   if has('job')
     job_start(&shell)
@@ -472,6 +492,19 @@ def Test_getchar()
   getchar(true)->assert_equal(0)
 enddef
 
+def Test_getenv()
+  if getenv('does-not_exist') == ''
+    assert_report('getenv() should return null')
+  endif
+  if getenv('does-not_exist') == null
+  else
+    assert_report('getenv() should return null')
+  endif
+  $SOMEENVVAR = 'some'
+  assert_equal('some', getenv('SOMEENVVAR'))
+  unlet $SOMEENVVAR
+enddef
+
 def Test_getcompletion()
   set wildignore=*.vim,*~
   var l = getcompletion('run', 'file', true)
@@ -531,12 +564,27 @@ def Test_getreg()
   var lines = ['aaa', 'bbb', 'ccc']
   setreg('a', lines)
   getreg('a', true, true)->assert_equal(lines)
+  assert_fails('getreg("ab")', 'E1162:')
 enddef
 
 def Test_getreg_return_type()
   var s1: string = getreg('"')
   var s2: string = getreg('"', 1)
   var s3: list<string> = getreg('"', 1, 1)
+enddef
+
+def Test_getreginfo()
+  var text = 'abc'
+  setreg('a', text)
+  getreginfo('a')->assert_equal({regcontents: [text], regtype: 'v', isunnamed: false})
+  assert_fails('getreginfo("ab")', 'E1162:')
+enddef
+
+def Test_getregtype()
+  var lines = ['aaa', 'bbb', 'ccc']
+  setreg('a', lines)
+  getregtype('a')->assert_equal('V')
+  assert_fails('getregtype("ab")', 'E1162:')
 enddef
 
 def Test_glob()
@@ -673,6 +721,27 @@ def Test_maparg_mapset()
   mapset('n', false, mapsave)
 
   nunmap <F3>
+enddef
+
+def Test_map_failure()
+  CheckFeature job
+
+  var lines =<< trim END
+      vim9script
+      writefile([], 'Xtmpfile')
+      silent e Xtmpfile
+      var d = {[bufnr('%')]: {a: 0}}
+      au BufReadPost * Func()
+      def Func()
+          if d->has_key('')
+          endif
+          eval d[expand('<abuf>')]->mapnew((_, v: dict<job>) => 0)
+      enddef
+      e
+  END
+  CheckScriptFailure(lines, 'E1013:')
+  au! BufReadPost
+  delete('Xtmpfile')
 enddef
 
 def Test_max()
@@ -824,11 +893,13 @@ def Test_set_get_bufline()
       assert_equal([], getbufline(b, 6))
       assert_equal([], getbufline(b, 2, 1))
 
-      setbufline(b, 2, [function('eval'), {key: 123}, test_null_job()])
-      assert_equal(["function('eval')",
-                      "{'key': 123}",
-                      "no process"],
-                      getbufline(b, 2, 4))
+      if has('job')
+        setbufline(b, 2, [function('eval'), {key: 123}, test_null_job()])
+        assert_equal(["function('eval')",
+                        "{'key': 123}",
+                        "no process"],
+                        getbufline(b, 2, 4))
+      endif
 
       exe 'bwipe! ' .. b
   END
@@ -876,6 +947,7 @@ def Test_setreg()
   var reginfo = getreginfo('a')
   setreg('a', reginfo)
   getreginfo('a')->assert_equal(reginfo)
+  assert_fails('setreg("ab", 0)', 'E1162:')
 enddef 
 
 def Test_slice()

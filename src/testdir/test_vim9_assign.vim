@@ -9,6 +9,7 @@ let g:existing = 'yes'
 let g:inc_counter = 1
 let $SOME_ENV_VAR = 'some'
 let g:alist = [7]
+let g:adict = #{a: 1}
 let g:astring = 'text'
 
 def Test_assignment_bool()
@@ -70,6 +71,13 @@ def Test_assignment()
   CheckDefFailure(['var a:string = "x"'], 'E1069:')
   CheckDefFailure(['var lambda = () => "lambda"'], 'E704:')
   CheckScriptFailure(['var x = "x"'], 'E1124:')
+
+  # lower case name is OK for a list
+  var lambdaLines =<< trim END
+      var lambdaList: list<func> = [Test_syntax]
+      lambdaList[0] = () => "lambda"
+  END
+  CheckDefAndScriptSuccess(lambdaLines)
 
   var nr: number = 1234
   CheckDefFailure(['var nr: number = "asdf"'], 'E1012:')
@@ -284,6 +292,14 @@ def Test_assign_unpack()
       [v1, v2] = ''
   END
   CheckDefFailure(lines, 'E1012: Type mismatch; expected list<any> but got string', 3)
+
+  lines =<< trim END
+    g:values = [false, 0]
+    var x: bool
+    var y: string
+    [x, y] = g:values
+  END
+  CheckDefExecAndScriptFailure(lines, 'E1163: Variable 2: type mismatch, expected string but got number')
 enddef
 
 def Test_assign_linebreak()
@@ -1090,6 +1106,44 @@ def Test_assign_dict_unknown_type()
   CheckScriptSuccess(lines)
 enddef
 
+def Test_assign_dict_with_op()
+  var lines =<< trim END
+    vim9script
+    var ds: dict<string> = {a: 'x'}
+    ds['a'] ..= 'y'
+    ds.a ..= 'z'
+    assert_equal('xyz', ds.a)
+
+    var dn: dict<number> = {a: 9}
+    dn['a'] += 2
+    assert_equal(11, dn.a)
+    dn.a += 2
+    assert_equal(13, dn.a)
+
+    dn['a'] -= 3
+    assert_equal(10, dn.a)
+    dn.a -= 2
+    assert_equal(8, dn.a)
+
+    dn['a'] *= 2
+    assert_equal(16, dn.a)
+    dn.a *= 2
+    assert_equal(32, dn.a)
+
+    dn['a'] /= 3
+    assert_equal(10, dn.a)
+    dn.a /= 2
+    assert_equal(5, dn.a)
+
+    dn['a'] %= 3
+    assert_equal(2, dn.a)
+    dn.a %= 6
+    assert_equal(2, dn.a)
+  END
+  # TODO: this should also work with a :def function
+  CheckScriptSuccess(lines)
+enddef
+
 def Test_assign_lambda()
   # check if assign a lambda to a variable which type is func or any.
   var lines =<< trim END
@@ -1100,6 +1154,8 @@ def Test_assign_lambda()
       assert_equal(123, FuncRef_Func())
       var FuncRef_Any: any = () => 123
       assert_equal(123, FuncRef_Any())
+      var FuncRef_Number: func(): number = () => 321
+      assert_equal(321, FuncRef_Number())
   END
   CheckScriptSuccess(lines)
 
@@ -1107,8 +1163,12 @@ def Test_assign_lambda()
       var Ref: func(number)
       Ref = (j) => !j
   END
-  CheckDefFailure(lines, 'E1012: Type mismatch; expected func(number) but got func(any): bool')
-  CheckScriptFailure(['vim9script'] + lines, 'E1012: Type mismatch; expected func(number) but got func(any): any')
+  CheckDefAndScriptFailure(lines, 'E1012: Type mismatch; expected func(number) but got func(any): bool')
+
+  lines =<< trim END
+      echo filter([1, 2, 3], (_, v: string) => v + 1) 
+  END
+  CheckDefAndScriptFailure(lines, 'E1051:')
 enddef
 
 def Test_heredoc()
@@ -1399,6 +1459,51 @@ def Test_unlet()
   unlet ll[1]
   unlet ll[-1]
   assert_equal([1, 3], ll)
+
+  ll = [1, 2, 3, 4]
+  unlet ll[0 : 1]
+  assert_equal([3, 4], ll)
+
+  ll = [1, 2, 3, 4]
+  unlet ll[2 : 8]
+  assert_equal([1, 2], ll)
+
+  ll = [1, 2, 3, 4]
+  unlet ll[-2 : -1]
+  assert_equal([1, 2], ll)
+
+  CheckDefFailure([
+    'var ll = [1, 2]',
+    'll[1 : 2] = 7',
+    ], 'E1165:', 2)
+  CheckDefFailure([
+    'var dd = {a: 1}',
+    'unlet dd["a" : "a"]',
+    ], 'E1166:', 2)
+  CheckDefExecFailure([
+    'unlet g:adict[0 : 1]',
+    ], 'E1148:', 1)
+  CheckDefFailure([
+    'var ll = [1, 2]',
+    'unlet ll[0:1]',
+    ], 'E1004:', 2)
+  CheckDefFailure([
+    'var ll = [1, 2]',
+    'unlet ll[0 :1]',
+    ], 'E1004:', 2)
+  CheckDefFailure([
+    'var ll = [1, 2]',
+    'unlet ll[0: 1]',
+    ], 'E1004:', 2)
+
+  CheckDefFailure([
+    'var ll = [1, 2]',
+    'unlet ll["x" : 1]',
+    ], 'E1012:', 2)
+  CheckDefFailure([
+    'var ll = [1, 2]',
+    'unlet ll[0 : "x"]',
+    ], 'E1012:', 2)
 
   # list of dict unlet
   var dl = [{a: 1, b: 2}, {c: 3}]
