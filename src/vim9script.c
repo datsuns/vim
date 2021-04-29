@@ -17,15 +17,34 @@
 # include "vim9.h"
 #endif
 
+/*
+ * Return TRUE when currently using Vim9 script syntax.
+ * Does not go up the stack, a ":function" inside vim9script uses legacy
+ * syntax.
+ */
     int
 in_vim9script(void)
 {
-    // Do not go up the stack, a ":function" inside vim9script uses legacy
-    // syntax.  "sc_version" is also set when compiling a ":def" function in
-    // legacy script.
-    return current_sctx.sc_version == SCRIPT_VERSION_VIM9
-		|| (cmdmod.cmod_flags & CMOD_VIM9CMD);
+    // "sc_version" is also set when compiling a ":def" function in legacy
+    // script.
+    return (current_sctx.sc_version == SCRIPT_VERSION_VIM9
+					 || (cmdmod.cmod_flags & CMOD_VIM9CMD))
+		&& !(cmdmod.cmod_flags & CMOD_LEGACY);
 }
+
+#if defined(FEAT_EVAL) || defined(PROTO)
+/*
+ * Return TRUE if the current script is Vim9 script.
+ * This also returns TRUE in a legacy function in a Vim9 script.
+ */
+    int
+current_script_is_vim9(void)
+{
+    return SCRIPT_ID_VALID(current_sctx.sc_sid)
+	    && SCRIPT_ITEM(current_sctx.sc_sid)->sn_version
+						       == SCRIPT_VERSION_VIM9;
+}
+#endif
 
 /*
  * ":vim9script".
@@ -120,7 +139,7 @@ not_in_vim9(exarg_T *eap)
     int
 vim9_bad_comment(char_u *p)
 {
-    if (p[0] == '#' && p[1] == '{')
+    if (p[0] == '#' && p[1] == '{' && p[2] != '{')
     {
 	emsg(_(e_cannot_use_hash_curly_to_start_comment));
 	return TRUE;
@@ -129,16 +148,38 @@ vim9_bad_comment(char_u *p)
 }
 
 /*
- * Return TRUE if "p" points at a "#" not followed by '{'.
+ * Return TRUE if "p" points at a "#" not followed by one '{'.
  * Does not check for white space.
  */
     int
 vim9_comment_start(char_u *p)
 {
-    return p[0] == '#' && p[1] != '{';
+    return p[0] == '#' && (p[1] != '{' || p[2] == '{');
 }
 
 #if defined(FEAT_EVAL) || defined(PROTO)
+
+/*
+ * "++nr" and "--nr" commands.
+ */
+    void
+ex_incdec(exarg_T *eap)
+{
+    char_u	*cmd = eap->cmd;
+    size_t	len = STRLEN(eap->cmd) + 6;
+
+    // This works like "nr += 1" or "nr -= 1".
+    eap->cmd = alloc(len);
+    if (eap->cmd == NULL)
+	return;
+    vim_snprintf((char *)eap->cmd, len, "%s %c= 1", cmd + 2,
+				     eap->cmdidx == CMD_increment ? '+' : '-');
+    eap->arg = eap->cmd;
+    eap->cmdidx = CMD_var;
+    ex_let(eap);
+    vim_free(eap->cmd);
+    eap->cmd = cmd;
+}
 
 /*
  * ":export let Name: type"
@@ -282,8 +323,7 @@ find_exported(
     svar_T	*sv;
     scriptitem_T *script = SCRIPT_ITEM(sid);
 
-    // find name in "script"
-    // TODO: also find script-local user function
+    // Find name in "script".
     idx = get_script_item_idx(sid, name, 0, cctx);
     if (idx >= 0)
     {
@@ -323,6 +363,13 @@ find_exported(
 	{
 	    if (verbose)
 		semsg(_(e_item_not_found_in_script_str), name);
+	    return -1;
+	}
+	else if (((*ufunc)->uf_flags & FC_EXPORT) == 0)
+	{
+	    if (verbose)
+		semsg(_(e_item_not_exported_in_script_str), name);
+	    *ufunc = NULL;
 	    return -1;
 	}
     }
@@ -576,7 +623,8 @@ handle_import(
 	    }
 	    else
 	    {
-		if (check_defined(name, len, cctx, FALSE) == FAIL)
+		if (as_name == NULL
+			      && check_defined(name, len, cctx, FALSE) == FAIL)
 		    goto erret;
 
 		imported = new_imported(gap != NULL ? gap
@@ -689,7 +737,8 @@ vim9_declare_scriptvar(exarg_T *eap, char_u *arg)
  * When "create" is TRUE this is a new variable, otherwise find and update an
  * existing variable.
  * "flags" can have ASSIGN_FINAL or ASSIGN_CONST.
- * When "*type" is NULL use "tv" for the type and update "*type".
+ * When "*type" is NULL use "tv" for the type and update "*type".  If
+ * "do_member" is TRUE also use the member type, otherwise use "any".
  */
     void
 update_vim9_script_var(
@@ -697,7 +746,8 @@ update_vim9_script_var(
 	dictitem_T  *di,
 	int	    flags,
 	typval_T    *tv,
-	type_T	    **type)
+	type_T	    **type,
+	int	    do_member)
 {
     scriptitem_T    *si = SCRIPT_ITEM(current_sctx.sc_sid);
     hashitem_T	    *hi;
@@ -750,7 +800,8 @@ update_vim9_script_var(
     if (sv != NULL)
     {
 	if (*type == NULL)
-	    *type = typval2type(tv, get_copyID(), &si->sn_type_list);
+	    *type = typval2type(tv, get_copyID(), &si->sn_type_list,
+								    do_member);
 	sv->sv_type = *type;
     }
 

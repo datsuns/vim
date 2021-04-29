@@ -1431,7 +1431,7 @@ func Test_input_func()
   call assert_equal('item1 item2 item3', c)
 
   " Test for using special characters as default input
-  call feedkeys(":let c = input('name? ', \"x\<BS>y\")\<CR>\<CR>", 'xt')
+  call feedkeys(":let c = input('name? ', \"x\\<BS>y\")\<CR>\<CR>", 'xt')
   call assert_equal('y', c)
 
   " Test for using <CR> as default input
@@ -1497,6 +1497,7 @@ endfunc
 
 func Test_balloon_show()
   CheckFeature balloon_eval
+
   " This won't do anything but must not crash either.
   call balloon_show('hi!')
   if !has('gui_running')
@@ -2648,6 +2649,14 @@ endfunc
 func Test_browsedir()
   CheckFeature browse
   call assert_fails('call browsedir("open", [])', 'E730:')
+endfunc
+
+func HasDefault(msg = 'msg')
+  return a:msg
+endfunc
+
+func Test_default_arg_value()
+  call assert_equal('msg', HasDefault())
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

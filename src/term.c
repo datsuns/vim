@@ -2545,7 +2545,7 @@ out_flush(void)
 	// set out_pos to 0 before ui_write, to avoid recursiveness
 	len = out_pos;
 	out_pos = 0;
-	ui_write(out_buf, len);
+	ui_write(out_buf, len, FALSE);
 #ifdef FEAT_JOB_CHANNEL
 	if (ch_log_output)
 	{
@@ -3365,8 +3365,9 @@ win_new_shellsize(void)
 	ui_new_shellsize();
     if (old_Rows != Rows)
     {
-	// if 'window' uses the whole screen, keep it using that
-	if (p_window == old_Rows - 1 || old_Rows == 0)
+	// If 'window' uses the whole screen, keep it using that.
+	// Don't change it when set with "-w size" on the command line.
+	if (p_window == old_Rows - 1 || (old_Rows == 0 && p_window == 0))
 	    p_window = Rows - 1;
 	old_Rows = Rows;
 	shell_new_rows();	// update window sizes
@@ -3931,7 +3932,11 @@ scroll_start(void)
     }
 }
 
+// True if cursor is not visible
 static int cursor_is_off = FALSE;
+
+// True if cursor is not visible due to an ongoing cursor-less sleep
+static int cursor_is_asleep = FALSE;
 
 /*
  * Enable the cursor without checking if it's already enabled.
@@ -3941,6 +3946,7 @@ cursor_on_force(void)
 {
     out_str(T_VE);
     cursor_is_off = FALSE;
+    cursor_is_asleep = FALSE;
 }
 
 /*
@@ -3949,7 +3955,7 @@ cursor_on_force(void)
     void
 cursor_on(void)
 {
-    if (cursor_is_off)
+    if (cursor_is_off && !cursor_is_asleep)
 	cursor_on_force();
 }
 
@@ -3964,6 +3970,35 @@ cursor_off(void)
 	out_str(T_VI);	    // disable cursor
 	cursor_is_off = TRUE;
     }
+}
+
+/*
+ * Check whether the cursor is invisible due to an ongoing cursor-less sleep
+ */
+    int
+cursor_is_sleeping(void)
+{
+    return cursor_is_asleep;
+}
+
+/*
+ * Disable the cursor and mark it disabled by cursor-less sleep
+ */
+    void
+cursor_sleep(void)
+{
+    cursor_is_asleep = TRUE;
+    cursor_off();
+}
+
+/*
+ * Enable the cursor and mark it not disabled by cursor-less sleep
+ */
+    void
+cursor_unsleep(void)
+{
+    cursor_is_asleep = FALSE;
+    cursor_on();
 }
 
 #if defined(CURSOR_SHAPE) || defined(PROTO)

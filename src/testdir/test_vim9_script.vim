@@ -854,6 +854,20 @@ def Test_error_in_nested_function()
   assert_equal(0, g:test_var)
 enddef
 
+def Test_abort_after_error()
+  var lines =<< trim END
+      vim9script
+      while true
+        echo notfound
+      endwhile
+      g:gotthere = true
+  END
+  g:gotthere = false
+  CheckScriptFailure(lines, 'E121:')
+  assert_false(g:gotthere)
+  unlet g:gotthere
+enddef
+
 def Test_cexpr_vimscript()
   # only checks line continuation
   set errorformat=File\ %f\ line\ %l
@@ -1280,6 +1294,8 @@ def Test_import_as()
 
   var import_lines =<< trim END
     vim9script
+    var one = 'notused'
+    var yes = 777
     import one as thatOne from './XexportAs'
     assert_equal(1, thatOne)
     import yes as yesYes from './XexportAs'
@@ -1623,6 +1639,10 @@ def Test_vim9script_funcref()
       export def FastSort(): list<number>
         return range(5)->sort(Compare)
       enddef
+
+      export def GetString(arg: string): string
+        return arg
+      enddef
   END
   writefile(sortlines, 'Xsort.vim')
 
@@ -1633,6 +1653,20 @@ def Test_vim9script_funcref()
       g:result = FastSort()
     enddef
     Test()
+
+    # using a function imported with "as"
+    import * as anAlias from './Xsort.vim'
+    assert_equal('yes', anAlias.GetString('yes'))
+
+    # using the function from a compiled function
+    def TestMore(): string
+      var s = s:anAlias.GetString('foo')
+      return s .. anAlias.GetString('bar')
+    enddef
+    assert_equal('foobar', TestMore())
+
+    # error when using a function that isn't exported
+    assert_fails('anAlias.Compare(1, 2)', 'E1049:')
   END
   writefile(lines, 'Xscript.vim')
 
@@ -2263,6 +2297,13 @@ def Test_for_outside_of_function()
     endfor
     assert_equal(['', '0', '1', '2', '3'], getline(1, '$'))
     bwipe!
+
+    var result = ''
+    for i in [1, 2, 3]
+      var loop = ' loop ' .. i
+      result ..= loop
+    endfor
+    assert_equal(' loop 1 loop 2 loop 3', result)
   END
   writefile(lines, 'Xvim9for.vim')
   source Xvim9for.vim
@@ -2270,51 +2311,95 @@ def Test_for_outside_of_function()
 enddef
 
 def Test_for_loop()
-  var result = ''
-  for cnt in range(7)
-    if cnt == 4
-      break
-    endif
-    if cnt == 2
-      continue
-    endif
-    result ..= cnt .. '_'
-  endfor
-  assert_equal('0_1_3_', result)
+  var lines =<< trim END
+      var result = ''
+      for cnt in range(7)
+        if cnt == 4
+          break
+        endif
+        if cnt == 2
+          continue
+        endif
+        result ..= cnt .. '_'
+      endfor
+      assert_equal('0_1_3_', result)
 
-  var concat = ''
-  for str in eval('["one", "two"]')
-    concat ..= str
-  endfor
-  assert_equal('onetwo', concat)
+      var concat = ''
+      for str in eval('["one", "two"]')
+        concat ..= str
+      endfor
+      assert_equal('onetwo', concat)
 
-  var total = 0
-  for nr in
-      [1, 2, 3]
-    total += nr
-  endfor
-  assert_equal(6, total)
+      var total = 0
+      for nr in
+          [1, 2, 3]
+        total += nr
+      endfor
+      assert_equal(6, total)
 
-  total = 0
-  for nr
-    in [1, 2, 3]
-    total += nr
-  endfor
-  assert_equal(6, total)
+      total = 0
+      for nr
+        in [1, 2, 3]
+        total += nr
+      endfor
+      assert_equal(6, total)
 
-  total = 0
-  for nr
-    in
-    [1, 2, 3]
-    total += nr
-  endfor
-  assert_equal(6, total)
+      total = 0
+      for nr
+        in
+        [1, 2, 3]
+        total += nr
+      endfor
+      assert_equal(6, total)
 
-  var res = ""
-  for [n: number, s: string] in [[1, 'a'], [2, 'b']]
-    res ..= n .. s
-  endfor
-  assert_equal('1a2b', res)
+      # with type
+      total = 0
+      for n: number in [1, 2, 3]
+        total += n
+      endfor
+      assert_equal(6, total)
+
+      var chars = ''
+      for s: string in 'foobar'
+        chars ..= s
+      endfor
+      assert_equal('foobar', chars)
+
+      # unpack with type
+      var res = ''
+      for [n: number, s: string] in [[1, 'a'], [2, 'b']]
+        res ..= n .. s
+      endfor
+      assert_equal('1a2b', res)
+
+      # loop over string
+      res = ''
+      for c in 'aéc̀d'
+        res ..= c .. '-'
+      endfor
+      assert_equal('a-é-c̀-d-', res)
+
+      res = ''
+      for c in ''
+        res ..= c .. '-'
+      endfor
+      assert_equal('', res)
+
+      res = ''
+      for c in test_null_string()
+        res ..= c .. '-'
+      endfor
+      assert_equal('', res)
+
+      var foo: list<dict<any>> = [
+              {a: 'Cat'}
+            ]
+      for dd in foo
+        dd.counter = 12
+      endfor
+      assert_equal([{a: 'Cat', counter: 12}], foo)
+  END
+  CheckDefAndScriptSuccess(lines)
 enddef
 
 def Test_for_loop_fails()
@@ -2326,10 +2411,31 @@ def Test_for_loop_fails()
   CheckDefFailure(['var x = 5', 'for x in range(5)'], 'E1017:')
   CheckScriptFailure(['def Func(arg: any)', 'for arg in range(5)', 'enddef', 'defcompile'], 'E1006:')
   delfunc! g:Func
-  CheckDefFailure(['for i in "text"'], 'E1012:')
   CheckDefFailure(['for i in xxx'], 'E1001:')
   CheckDefFailure(['endfor'], 'E588:')
   CheckDefFailure(['for i in range(3)', 'echo 3'], 'E170:')
+
+  # wrong type detected at compile time
+  CheckDefFailure(['for i in {a: 1}', 'echo 3', 'endfor'], 'E1177: For loop on dict not supported')
+
+  # wrong type detected at runtime
+  g:adict = {a: 1}
+  CheckDefExecFailure(['for i in g:adict', 'echo 3', 'endfor'], 'E1177: For loop on dict not supported')
+  unlet g:adict
+
+  var lines =<< trim END
+      var d: list<dict<any>> = [{a: 0}]
+      for e in d
+        e = {a: 0, b: ''}
+      endfor
+  END
+  CheckDefAndScriptFailure2(lines, 'E1018:', 'E46:', 3)
+
+  lines =<< trim END
+      for nr: number in ['foo']
+      endfor
+  END
+  CheckDefAndScriptFailure(lines, 'E1012: Type mismatch; expected number but got string', 1)
 enddef
 
 def Test_for_loop_script_var()
@@ -2420,20 +2526,23 @@ def Test_for_loop_unpack()
 enddef
 
 def Test_for_loop_with_try_continue()
-  var looped = 0
-  var cleanup = 0
-  for i in range(3)
-    looped += 1
-    try
-      eval [][0]
-    catch
-      continue
-    finally
-      cleanup += 1
-    endtry
-  endfor
-  assert_equal(3, looped)
-  assert_equal(3, cleanup)
+  var lines =<< trim END
+      var looped = 0
+      var cleanup = 0
+      for i in range(3)
+        looped += 1
+        try
+          eval [][0]
+        catch
+          continue
+        finally
+          cleanup += 1
+        endtry
+      endfor
+      assert_equal(3, looped)
+      assert_equal(3, cleanup)
+  END
+  CheckDefAndScriptSuccess(lines)
 enddef
 
 def Test_while_loop()
@@ -3187,6 +3296,35 @@ def Test_source_vim9_from_legacy()
   delete('Xvim9_script.vim')
 enddef
 
+def Test_declare_script_in_func()
+  var lines =<< trim END
+      vim9script
+      func Declare()
+        let s:local = 123
+      endfunc
+      Declare()
+      assert_equal(123, local)
+
+      var error: string
+      try
+        local = 'asdf'
+      catch
+        error = v:exception
+      endtry
+      assert_match('E1012: Type mismatch; expected number but got string', error)
+
+      lockvar local
+      try
+        local = 999
+      catch
+        error = v:exception
+      endtry
+      assert_match('E741: Value is locked: local', error)
+  END
+  CheckScriptSuccess(lines)
+enddef
+        
+
 func Test_vim9script_not_global()
   " check that items defined in Vim9 script are script-local, not global
   let vim9lines =<< trim END
@@ -3237,6 +3375,7 @@ def Test_vim9_autoload()
        return 'test'
      enddef
      g:some#name = 'name'
+     g:some#dict = {key: 'value'}
 
      def some#varargs(a1: string, ...l: list<string>): string
        return a1 .. l[0] .. l[1]
@@ -3250,6 +3389,7 @@ def Test_vim9_autoload()
 
   assert_equal('test', g:some#gettest())
   assert_equal('name', g:some#name)
+  assert_equal('value', g:some#dict.key)
   g:some#other = 'other'
   assert_equal('other', g:some#other)
 
@@ -3438,7 +3578,7 @@ func Test_no_redraw_when_restoring_cpo()
       vim9script
       set cpo+=M
       exe 'set rtp^=' .. getcwd() .. '/Xdir'
-      au CmdlineEnter : ++once timer_start(0, () => script#func())
+      au CmdlineEnter : ++once timer_start(0, (_) => script#func())
       setline(1, 'some text')
   END
   call writefile(lines, 'XTest_redraw_cpo')
@@ -3564,7 +3704,7 @@ enddef
 def Test_catch_exception_in_callback()
   var lines =<< trim END
     vim9script
-    def Callback(...l: any)
+    def Callback(...l: list<any>)
       try
         var x: string
         var y: string
@@ -3589,10 +3729,10 @@ def Test_no_unknown_error_after_error()
   var lines =<< trim END
       vim9script
       var source: list<number>
-      def Out_cb(...l: any)
+      def Out_cb(...l: list<any>)
           eval [][0]
       enddef
-      def Exit_cb(...l: any)
+      def Exit_cb(...l: list<any>)
           sleep 1m
           source += l
       enddef
@@ -3601,7 +3741,7 @@ def Test_no_unknown_error_after_error()
         sleep 10m
       endwhile
       # wait for Exit_cb() to be called
-      sleep 100m
+      sleep 200m
   END
   writefile(lines, 'Xdef')
   assert_fails('so Xdef', ['E684:', 'E1012:'])
@@ -3722,6 +3862,37 @@ def Test_unsupported_commands()
   END
   CheckDefFailure(lines, 'E1100:')
   CheckScriptFailure(['vim9script'] + lines, 'E1100:')
+enddef
+
+def Test_mapping_line_number()
+  var lines =<< trim END
+      vim9script
+      def g:FuncA()
+          # Some comment
+          FuncB(0)
+      enddef
+          # Some comment
+      def FuncB(
+          # Some comment
+          n: number
+      )
+          exe 'nno '
+              # Some comment
+              .. '<F3> a'
+              .. 'b'
+              .. 'c'
+      enddef
+  END
+  CheckScriptSuccess(lines)
+  var res = execute('verbose nmap <F3>')
+  assert_match('No mapping found', res)
+
+  g:FuncA()
+  res = execute('verbose nmap <F3>')
+  assert_match(' <F3> .* abc.*Last set from .*XScriptSuccess\d\+ line 11', res)
+
+  nunmap <F3>
+  delfunc g:FuncA
 enddef
 
 " Keep this last, it messes up highlighting.
