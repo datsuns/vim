@@ -1259,6 +1259,12 @@ fill_partial_and_closure(partial_T *pt, ufunc_T *ufunc, ectx_T *ectx)
     return OK;
 }
 
+// used for v_instr of typval of VAR_INSTR
+struct instr_S {
+    ectx_T	*instr_ectx;
+    isn_T	*instr_instr;
+};
+
 // used for substitute_instr
 typedef struct subs_expr_S {
     ectx_T	*subs_ectx;
@@ -1285,9 +1291,14 @@ exec_instructions(ectx_T *ectx)
 {
     int		breakcheck_count = 0;
     typval_T	*tv;
+    int		ret = FAIL;
+    int		save_trylevel_at_start = ectx->ec_trylevel_at_start;
 
     // Start execution at the first instruction.
     ectx->ec_iidx = 0;
+
+    // Only catch exceptions in this instruction list.
+    ectx->ec_trylevel_at_start = trylevel;
 
     for (;;)
     {
@@ -1303,7 +1314,7 @@ exec_instructions(ectx_T *ectx)
 	    // Turn CTRL-C into an exception.
 	    got_int = FALSE;
 	    if (throw_exception("Vim:Interrupt", ET_INTERRUPT, NULL) == FAIL)
-		return FAIL;
+		goto theend;
 	    did_throw = TRUE;
 	}
 
@@ -1312,7 +1323,7 @@ exec_instructions(ectx_T *ectx)
 	    // Turn an error message into an exception.
 	    did_emsg = FALSE;
 	    if (throw_exception(*msg_list, ET_ERROR, NULL) == FAIL)
-		return FAIL;
+		goto theend;
 	    did_throw = TRUE;
 	    *msg_list = NULL;
 	}
@@ -1337,7 +1348,7 @@ exec_instructions(ectx_T *ectx)
 		// Not inside try or need to return from current functions.
 		// Push a dummy return value.
 		if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-		    return FAIL;
+		    goto theend;
 		tv = STACK_TV_BOT(0);
 		tv->v_type = VAR_NUMBER;
 		tv->vval.v_number = 0;
@@ -1347,12 +1358,12 @@ exec_instructions(ectx_T *ectx)
 		    // At the toplevel we are done.
 		    need_rethrow = TRUE;
 		    if (handle_closure_in_use(ectx, FALSE) == FAIL)
-			return FAIL;
+			goto theend;
 		    goto done;
 		}
 
 		if (func_return(ectx) == FAIL)
-		    return FAIL;
+		    goto theend;
 	    }
 	    continue;
 	}
@@ -1376,6 +1387,44 @@ exec_instructions(ectx_T *ectx)
 									== FAIL
 				|| did_emsg)
 			goto on_error;
+		}
+		break;
+
+	    // Evaluate an expression with legacy syntax, push it onto the
+	    // stack.
+	    case ISN_LEGACY_EVAL:
+		{
+		    char_u  *arg = iptr->isn_arg.string;
+		    int	    res;
+		    int	    save_flags = cmdmod.cmod_flags;
+
+		    if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
+			goto theend;
+		    tv = STACK_TV_BOT(0);
+		    init_tv(tv);
+		    cmdmod.cmod_flags |= CMOD_LEGACY;
+		    res = eval0(arg, tv, NULL, &EVALARG_EVALUATE);
+		    cmdmod.cmod_flags = save_flags;
+		    if (res == FAIL)
+			goto on_error;
+		    ++ectx->ec_stack.ga_len;
+		}
+		break;
+
+	    // push typeval VAR_INSTR with instructions to be executed
+	    case ISN_INSTR:
+		{
+		    if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
+			goto theend;
+		    tv = STACK_TV_BOT(0);
+		    tv->vval.v_instr = ALLOC_ONE(instr_T);
+		    if (tv->vval.v_instr == NULL)
+			goto on_error;
+		    ++ectx->ec_stack.ga_len;
+
+		    tv->v_type = VAR_INSTR;
+		    tv->vval.v_instr->instr_ectx = ectx;
+		    tv->vval.v_instr->instr_instr = iptr->isn_arg.instr;
 		}
 		break;
 
@@ -1433,13 +1482,40 @@ exec_instructions(ectx_T *ectx)
 		    if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
 		    {
 			vim_free(res);
-			return FAIL;
+			goto theend;
 		    }
 		    tv = STACK_TV_BOT(0);
 		    tv->v_type = VAR_STRING;
 		    tv->vval.v_string = res;
 		    ++ectx->ec_stack.ga_len;
 		}
+		break;
+
+	    case ISN_CEXPR_AUCMD:
+#ifdef FEAT_QUICKFIX
+		if (trigger_cexpr_autocmd(iptr->isn_arg.number) == FAIL)
+		    goto on_error;
+#endif
+		break;
+
+	    case ISN_CEXPR_CORE:
+#ifdef FEAT_QUICKFIX
+		{
+		    exarg_T ea;
+		    int	    res;
+
+		    CLEAR_FIELD(ea);
+		    ea.cmdidx = iptr->isn_arg.cexpr.cexpr_ref->cer_cmdidx;
+		    ea.forceit = iptr->isn_arg.cexpr.cexpr_ref->cer_forceit;
+		    ea.cmdlinep = &iptr->isn_arg.cexpr.cexpr_ref->cer_cmdline;
+		    --ectx->ec_stack.ga_len;
+		    tv = STACK_TV_BOT(0);
+		    res = cexpr_core(&ea, tv);
+		    clear_tv(tv);
+		    if (res == FAIL)
+			goto on_error;
+		}
+#endif
 		break;
 
 	    // execute Ex command from pieces on the stack
@@ -1471,7 +1547,7 @@ exec_instructions(ectx_T *ectx)
 			{
 			    cmd = alloc(len + 1);
 			    if (cmd == NULL)
-				return FAIL;
+				goto theend;
 			    len = 0;
 			}
 		    }
@@ -1528,7 +1604,8 @@ exec_instructions(ectx_T *ectx)
 						      || tv->v_type == VAR_JOB)
 			    {
 				SOURCING_LNUM = iptr->isn_lnum;
-				emsg(_(e_inval_string));
+				semsg(_(e_using_invalid_value_as_string_str),
+						    vartype_name(tv->v_type));
 				break;
 			    }
 			    else
@@ -1590,7 +1667,7 @@ exec_instructions(ectx_T *ectx)
 	    // load local variable or argument
 	    case ISN_LOAD:
 		if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-		    return FAIL;
+		    goto theend;
 		copy_tv(STACK_TV_VAR(iptr->isn_arg.number), STACK_TV_BOT(0));
 		++ectx->ec_stack.ga_len;
 		break;
@@ -1598,7 +1675,7 @@ exec_instructions(ectx_T *ectx)
 	    // load v: variable
 	    case ISN_LOADV:
 		if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-		    return FAIL;
+		    goto theend;
 		copy_tv(get_vim_var_tv(iptr->isn_arg.number), STACK_TV_BOT(0));
 		++ectx->ec_stack.ga_len;
 		break;
@@ -1611,10 +1688,10 @@ exec_instructions(ectx_T *ectx)
 
 		    sv = get_script_svar(sref, ectx);
 		    if (sv == NULL)
-			return FAIL;
+			goto theend;
 		    allocate_if_null(sv->sv_tv);
 		    if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-			return FAIL;
+			goto theend;
 		    copy_tv(sv->sv_tv, STACK_TV_BOT(0));
 		    ++ectx->ec_stack.ga_len;
 		}
@@ -1637,7 +1714,7 @@ exec_instructions(ectx_T *ectx)
 		    else
 		    {
 			if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-			    return FAIL;
+			    goto theend;
 			copy_tv(&di->di_tv, STACK_TV_BOT(0));
 			++ectx->ec_stack.ga_len;
 		    }
@@ -1673,7 +1750,7 @@ exec_instructions(ectx_T *ectx)
 			    namespace = 't';
 			    break;
 			default:  // Cannot reach here
-			    return FAIL;
+			    goto theend;
 		    }
 		    di = find_var_in_ht(ht, 0, iptr->isn_arg.string, TRUE);
 
@@ -1687,7 +1764,7 @@ exec_instructions(ectx_T *ectx)
 		    else
 		    {
 			if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-			    return FAIL;
+			    goto theend;
 			copy_tv(&di->di_tv, STACK_TV_BOT(0));
 			++ectx->ec_stack.ga_len;
 		    }
@@ -1700,7 +1777,7 @@ exec_instructions(ectx_T *ectx)
 		    char_u *name = iptr->isn_arg.string;
 
 		    if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-			return FAIL;
+			goto theend;
 		    SOURCING_LNUM = iptr->isn_lnum;
 		    if (eval_variable(name, (int)STRLEN(name),
 			      STACK_TV_BOT(0), NULL, EVAL_VAR_VERBOSE) == FAIL)
@@ -1724,10 +1801,10 @@ exec_instructions(ectx_T *ectx)
 			case ISN_LOADWDICT: d = curwin->w_vars; break;
 			case ISN_LOADTDICT: d = curtab->tp_vars; break;
 			default:  // Cannot reach here
-			    return FAIL;
+			    goto theend;
 		    }
 		    if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-			return FAIL;
+			goto theend;
 		    tv = STACK_TV_BOT(0);
 		    tv->v_type = VAR_DICT;
 		    tv->v_lock = 0;
@@ -1746,9 +1823,9 @@ exec_instructions(ectx_T *ectx)
 		    // This is not expected to fail, name is checked during
 		    // compilation: don't set SOURCING_LNUM.
 		    if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-			return FAIL;
+			goto theend;
 		    if (eval_option(&name, &optval, TRUE) == FAIL)
-			return FAIL;
+			goto theend;
 		    *STACK_TV_BOT(0) = optval;
 		    ++ectx->ec_stack.ga_len;
 		}
@@ -1761,7 +1838,7 @@ exec_instructions(ectx_T *ectx)
 		    char_u	*name = iptr->isn_arg.string;
 
 		    if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-			return FAIL;
+			goto theend;
 		    // name is always valid, checked when compiling
 		    (void)eval_env_var(&name, &optval, TRUE);
 		    *STACK_TV_BOT(0) = optval;
@@ -1772,7 +1849,7 @@ exec_instructions(ectx_T *ectx)
 	    // load @register
 	    case ISN_LOADREG:
 		if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-		    return FAIL;
+		    goto theend;
 		tv = STACK_TV_BOT(0);
 		tv->v_type = VAR_STRING;
 		tv->v_lock = 0;
@@ -1824,7 +1901,7 @@ exec_instructions(ectx_T *ectx)
 
 		    sv = get_script_svar(sref, ectx);
 		    if (sv == NULL)
-			return FAIL;
+			goto theend;
 		    --ectx->ec_stack.ga_len;
 
 		    // "const" and "final" are checked at compile time, locking
@@ -1926,7 +2003,7 @@ exec_instructions(ectx_T *ectx)
 			    ht = &curtab->tp_vars->dv_hashtab;
 			    break;
 			default:  // Cannot reach here
-			    return FAIL;
+			    goto theend;
 		    }
 
 		    --ectx->ec_stack.ga_len;
@@ -2031,7 +2108,7 @@ exec_instructions(ectx_T *ectx)
 				goto on_error;
 			    // append to list, only fails when out of memory
 			    if (list_append_tv(list, tv) == FAIL)
-				return FAIL;
+				goto theend;
 			    clear_tv(tv);
 			}
 		    }
@@ -2066,7 +2143,7 @@ exec_instructions(ectx_T *ectx)
 				goto on_error;
 			    // add to dict, only fails when out of memory
 			    if (dict_add_tv(dict, (char *)key, tv) == FAIL)
-				return FAIL;
+				goto theend;
 			    clear_tv(tv);
 			}
 		    }
@@ -2199,7 +2276,7 @@ exec_instructions(ectx_T *ectx)
 		    {
 			SOURCING_LNUM = iptr->isn_lnum;
 			iemsg("LOADOUTER depth more than scope levels");
-			return FAIL;
+			goto theend;
 		    }
 		    tv = ((typval_T *)outer->out_stack->ga_data)
 				    + outer->out_frame_idx + STACK_FRAME_SIZE
@@ -2207,7 +2284,7 @@ exec_instructions(ectx_T *ectx)
 		    if (iptr->isn_type == ISN_LOADOUTER)
 		    {
 			if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-			    return FAIL;
+			    goto theend;
 			copy_tv(tv, STACK_TV_BOT(0));
 			++ectx->ec_stack.ga_len;
 		    }
@@ -2369,7 +2446,7 @@ exec_instructions(ectx_T *ectx)
 	    case ISN_PUSHCHANNEL:
 	    case ISN_PUSHJOB:
 		if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-		    return FAIL;
+		    goto theend;
 		tv = STACK_TV_BOT(0);
 		tv->v_lock = 0;
 		++ectx->ec_stack.ga_len;
@@ -2445,7 +2522,7 @@ exec_instructions(ectx_T *ectx)
 	    // for the list header and the items
 	    case ISN_NEWLIST:
 		if (exe_newlist(iptr->isn_arg.number, ectx) == FAIL)
-		    return FAIL;
+		    goto theend;
 		break;
 
 	    // create a dict from items on the stack
@@ -2458,7 +2535,7 @@ exec_instructions(ectx_T *ectx)
 		    int		idx;
 
 		    if (dict == NULL)
-			return FAIL;
+			goto theend;
 		    for (idx = 0; idx < count; ++idx)
 		    {
 			// have already checked key type is VAR_STRING
@@ -2479,7 +2556,7 @@ exec_instructions(ectx_T *ectx)
 			if (item == NULL)
 			{
 			    dict_unref(dict);
-			    return FAIL;
+			    goto theend;
 			}
 			item->di_tv = *STACK_TV_BOT(2 * (idx - count) + 1);
 			item->di_tv.v_lock = 0;
@@ -2487,14 +2564,14 @@ exec_instructions(ectx_T *ectx)
 			{
 			    // can this ever happen?
 			    dict_unref(dict);
-			    return FAIL;
+			    goto theend;
 			}
 		    }
 
 		    if (count > 0)
 			ectx->ec_stack.ga_len -= 2 * count - 1;
 		    else if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-			return FAIL;
+			goto theend;
 		    else
 			++ectx->ec_stack.ga_len;
 		    tv = STACK_TV_BOT(-1);
@@ -2576,7 +2653,7 @@ exec_instructions(ectx_T *ectx)
 	    // return from a :def function call
 	    case ISN_RETURN_ZERO:
 		if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-		    return FAIL;
+		    goto theend;
 		tv = STACK_TV_BOT(0);
 		++ectx->ec_stack.ga_len;
 		tv->v_type = VAR_NUMBER;
@@ -2615,15 +2692,15 @@ exec_instructions(ectx_T *ectx)
 					       + iptr->isn_arg.funcref.fr_func;
 
 		    if (pt == NULL)
-			return FAIL;
+			goto theend;
 		    if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
 		    {
 			vim_free(pt);
-			return FAIL;
+			goto theend;
 		    }
 		    if (fill_partial_and_closure(pt, pt_dfunc->df_ufunc,
 								 ectx) == FAIL)
-			return FAIL;
+			goto theend;
 
 		    tv = STACK_TV_BOT(0);
 		    ++ectx->ec_stack.ga_len;
@@ -2640,7 +2717,7 @@ exec_instructions(ectx_T *ectx)
 
 		    if (copy_func(newfunc->nf_lambda, newfunc->nf_global,
 								 ectx) == FAIL)
-			return FAIL;
+			goto theend;
 		}
 		break;
 
@@ -2713,7 +2790,7 @@ exec_instructions(ectx_T *ectx)
 				   STACK_TV_VAR(iptr->isn_arg.forloop.for_idx);
 
 		    if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-			return FAIL;
+			goto theend;
 		    if (ltv->v_type == VAR_LIST)
 		    {
 			list_T *list = ltv->vval.v_list;
@@ -2809,7 +2886,7 @@ exec_instructions(ectx_T *ectx)
 		    {
 			semsg(_(e_for_loop_on_str_not_supported),
 						    vartype_name(ltv->v_type));
-			return FAIL;
+			goto theend;
 		    }
 		}
 		break;
@@ -2820,7 +2897,7 @@ exec_instructions(ectx_T *ectx)
 		    trycmd_T    *trycmd = NULL;
 
 		    if (GA_GROW(&ectx->ec_trystack, 1) == FAIL)
-			return FAIL;
+			goto theend;
 		    trycmd = ((trycmd_T *)ectx->ec_trystack.ga_data)
 						     + ectx->ec_trystack.ga_len;
 		    ++ectx->ec_trystack.ga_len;
@@ -2842,10 +2919,10 @@ exec_instructions(ectx_T *ectx)
 		{
 		    SOURCING_LNUM = iptr->isn_lnum;
 		    iemsg("Evaluating catch while current_exception is NULL");
-		    return FAIL;
+		    goto theend;
 		}
 		if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-		    return FAIL;
+		    goto theend;
 		tv = STACK_TV_BOT(0);
 		++ectx->ec_stack.ga_len;
 		tv->v_type = VAR_STRING;
@@ -2883,7 +2960,7 @@ exec_instructions(ectx_T *ectx)
 		    {
 			siemsg("TRYCONT: expected %d levels, found %d",
 					trycont->tct_levels, trystack->ga_len);
-			return FAIL;
+			goto theend;
 		    }
 		    // Make :endtry jump to any outer try block and the last
 		    // :endtry inside the loop to the loop start.
@@ -2974,7 +3051,7 @@ exec_instructions(ectx_T *ectx)
 			vim_free(tv->vval.v_string);
 			SOURCING_LNUM = iptr->isn_lnum;
 			emsg(_(e_throw_with_empty_string));
-			return FAIL;
+			goto theend;
 		    }
 
 		    // Inside a "catch" we need to first discard the caught
@@ -2997,7 +3074,7 @@ exec_instructions(ectx_T *ectx)
 								       == FAIL)
 		    {
 			vim_free(tv->vval.v_string);
-			return FAIL;
+			goto theend;
 		    }
 		    did_throw = TRUE;
 		}
@@ -3202,7 +3279,7 @@ exec_instructions(ectx_T *ectx)
 			goto on_error;
 		    }
 		    if (list_append_tv(l, tv2) == FAIL)
-			return FAIL;
+			goto theend;
 		    clear_tv(tv2);
 		    --ectx->ec_stack.ga_len;
 		}
@@ -3502,7 +3579,7 @@ exec_instructions(ectx_T *ectx)
 		    li = list_find(tv->vval.v_list, index);
 
 		    if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-			return FAIL;
+			goto theend;
 		    ++ectx->ec_stack.ga_len;
 		    copy_tv(&li->li_tv, STACK_TV_BOT(-1));
 
@@ -3735,7 +3812,7 @@ exec_instructions(ectx_T *ectx)
 			goto on_error;
 
 		    if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
-			return FAIL;
+			goto theend;
 		    ++ectx->ec_stack.ga_len;
 		    tv = STACK_TV_BOT(-1);
 		    tv->v_type = VAR_NUMBER;
@@ -3837,7 +3914,7 @@ exec_instructions(ectx_T *ectx)
 
 		    CHECK_LIST_MATERIALIZE(l);
 		    if (GA_GROW(&ectx->ec_stack, count - 1) == FAIL)
-			return FAIL;
+			goto theend;
 		    ectx->ec_stack.ga_len += count - 1;
 
 		    // Variable after semicolon gets a list with the remaining
@@ -3848,7 +3925,7 @@ exec_instructions(ectx_T *ectx)
 				  list_alloc_with_items(l->lv_len - count + 1);
 
 			if (rem_list == NULL)
-			    return FAIL;
+			    goto theend;
 			tv = STACK_TV_BOT(-count);
 			tv->vval.v_list = rem_list;
 			++rem_list->lv_refcount;
@@ -3932,7 +4009,7 @@ func_return:
 
 	if (func_return(ectx) == FAIL)
 	    // only fails when out of memory
-	    return FAIL;
+	    goto theend;
 	continue;
 
 on_error:
@@ -3962,11 +4039,41 @@ on_fatal_error:
 	// Jump here for an error that messes up the stack.
 	// If we are not inside a try-catch started here, abort execution.
 	if (trylevel <= ectx->ec_trylevel_at_start)
-	    return FAIL;
+	    goto theend;
     }
 
 done:
-    return OK;
+    ret = OK;
+theend:
+    ectx->ec_trylevel_at_start = save_trylevel_at_start;
+    return ret;
+}
+
+/*
+ * Execute the instructions from a VAR_INSTR typeval and put the result in
+ * "rettv".
+ * Return OK or FAIL.
+ */
+    int
+exe_typval_instr(typval_T *tv, typval_T *rettv)
+{
+    ectx_T	*ectx = tv->vval.v_instr->instr_ectx;
+    isn_T	*save_instr = ectx->ec_instr;
+    int		save_iidx = ectx->ec_iidx;
+    int		res;
+
+    ectx->ec_instr = tv->vval.v_instr->instr_instr;
+    res = exec_instructions(ectx);
+    if (res == OK)
+    {
+	*rettv = *STACK_TV_BOT(-1);
+	--ectx->ec_stack.ga_len;
+    }
+
+    ectx->ec_instr = save_instr;
+    ectx->ec_iidx = save_iidx;
+
+    return res;
 }
 
 /*
@@ -4080,7 +4187,6 @@ call_def_function(
     ga_init2(&ectx.ec_trystack, sizeof(trycmd_T), 10);
     ga_init2(&ectx.ec_funcrefs, sizeof(partial_T *), 10);
     ectx.ec_did_emsg_before = did_emsg_before;
-    ectx.ec_trylevel_at_start = trylevel;
 
     idx = argc - ufunc->uf_args.ga_len;
     if (idx > 0 && ufunc->uf_va_name == NULL)
@@ -4384,12 +4490,42 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 	    case ISN_EXEC:
 		smsg("%s%4d EXEC %s", pfx, current, iptr->isn_arg.string);
 		break;
+	    case ISN_LEGACY_EVAL:
+		smsg("%s%4d EVAL legacy %s", pfx, current,
+							 iptr->isn_arg.string);
+		break;
 	    case ISN_REDIRSTART:
 		smsg("%s%4d REDIR", pfx, current);
 		break;
 	    case ISN_REDIREND:
 		smsg("%s%4d REDIR END%s", pfx, current,
 					iptr->isn_arg.number ? " append" : "");
+		break;
+	    case ISN_CEXPR_AUCMD:
+#ifdef FEAT_QUICKFIX
+		smsg("%s%4d CEXPR pre %s", pfx, current,
+				       cexpr_get_auname(iptr->isn_arg.number));
+#endif
+		break;
+	    case ISN_CEXPR_CORE:
+#ifdef FEAT_QUICKFIX
+		{
+		    cexprref_T	    *cer = iptr->isn_arg.cexpr.cexpr_ref;
+
+		    smsg("%s%4d CEXPR core %s%s \"%s\"", pfx, current,
+				       cexpr_get_auname(cer->cer_cmdidx),
+				       cer->cer_forceit ? "!" : "",
+				       cer->cer_cmdline);
+		}
+#endif
+		break;
+	    case ISN_INSTR:
+		{
+		    smsg("%s%4d INSTR", pfx, current);
+		    list_instructions("    ", iptr->isn_arg.instr,
+								INT_MAX, NULL);
+		    msg("     -------------");
+		}
 		break;
 	    case ISN_SUBSTITUTE:
 		{
@@ -5180,6 +5316,7 @@ tv2bool(typval_T *tv)
 	case VAR_UNKNOWN:
 	case VAR_ANY:
 	case VAR_VOID:
+	case VAR_INSTR:
 	    break;
     }
     return FALSE;

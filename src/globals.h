@@ -1311,6 +1311,7 @@ EXTERN int  wild_menu_showing INIT(= 0);
 #ifdef MSWIN
 EXTERN char_u	toupper_tab[256];	// table for toupper()
 EXTERN char_u	tolower_tab[256];	// table for tolower()
+EXTERN int	found_register_arg INIT(= FALSE);
 #endif
 
 #ifdef FEAT_LINEBREAK
@@ -1615,7 +1616,7 @@ EXTERN char e_duparg2[]		INIT(= N_("E983: Duplicate argument: %s"));
 EXTERN char e_invargval[]	INIT(= N_("E475: Invalid value for argument %s"));
 EXTERN char e_invargNval[]	INIT(= N_("E475: Invalid value for argument %s: %s"));
 #ifdef FEAT_EVAL
-EXTERN char e_invexpr2[]	INIT(= N_("E15: Invalid expression: %s"));
+EXTERN char e_invexpr2[]	INIT(= N_("E15: Invalid expression: \"%s\""));
 #endif
 EXTERN char e_invrange[]	INIT(= N_("E16: Invalid range"));
 #if defined(UNIX) || defined(FEAT_SYN_HL) || defined(FEAT_SPELL)
@@ -1727,7 +1728,6 @@ EXTERN char e_list_end[]	INIT(= N_("E697: Missing end of List ']': %s"));
 EXTERN char e_listdictarg[]	INIT(= N_("E712: Argument of %s must be a List or Dictionary"));
 EXTERN char e_listdictblobarg[]	INIT(= N_("E896: Argument of %s must be a List, Dictionary or Blob"));
 EXTERN char e_modulus[]		INIT(= N_("E804: Cannot use '%' with Float"));
-EXTERN char e_inval_string[]	INIT(= N_("E908: using an invalid value as a String"));
 EXTERN char e_const_option[]	INIT(= N_("E996: Cannot lock an option"));
 EXTERN char e_unknown_option[]	INIT(= N_("E113: Unknown option: %s"));
 EXTERN char e_letunexp[]	INIT(= N_("E18: Unexpected characters in :let"));
@@ -1909,7 +1909,7 @@ EXTERN listitem_T range_list_item;
 EXTERN evalarg_T EVALARG_EVALUATE
 # ifdef DO_INIT
 	= {EVAL_EVALUATE, 0, NULL, NULL, NULL, {0, 0, 0, 0, NULL},
-							      NULL, NULL, NULL}
+					  {0, 0, 0, 0, NULL}, NULL, NULL, NULL}
 # endif
 	;
 #endif

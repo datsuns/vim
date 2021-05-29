@@ -161,6 +161,21 @@ main
 	    break;
 	}
 #endif
+#ifdef MSWIN
+    // Need to find "-register" and "-unregister" before loading any libraries.
+    for (i = 1; i < argc; ++i)
+	if ((STRICMP(argv[i] + 1, "register") == 0
+				    || STRICMP(argv[i] + 1, "unregister") == 0)
+		&& (argv[i][0] == '-' || argv[i][0] == '/'))
+	{
+	    found_register_arg = TRUE;
+	    break;
+	}
+#endif
+
+    /*
+     * Various initialisations shared with tests.
+     */
     common_init(&params);
 
 #ifdef VIMDLL
@@ -3113,7 +3128,11 @@ source_startup_scripts(mparm_T *parmp)
     if (parmp->use_vimrc != NULL)
     {
 	if (STRCMP(parmp->use_vimrc, "DEFAULTS") == 0)
-	    do_source((char_u *)VIM_DEFAULTS_FILE, FALSE, DOSO_NONE, NULL);
+	{
+	    if (do_source((char_u *)VIM_DEFAULTS_FILE, FALSE, DOSO_NONE, NULL)
+									 != OK)
+		emsg(e_failed_to_source_defaults);
+	}
 	else if (STRCMP(parmp->use_vimrc, "NONE") == 0
 				     || STRCMP(parmp->use_vimrc, "NORC") == 0)
 	{
@@ -3185,7 +3204,9 @@ source_startup_scripts(mparm_T *parmp)
 		&& !has_dash_c_arg)
 	    {
 		// When no .vimrc file was found: source defaults.vim.
-		do_source((char_u *)VIM_DEFAULTS_FILE, FALSE, DOSO_NONE, NULL);
+		if (do_source((char_u *)VIM_DEFAULTS_FILE, FALSE, DOSO_NONE,
+								 NULL) == FAIL)
+		    emsg(e_failed_to_source_defaults);
 	    }
 	}
 

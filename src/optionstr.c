@@ -618,8 +618,10 @@ check_stl_option(char_u *s)
 	}
 	if (*s == '{')
 	{
+	    int reevaluate = (*s == '%');
+
 	    s++;
-	    while (*s != '}' && *s)
+	    while ((*s != '}' || (reevaluate && s[-1] != '%')) && *s)
 		s++;
 	    if (*s != '}')
 		return N_("E540: Unclosed expression sequence");
@@ -907,6 +909,9 @@ ambw_end:
 		check_string_option(&p_bg);
 		init_highlight(FALSE, FALSE);
 	    }
+#endif
+#ifdef FEAT_TERMINAL
+	    term_update_colors_all();
 #endif
 	}
 	else
@@ -2176,7 +2181,7 @@ ambw_end:
     else if (varp == &curwin->w_p_wcr)
     {
 	if (curwin->w_buffer->b_term != NULL)
-	    term_update_colors();
+	    term_update_colors(curwin->w_buffer->b_term);
     }
 # if defined(MSWIN)
     // 'termwintype'
