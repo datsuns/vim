@@ -43,6 +43,14 @@ typedef struct {
     int		floc_restore_cmdmod_stacklen;
 } funclocal_T;
 
+// Structure to hold a reference to an outer_T, with information of whether it
+// was allocated.
+typedef struct {
+    outer_T	*or_outer;
+    partial_T	*or_partial;	// decrement "or_partial->pt_refcount" later
+    int		or_outer_allocated;  // free "or_outer" later
+} outer_ref_T;
+
 // A stack is used to store:
 // - arguments passed to a :def function
 // - info about the calling function, to use when returning
@@ -70,7 +78,7 @@ struct ectx_S {
     int		ec_frame_idx;	// index in ec_stack: context of ec_dfunc_idx
     int		ec_initial_frame_idx;	// frame index when called
 
-    outer_T	*ec_outer;	// outer scope used for closures, allocated
+    outer_ref_T	*ec_outer_ref;	// outer scope used for closures, allocated
     funclocal_T ec_funclocal;
 
     garray_T	ec_trystack;	// stack of trycmd_T values
@@ -143,7 +151,7 @@ exe_newlist(int count, ectx_T *ectx)
  * Call compiled function "cdf_idx" from compiled code.
  * This adds a stack frame and sets the instruction pointer to the start of the
  * called function.
- * If "pt" is not null use "pt->pt_outer" for ec_outer.
+ * If "pt" is not null use "pt->pt_outer" for ec_outer_ref->or_outer.
  *
  * Stack has:
  * - current arguments (already there)
@@ -280,7 +288,8 @@ call_dfunc(
     STACK_TV_BOT(STACK_FRAME_FUNC_OFF)->vval.v_number = ectx->ec_dfunc_idx;
     STACK_TV_BOT(STACK_FRAME_IIDX_OFF)->vval.v_number = ectx->ec_iidx;
     STACK_TV_BOT(STACK_FRAME_INSTR_OFF)->vval.v_string = (void *)ectx->ec_instr;
-    STACK_TV_BOT(STACK_FRAME_OUTER_OFF)->vval.v_string = (void *)ectx->ec_outer;
+    STACK_TV_BOT(STACK_FRAME_OUTER_OFF)->vval.v_string =
+						    (void *)ectx->ec_outer_ref;
     STACK_TV_BOT(STACK_FRAME_FUNCLOCAL_OFF)->vval.v_string = (void *)floc;
     STACK_TV_BOT(STACK_FRAME_IDX_OFF)->vval.v_number = ectx->ec_frame_idx;
     ectx->ec_frame_idx = ectx->ec_stack.ga_len;
@@ -300,30 +309,40 @@ call_dfunc(
     if (pt != NULL || ufunc->uf_partial != NULL
 					     || (ufunc->uf_flags & FC_CLOSURE))
     {
-	outer_T *outer = ALLOC_CLEAR_ONE(outer_T);
+	outer_ref_T *ref = ALLOC_CLEAR_ONE(outer_ref_T);
 
-	if (outer == NULL)
+	if (ref == NULL)
 	    return FAIL;
 	if (pt != NULL)
 	{
-	    *outer = pt->pt_outer;
-	    outer->out_up_is_copy = TRUE;
+	    ref->or_outer = &pt->pt_outer;
+	    ++pt->pt_refcount;
+	    ref->or_partial = pt;
 	}
 	else if (ufunc->uf_partial != NULL)
 	{
-	    *outer = ufunc->uf_partial->pt_outer;
-	    outer->out_up_is_copy = TRUE;
+	    ref->or_outer = &ufunc->uf_partial->pt_outer;
+	    ++ufunc->uf_partial->pt_refcount;
+	    ref->or_partial = ufunc->uf_partial;
 	}
 	else
 	{
-	    outer->out_stack = &ectx->ec_stack;
-	    outer->out_frame_idx = ectx->ec_frame_idx;
-	    outer->out_up = ectx->ec_outer;
+	    ref->or_outer = ALLOC_CLEAR_ONE(outer_T);
+	    if (ref->or_outer == NULL)
+	    {
+		vim_free(ref);
+		return FAIL;
+	    }
+	    ref->or_outer_allocated = TRUE;
+	    ref->or_outer->out_stack = &ectx->ec_stack;
+	    ref->or_outer->out_frame_idx = ectx->ec_frame_idx;
+	    if (ectx->ec_outer_ref != NULL)
+		ref->or_outer->out_up = ectx->ec_outer_ref->or_outer;
 	}
-	ectx->ec_outer = outer;
+	ectx->ec_outer_ref = ref;
     }
     else
-	ectx->ec_outer = NULL;
+	ectx->ec_outer_ref = NULL;
 
     ++ufunc->uf_calls;
 
@@ -476,7 +495,6 @@ handle_closure_in_use(ectx_T *ectx, int free_arguments)
 		pt->pt_funcstack = funcstack;
 		pt->pt_outer.out_stack = &funcstack->fs_ga;
 		pt->pt_outer.out_frame_idx = ectx->ec_frame_idx - top;
-		pt->pt_outer.out_up = ectx->ec_outer;
 	    }
 	}
     }
@@ -587,7 +605,13 @@ func_return(ectx_T *ectx)
     if (ret_idx == ectx->ec_frame_idx + STACK_FRAME_IDX_OFF)
 	ret_idx = 0;
 
-    vim_free(ectx->ec_outer);
+    if (ectx->ec_outer_ref != NULL)
+    {
+	if (ectx->ec_outer_ref->or_outer_allocated)
+	    vim_free(ectx->ec_outer_ref->or_outer);
+	partial_unref(ectx->ec_outer_ref->or_partial);
+	vim_free(ectx->ec_outer_ref);
+    }
 
     // Restore the previous frame.
     ectx->ec_dfunc_idx = prev_dfunc_idx;
@@ -595,7 +619,7 @@ func_return(ectx_T *ectx)
 					+ STACK_FRAME_IIDX_OFF)->vval.v_number;
     ectx->ec_instr = (void *)STACK_TV(ectx->ec_frame_idx
 				       + STACK_FRAME_INSTR_OFF)->vval.v_string;
-    ectx->ec_outer = (void *)STACK_TV(ectx->ec_frame_idx
+    ectx->ec_outer_ref = (void *)STACK_TV(ectx->ec_frame_idx
 				       + STACK_FRAME_OUTER_OFF)->vval.v_string;
     floc = (void *)STACK_TV(ectx->ec_frame_idx
 				   + STACK_FRAME_FUNCLOCAL_OFF)->vval.v_string;
@@ -696,7 +720,7 @@ call_bfunc(int func_idx, int argcount, ectx_T *ectx)
  * If the function is compiled this will add a stack frame and set the
  * instruction pointer at the start of the function.
  * Otherwise the function is called here.
- * If "pt" is not null use "pt->pt_outer" for ec_outer.
+ * If "pt" is not null use "pt->pt_outer" for ec_outer_ref->or_outer.
  * "iptr" can be used to replace the instruction with a more efficient one.
  */
     static int
@@ -980,7 +1004,7 @@ store_var(char_u *name, typval_T *tv)
  * Return FAIL if not allowed.
  */
     static int
-do_2string(typval_T *tv, int is_2string_any)
+do_2string(typval_T *tv, int is_2string_any, int tolerant)
 {
     if (tv->v_type != VAR_STRING)
     {
@@ -995,6 +1019,41 @@ do_2string(typval_T *tv, int is_2string_any)
 		case VAR_NUMBER:
 		case VAR_FLOAT:
 		case VAR_BLOB:	break;
+
+		case VAR_LIST:
+				if (tolerant)
+				{
+				    char_u	*s, *e, *p;
+				    garray_T	ga;
+
+				    ga_init2(&ga, sizeof(char_u *), 1);
+
+				    // Convert to NL separated items, then
+				    // escape the items and replace the NL with
+				    // a space.
+				    str = typval2string(tv, TRUE);
+				    if (str == NULL)
+					return FAIL;
+				    s = str;
+				    while ((e = vim_strchr(s, '\n')) != NULL)
+				    {
+					*e = NUL;
+					p = vim_strsave_fnameescape(s, FALSE);
+					if (p != NULL)
+					{
+					    ga_concat(&ga, p);
+					    ga_concat(&ga, (char_u *)" ");
+					    vim_free(p);
+					}
+					s = e + 1;
+				    }
+				    vim_free(str);
+				    clear_tv(tv);
+				    tv->v_type = VAR_STRING;
+				    tv->vval.v_string = ga.ga_data;
+				    return OK;
+				}
+				// FALLTHROUGH
 		default:	to_string_error(tv->v_type);
 				return FAIL;
 	    }
@@ -1179,6 +1238,37 @@ get_script_svar(scriptref_T *sref, ectx_T *ectx)
 }
 
 /*
+ * Function passed to do_cmdline() for splitting a script joined by NL
+ * characters.
+ */
+    static char_u *
+get_split_sourceline(
+	int c UNUSED,
+	void *cookie,
+	int indent UNUSED,
+	getline_opt_T options UNUSED)
+{
+    source_cookie_T	*sp = (source_cookie_T *)cookie;
+    char_u		*p;
+    char_u		*line;
+
+    if (*sp->nextline == NUL)
+	return NULL;
+    p = vim_strchr(sp->nextline, '\n');
+    if (p == NULL)
+    {
+	line = vim_strsave(sp->nextline);
+	sp->nextline += STRLEN(sp->nextline);
+    }
+    else
+    {
+	line = vim_strnsave(sp->nextline, p - sp->nextline);
+	sp->nextline = p + 1;
+    }
+    return line;
+}
+
+/*
  * Execute a function by "name".
  * This can be a builtin function, user function or a funcref.
  * "iptr" can be used to replace the instruction with a more efficient one.
@@ -1229,24 +1319,31 @@ fill_partial_and_closure(partial_T *pt, ufunc_T *ufunc, ectx_T *ectx)
 	dfunc_T	*dfunc = ((dfunc_T *)def_functions.ga_data)
 							  + ectx->ec_dfunc_idx;
 
-	// The closure needs to find arguments and local
-	// variables in the current stack.
+	// The closure may need to find arguments and local variables in the
+	// current stack.
 	pt->pt_outer.out_stack = &ectx->ec_stack;
 	pt->pt_outer.out_frame_idx = ectx->ec_frame_idx;
-	pt->pt_outer.out_up = ectx->ec_outer;
-	pt->pt_outer.out_up_is_copy = TRUE;
+	if (ectx->ec_outer_ref != NULL)
+	{
+	    // The current context already has a context, link to that one.
+	    pt->pt_outer.out_up = ectx->ec_outer_ref->or_outer;
+	    if (ectx->ec_outer_ref->or_partial != NULL)
+	    {
+		pt->pt_outer.out_up_partial = ectx->ec_outer_ref->or_partial;
+		++pt->pt_outer.out_up_partial->pt_refcount;
+	    }
+	}
 
-	// If this function returns and the closure is still
-	// being used, we need to make a copy of the context
-	// (arguments and local variables). Store a reference
-	// to the partial so we can handle that.
+	// If this function returns and the closure is still being used, we
+	// need to make a copy of the context (arguments and local variables).
+	// Store a reference to the partial so we can handle that.
 	if (ga_grow(&ectx->ec_funcrefs, 1) == FAIL)
 	{
 	    vim_free(pt);
 	    return FAIL;
 	}
-	// Extra variable keeps the count of closures created
-	// in the current function call.
+	// Extra variable keeps the count of closures created in the current
+	// function call.
 	++(((typval_T *)ectx->ec_stack.ga_data) + ectx->ec_frame_idx
 		       + STACK_FRAME_SIZE + dfunc->df_varcount)->vval.v_number;
 
@@ -1387,6 +1484,30 @@ exec_instructions(ectx_T *ectx)
 									== FAIL
 				|| did_emsg)
 			goto on_error;
+		}
+		break;
+
+	    // execute Ex command line split at NL characters.
+	    case ISN_EXEC_SPLIT:
+		{
+		    source_cookie_T cookie;
+		    char_u	    *line;
+
+		    SOURCING_LNUM = iptr->isn_lnum;
+		    CLEAR_FIELD(cookie);
+		    cookie.sourcing_lnum = iptr->isn_lnum - 1;
+		    cookie.nextline = iptr->isn_arg.string;
+		    line = get_split_sourceline(0, &cookie, 0, 0);
+		    if (do_cmdline(line,
+				get_split_sourceline, &cookie,
+				   DOCMD_VERBOSE|DOCMD_NOWAIT|DOCMD_KEYTYPED)
+									== FAIL
+				|| did_emsg)
+		    {
+			vim_free(line);
+			goto on_error;
+		    }
+		    vim_free(line);
 		}
 		break;
 
@@ -2055,7 +2176,7 @@ exec_instructions(ectx_T *ectx)
 		    {
 			dest_type = tv_dest->v_type;
 			if (dest_type == VAR_DICT)
-			    status = do_2string(tv_idx, TRUE);
+			    status = do_2string(tv_idx, TRUE, FALSE);
 			else if (dest_type == VAR_LIST
 					       && tv_idx->v_type != VAR_NUMBER)
 			{
@@ -2265,7 +2386,8 @@ exec_instructions(ectx_T *ectx)
 	    case ISN_STOREOUTER:
 		{
 		    int		depth = iptr->isn_arg.outer.outer_depth;
-		    outer_T	*outer = ectx->ec_outer;
+		    outer_T	*outer = ectx->ec_outer_ref == NULL ? NULL
+						: ectx->ec_outer_ref->or_outer;
 
 		    while (depth > 1 && outer != NULL)
 		    {
@@ -2684,7 +2806,7 @@ exec_instructions(ectx_T *ectx)
 		}
 		break;
 
-	    // push a function reference to a compiled function
+	    // push a partial, a reference to a compiled function
 	    case ISN_FUNCREF:
 		{
 		    partial_T   *pt = ALLOC_CLEAR_ONE(partial_T);
@@ -2701,7 +2823,6 @@ exec_instructions(ectx_T *ectx)
 		    if (fill_partial_and_closure(pt, pt_dfunc->df_ufunc,
 								 ectx) == FAIL)
 			goto theend;
-
 		    tv = STACK_TV_BOT(0);
 		    ++ectx->ec_stack.ga_len;
 		    tv->vval.v_partial = pt;
@@ -3770,15 +3891,16 @@ exec_instructions(ectx_T *ectx)
 		    int n;
 		    int error = FALSE;
 
-		    tv = STACK_TV_BOT(-1);
 		    if (iptr->isn_type == ISN_2BOOL)
 		    {
+			tv = STACK_TV_BOT(iptr->isn_arg.tobool.offset);
 			n = tv2bool(tv);
-			if (iptr->isn_arg.number)  // invert
+			if (iptr->isn_arg.tobool.invert)
 			    n = !n;
 		    }
 		    else
 		    {
+			tv = STACK_TV_BOT(-1);
 			SOURCING_LNUM = iptr->isn_lnum;
 			n = tv_get_bool_chk(tv, &error);
 			if (error)
@@ -3793,8 +3915,9 @@ exec_instructions(ectx_T *ectx)
 	    case ISN_2STRING:
 	    case ISN_2STRING_ANY:
 		SOURCING_LNUM = iptr->isn_lnum;
-		if (do_2string(STACK_TV_BOT(iptr->isn_arg.number),
-			iptr->isn_type == ISN_2STRING_ANY) == FAIL)
+		if (do_2string(STACK_TV_BOT(iptr->isn_arg.tostring.offset),
+				iptr->isn_type == ISN_2STRING_ANY,
+				      iptr->isn_arg.tostring.tolerant) == FAIL)
 			    goto on_error;
 		break;
 
@@ -4093,7 +4216,7 @@ exe_substitute_instr(void)
     {
 	typval_T *tv = STACK_TV_BOT(-1);
 
-	res = vim_strsave(tv_get_string(tv));
+	res = typval2string(tv, TRUE);
 	--ectx->ec_stack.ga_len;
 	clear_tv(tv);
     }
@@ -4197,6 +4320,15 @@ call_def_function(
 	    semsg(_(e_nr_arguments_too_many), idx);
 	goto failed_early;
     }
+    idx = argc - ufunc->uf_args.ga_len + ufunc->uf_def_args.ga_len;
+    if (idx < 0)
+    {
+	if (idx == -1)
+	    emsg(_(e_one_argument_too_few));
+	else
+	    semsg(_(e_nr_arguments_too_few), -idx);
+	goto failed_early;
+    }
 
     // Put arguments on the stack, but no more than what the function expects.
     // A lambda can be called with more arguments than it uses.
@@ -4283,22 +4415,31 @@ call_def_function(
 	// by copy_func().
 	if (partial != NULL || base_ufunc->uf_partial != NULL)
 	{
-	    ectx.ec_outer = ALLOC_CLEAR_ONE(outer_T);
-	    if (ectx.ec_outer == NULL)
+	    ectx.ec_outer_ref = ALLOC_CLEAR_ONE(outer_ref_T);
+	    if (ectx.ec_outer_ref == NULL)
 		goto failed_early;
 	    if (partial != NULL)
 	    {
 		if (partial->pt_outer.out_stack == NULL && current_ectx != NULL)
 		{
-		    if (current_ectx->ec_outer != NULL)
-			*ectx.ec_outer = *current_ectx->ec_outer;
+		    if (current_ectx->ec_outer_ref != NULL
+			    && current_ectx->ec_outer_ref->or_outer != NULL)
+			ectx.ec_outer_ref->or_outer =
+					  current_ectx->ec_outer_ref->or_outer;
 		}
 		else
-		    *ectx.ec_outer = partial->pt_outer;
+		{
+		    ectx.ec_outer_ref->or_outer = &partial->pt_outer;
+		    ++partial->pt_refcount;
+		    ectx.ec_outer_ref->or_partial = partial;
+		}
 	    }
 	    else
-		*ectx.ec_outer = base_ufunc->uf_partial->pt_outer;
-	    ectx.ec_outer->out_up_is_copy = TRUE;
+	    {
+		ectx.ec_outer_ref->or_outer = &base_ufunc->uf_partial->pt_outer;
+		++base_ufunc->uf_partial->pt_refcount;
+		ectx.ec_outer_ref->or_partial = base_ufunc->uf_partial;
+	    }
 	}
     }
 
@@ -4415,14 +4556,12 @@ failed_early:
 
     vim_free(ectx.ec_stack.ga_data);
     vim_free(ectx.ec_trystack.ga_data);
-
-    while (ectx.ec_outer != NULL)
+    if (ectx.ec_outer_ref != NULL)
     {
-	outer_T	    *up = ectx.ec_outer->out_up_is_copy
-						? NULL : ectx.ec_outer->out_up;
-
-	vim_free(ectx.ec_outer);
-	ectx.ec_outer = up;
+	if (ectx.ec_outer_ref->or_outer_allocated)
+	    vim_free(ectx.ec_outer_ref->or_outer);
+	partial_unref(ectx.ec_outer_ref->or_partial);
+	vim_free(ectx.ec_outer_ref);
     }
 
     // Not sure if this is necessary.
@@ -4489,6 +4628,9 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 	{
 	    case ISN_EXEC:
 		smsg("%s%4d EXEC %s", pfx, current, iptr->isn_arg.string);
+		break;
+	    case ISN_EXEC_SPLIT:
+		smsg("%s%4d EXEC_SPLIT %s", pfx, current, iptr->isn_arg.string);
 		break;
 	    case ISN_LEGACY_EVAL:
 		smsg("%s%4d EVAL legacy %s", pfx, current,
@@ -4785,10 +4927,11 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 		{
 		    typval_T	tv;
 		    char_u	*name;
+		    char_u	buf[NUMBUFLEN];
 
 		    tv.v_type = VAR_JOB;
 		    tv.vval.v_job = iptr->isn_arg.job;
-		    name = tv_get_string(&tv);
+		    name = job_to_string_buf(&tv, buf);
 		    smsg("%s%4d PUSHJOB \"%s\"", pfx, current, name);
 		}
 #endif
@@ -5122,26 +5265,30 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 		      break;
 		  }
 	    case ISN_COND2BOOL: smsg("%s%4d COND2BOOL", pfx, current); break;
-	    case ISN_2BOOL: if (iptr->isn_arg.number)
-				smsg("%s%4d INVERT (!val)", pfx, current);
+	    case ISN_2BOOL: if (iptr->isn_arg.tobool.invert)
+				smsg("%s%4d INVERT %d (!val)", pfx, current,
+					 iptr->isn_arg.tobool.offset);
 			    else
-				smsg("%s%4d 2BOOL (!!val)", pfx, current);
+				smsg("%s%4d 2BOOL %d (!!val)", pfx, current,
+					 iptr->isn_arg.tobool.offset);
 			    break;
 	    case ISN_2STRING: smsg("%s%4d 2STRING stack[%lld]", pfx, current,
-					 (varnumber_T)(iptr->isn_arg.number));
+				 (varnumber_T)(iptr->isn_arg.tostring.offset));
 			      break;
-	    case ISN_2STRING_ANY: smsg("%s%4d 2STRING_ANY stack[%lld]", pfx, current,
-					 (varnumber_T)(iptr->isn_arg.number));
+	    case ISN_2STRING_ANY: smsg("%s%4d 2STRING_ANY stack[%lld]",
+								  pfx, current,
+				 (varnumber_T)(iptr->isn_arg.tostring.offset));
 			      break;
-	    case ISN_RANGE: smsg("%s%4d RANGE %s", pfx, current, iptr->isn_arg.string);
+	    case ISN_RANGE: smsg("%s%4d RANGE %s", pfx, current,
+							 iptr->isn_arg.string);
 			    break;
 	    case ISN_PUT:
 	        if (iptr->isn_arg.put.put_lnum == LNUM_VARIABLE_RANGE_ABOVE)
 		    smsg("%s%4d PUT %c above range",
-				       pfx, current, iptr->isn_arg.put.put_regname);
+				  pfx, current, iptr->isn_arg.put.put_regname);
 		else if (iptr->isn_arg.put.put_lnum == LNUM_VARIABLE_RANGE)
 		    smsg("%s%4d PUT %c range",
-				       pfx, current, iptr->isn_arg.put.put_regname);
+				  pfx, current, iptr->isn_arg.put.put_regname);
 		else
 		    smsg("%s%4d PUT %c %ld", pfx, current,
 						 iptr->isn_arg.put.put_regname,

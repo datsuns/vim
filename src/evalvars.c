@@ -1439,6 +1439,7 @@ ex_let_one(
 			    case '%': n = (long)num_modulus(numval, n,
 							       &failed); break;
 			}
+			s = NULL;
 		    }
 		    else if (opt_type == gov_string
 					     && stringval != NULL && s != NULL)
@@ -2920,8 +2921,9 @@ find_var_ht(char_u *name, char_u **varname)
 	if (ht != NULL)
 	    return ht;				// local variable
 
-	// in Vim9 script items at the script level are script-local
-	if (in_vim9script())
+	// In Vim9 script items at the script level are script-local, except
+	// for autoload names.
+	if (in_vim9script() && vim_strchr(name, AUTOLOAD_CHAR) == NULL)
 	{
 	    ht = get_script_local_ht();
 	    if (ht != NULL)

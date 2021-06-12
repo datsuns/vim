@@ -104,33 +104,6 @@ num_modulus(varnumber_T n1, varnumber_T n2, int *failed)
     return (n2 == 0) ? 0 : (n1 % n2);
 }
 
-#if defined(EBCDIC) || defined(PROTO)
-/*
- * Compare struct fst by function name.
- */
-    static int
-compare_func_name(const void *s1, const void *s2)
-{
-    struct fst *p1 = (struct fst *)s1;
-    struct fst *p2 = (struct fst *)s2;
-
-    return STRCMP(p1->f_name, p2->f_name);
-}
-
-/*
- * Sort the function table by function name.
- * The sorting of the table above is ASCII dependent.
- * On machines using EBCDIC we have to sort it.
- */
-    static void
-sortFunctions(void)
-{
-    int		funcCnt = (int)(sizeof(functions) / sizeof(struct fst)) - 1;
-
-    qsort(functions, (size_t)funcCnt, sizeof(struct fst), compare_func_name);
-}
-#endif
-
 /*
  * Initialize the global and v: variables.
  */
@@ -1462,6 +1435,9 @@ set_var_lval(
 		semsg(_(e_dictkey), lp->ll_newkey);
 		return;
 	    }
+	    if (dict_wrong_func_name(lp->ll_tv->vval.v_dict, rettv,
+								lp->ll_newkey))
+		return;
 
 	    // Need to add an item to the Dictionary.
 	    di = dictitem_alloc(lp->ll_newkey);
@@ -4325,6 +4301,9 @@ partial_free(partial_T *pt)
     else
 	func_ptr_unref(pt->pt_func);
 
+    // "out_up" is no longer used, decrement refcount on partial that owns it.
+    partial_unref(pt->pt_outer.out_up_partial);
+
     // Decrease the reference count for the context of a closure.  If down
     // to the minimum it may be time to free it.
     if (pt->pt_funcstack != NULL)
@@ -5083,13 +5062,16 @@ echo_string_core(
 
 	case VAR_JOB:
 	case VAR_CHANNEL:
+#ifdef FEAT_JOB_CHANNEL
 	    *tofree = NULL;
-	    r = tv_get_string_buf(tv, numbuf);
+	    r = tv->v_type == VAR_JOB ? job_to_string_buf(tv, numbuf)
+					   : channel_to_string_buf(tv, numbuf);
 	    if (composite_val)
 	    {
 		*tofree = string_quote(r, FALSE);
 		r = *tofree;
 	    }
+#endif
 	    break;
 
 	case VAR_INSTR:
@@ -5178,43 +5160,6 @@ string_quote(char_u *str, int function)
     }
     return s;
 }
-
-#if defined(FEAT_FLOAT) || defined(PROTO)
-/*
- * Convert the string "text" to a floating point number.
- * This uses strtod().  setlocale(LC_NUMERIC, "C") has been used to make sure
- * this always uses a decimal point.
- * Returns the length of the text that was consumed.
- */
-    int
-string2float(
-    char_u	*text,
-    float_T	*value)	    // result stored here
-{
-    char	*s = (char *)text;
-    float_T	f;
-
-    // MS-Windows does not deal with "inf" and "nan" properly.
-    if (STRNICMP(text, "inf", 3) == 0)
-    {
-	*value = INFINITY;
-	return 3;
-    }
-    if (STRNICMP(text, "-inf", 3) == 0)
-    {
-	*value = -INFINITY;
-	return 4;
-    }
-    if (STRNICMP(text, "nan", 3) == 0)
-    {
-	*value = NAN;
-	return 3;
-    }
-    f = strtod(s, &s);
-    *value = f;
-    return (int)((char_u *)s - text);
-}
-#endif
 
 /*
  * Convert the specified byte index of line 'lnum' in buffer 'buf' to a
@@ -5844,8 +5789,9 @@ handle_subscript(
 	p = eval_next_non_blank(*arg, evalarg, &getnext);
 	if (getnext
 	    && ((rettv->v_type == VAR_DICT && *p == '.' && eval_isdictc(p[1]))
-		|| (p[0] == '-' && p[1] == '>'
-				     && (p[2] == '{' || ASCII_ISALPHA(p[2])))))
+		|| (p[0] == '-' && p[1] == '>' && (p[2] == '{'
+			|| ASCII_ISALPHA(in_vim9script() ? *skipwhite(p + 2)
+								    : p[2])))))
 	{
 	    *arg = eval_next_line(evalarg);
 	    p = *arg;

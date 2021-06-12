@@ -1312,7 +1312,7 @@ ml_recover(int checkext)
     }
 
 #ifdef FEAT_CRYPT
-    for (i = 0; i < (int)(sizeof(id1_codes) / sizeof(int)); ++i)
+    for (i = 0; i < (int)ARRAY_LENGTH(id1_codes); ++i)
 	if (id1_codes[i] == b0p->b0_id[1])
 	    b0_cm = i;
     if (b0_cm > 0)
@@ -1696,6 +1696,7 @@ ml_recover(int checkext)
 				       && !(curbuf->b_ml.ml_flags & ML_EMPTY))
 	ml_delete(curbuf->b_ml.ml_line_count);
     curbuf->b_flags |= BF_RECOVERED;
+    check_cursor();
 
     recoverymode = FALSE;
     if (got_int)
