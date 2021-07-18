@@ -352,7 +352,7 @@ tv_get_float(typval_T *varp)
 #endif
 
 /*
- * Give an error and return FAIL unless "tv" is a string.
+ * Give an error and return FAIL unless "args[idx]" is a string.
  */
     int
 check_for_string_arg(typval_T *args, int idx)
@@ -379,6 +379,77 @@ check_for_nonempty_string_arg(typval_T *args, int idx)
     if (args[idx].vval.v_string == NULL || *args[idx].vval.v_string == NUL)
     {
 	semsg(_(e_non_empty_string_required_for_argument_nr), idx + 1);
+	return FAIL;
+    }
+    return OK;
+}
+
+/*
+ * Give an error and return FAIL unless "args[idx]" is a number.
+ */
+    int
+check_for_number_arg(typval_T *args, int idx)
+{
+    if (args[idx].v_type != VAR_NUMBER)
+    {
+	if (idx >= 0)
+	    semsg(_(e_number_required_for_argument_nr), idx + 1);
+	else
+	    emsg(_(e_numberreq));
+	return FAIL;
+    }
+    return OK;
+}
+
+/*
+ * Give an error and return FAIL unless "args[idx]" is a bool.
+ */
+    int
+check_for_bool_arg(typval_T *args, int idx)
+{
+    if (args[idx].v_type != VAR_BOOL
+	    && !(args[idx].v_type == VAR_NUMBER
+		&& (args[idx].vval.v_number == 0
+		    || args[idx].vval.v_number == 1)))
+    {
+	if (idx >= 0)
+	    semsg(_(e_bool_required_for_argument_nr), idx + 1);
+	else
+	    emsg(_(e_boolreq));
+	return FAIL;
+    }
+    return OK;
+}
+
+/*
+ * Give an error and return FAIL unless "args[idx]" is a list.
+ */
+    int
+check_for_list_arg(typval_T *args, int idx)
+{
+    if (args[idx].v_type != VAR_LIST)
+    {
+	if (idx >= 0)
+	    semsg(_(e_list_required_for_argument_nr), idx + 1);
+	else
+	    emsg(_(e_listreq));
+	return FAIL;
+    }
+    return OK;
+}
+
+/*
+ * Give an error and return FAIL unless "args[idx]" is a dict.
+ */
+    int
+check_for_dict_arg(typval_T *args, int idx)
+{
+    if (args[idx].v_type != VAR_DICT)
+    {
+	if (idx >= 0)
+	    semsg(_(e_dict_required_for_argument_nr), idx + 1);
+	else
+	    emsg(_(e_dictreq));
 	return FAIL;
     }
     return OK;
@@ -456,13 +527,13 @@ tv_get_string_buf_chk_strict(typval_T *varp, char_u *buf, int strict)
 	    return buf;
 	case VAR_FUNC:
 	case VAR_PARTIAL:
-	    emsg(_("E729: using Funcref as a String"));
+	    emsg(_("E729: Using a Funcref as a String"));
 	    break;
 	case VAR_LIST:
-	    emsg(_("E730: using List as a String"));
+	    emsg(_("E730: Using a List as a String"));
 	    break;
 	case VAR_DICT:
-	    emsg(_("E731: using Dictionary as a String"));
+	    emsg(_("E731: Using a Dictionary as a String"));
 	    break;
 	case VAR_FLOAT:
 #ifdef FEAT_FLOAT
@@ -483,7 +554,7 @@ tv_get_string_buf_chk_strict(typval_T *varp, char_u *buf, int strict)
 	    STRCPY(buf, get_var_special_name(varp->vval.v_number));
 	    return buf;
         case VAR_BLOB:
-	    emsg(_("E976: using Blob as a String"));
+	    emsg(_("E976: Using a Blob as a String"));
 	    break;
 	case VAR_JOB:
 #ifdef FEAT_JOB_CHANNEL
@@ -1328,7 +1399,7 @@ eval_number(
 		      : STR2NR_ALL, &n, NULL, 0, TRUE);
 	if (len == 0)
 	{
-	    semsg(_(e_invexpr2), *arg);
+	    semsg(_(e_invalid_expression_str), *arg);
 	    return FAIL;
 	}
 	*arg += len;

@@ -57,7 +57,7 @@ def Test_expr1_trinary()
       assert_equal(function('len'), Res)
 
       var RetOne: func(string): number = function('len')
-      var RetTwo: func(string): number = function('winnr')
+      var RetTwo: func(string): number = function('charcol')
       var RetThat: func = g:atrue ? RetOne : RetTwo
       assert_equal(function('len'), RetThat)
 
@@ -401,6 +401,13 @@ def Test_expr2_fails()
     # comment
   END
   CheckScriptFailure(lines, 'E1004: White space required before and after ''||'' at "||true"', 3)
+
+  lines =<< trim END
+      var x = false
+              || false
+              || a.b
+  END
+  CheckDefFailure(lines, 'E1001:', 3)
 enddef
 
 " test &&
@@ -647,7 +654,7 @@ def Test_expr4_equal()
   CheckDefFailure(["var x = 'a' == "], 'E1097:', 3)
   CheckScriptFailure(['vim9script', "var x = 'a' == "], 'E15:', 2)
 
-  CheckDefExecAndScriptFailure2(['var items: any', 'eval 1', 'eval 2', 'if items == []', 'endif'], 'E691:', 'E1072:', 4)
+  CheckDefExecAndScriptFailure2(['var items: any', 'eval 1 + 1', 'eval 2 + 2', 'if items == []', 'endif'], 'E691:', 'E1072:', 4)
 
   CheckDefExecAndScriptFailure(['var x: any = "a"', 'echo x == true'], 'E1072: Cannot compare string with bool', 2)
   CheckDefExecAndScriptFailure(["var x: any = true", 'echo x == ""'], 'E1072: Cannot compare bool with string', 2)
@@ -2075,7 +2082,8 @@ def Test_expr7_lambda_block()
       var Func = (nr: number): int => {
               return nr
   END
-  CheckDefAndScriptFailure(lines, 'E1171', 1)  # line nr is function start
+  CheckDefFailure(lines, 'E1171', 0)  # line nr is function start
+  CheckScriptFailure(['vim9script'] + lines, 'E1171', 2)
 
   lines =<< trim END
       var Func = (nr: number): int => {
@@ -2478,6 +2486,13 @@ def Test_expr7_dict_vim9script()
   else
     CheckDefAndScriptFailure(lines, 'E117:', 0)
   endif
+
+  lines =<< trim END
+      vim9script
+      var x = 99
+      assert_equal({x: 99}, s:)
+  END
+  CheckScriptSuccess(lines)
 enddef
 
 def Test_expr7_call_2bool()
@@ -2943,7 +2958,9 @@ def Test_expr7_method_call()
       loclist->setloclist(0)
       assert_equal([{bufnr: bufnr,
                     lnum: 42,
+                    end_lnum: 0,
                     col: 17,
+                    end_col: 0,
                     text: 'wrong',
                     pattern: '',
                     valid: 1,
@@ -2971,16 +2988,9 @@ def Test_expr7_method_call()
   lines =<< trim END
     def RetVoid()
     enddef
-    RetVoid()->byte2line()
-  END
-  CheckDefExecAndScriptFailure(lines, 'E1031:')
-
-  lines =<< trim END
-    def RetVoid()
-    enddef
     RetVoid()->byteidx(3)
   END
-  CheckDefExecAndScriptFailure(lines, 'E1031:')
+  CheckDefExecFailure(lines, 'E1013:')
 enddef
 
 

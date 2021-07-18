@@ -26,6 +26,8 @@
 typedef struct {
     int	    tcd_frame_idx;	// ec_frame_idx at ISN_TRY
     int	    tcd_stack_len;	// size of ectx.ec_stack at ISN_TRY
+    int	    tcd_in_catch;	// in catch or finally block
+    int	    tcd_did_throw;	// set did_throw in :endtry
     int	    tcd_catch_idx;	// instruction of the first :catch or :finally
     int	    tcd_finally_idx;	// instruction of the :finally block or zero
     int	    tcd_endtry_idx;	// instruction of the :endtry
@@ -82,7 +84,6 @@ struct ectx_S {
     funclocal_T ec_funclocal;
 
     garray_T	ec_trystack;	// stack of trycmd_T values
-    int		ec_in_catch;	// when TRUE in catch or finally block
 
     int		ec_dfunc_idx;	// current function index
     isn_T	*ec_instr;	// array with instructions
@@ -148,6 +149,23 @@ exe_newlist(int count, ectx_T *ectx)
 }
 
 /*
+ * If debug_tick changed check if "ufunc" has a breakpoint and update
+ * "uf_has_breakpoint".
+ */
+    static void
+update_has_breakpoint(ufunc_T *ufunc)
+{
+    if (ufunc->uf_debug_tick != debug_tick)
+    {
+	linenr_T breakpoint;
+
+	ufunc->uf_debug_tick = debug_tick;
+	breakpoint = dbg_find_breakpoint(FALSE, ufunc->uf_name, 0);
+	ufunc->uf_has_breakpoint = breakpoint > 0;
+    }
+}
+
+/*
  * Call compiled function "cdf_idx" from compiled code.
  * This adds a stack frame and sets the instruction pointer to the start of the
  * called function.
@@ -179,6 +197,7 @@ call_dfunc(
     int		idx;
     estack_T	*entry;
     funclocal_T	*floc = NULL;
+    int		res = OK;
 
     if (dfunc->df_deleted)
     {
@@ -201,23 +220,22 @@ call_dfunc(
 			(((dfunc_T *)def_functions.ga_data)
 					      + ectx->ec_dfunc_idx)->df_ufunc);
 	}
-
-	// Profiling might be enabled/disabled along the way.  This should not
-	// fail, since the function was compiled before and toggling profiling
-	// doesn't change any errors.
-	if (func_needs_compiling(ufunc, COMPILE_TYPE(ufunc))
-		&& compile_def_function(ufunc, FALSE, COMPILE_TYPE(ufunc), NULL)
-								       == FAIL)
-	    return FAIL;
     }
 #endif
 
+    // Update uf_has_breakpoint if needed.
+    update_has_breakpoint(ufunc);
+
     // When debugging and using "cont" switches to the not-debugged
     // instructions, may need to still compile them.
-    if ((func_needs_compiling(ufunc, COMPILE_TYPE(ufunc))
-	       && compile_def_function(ufunc, FALSE, COMPILE_TYPE(ufunc), NULL)
-								      == FAIL)
-	    || INSTRUCTIONS(dfunc) == NULL)
+    if (func_needs_compiling(ufunc, COMPILE_TYPE(ufunc)))
+    {
+	res = compile_def_function(ufunc, FALSE, COMPILE_TYPE(ufunc), NULL);
+
+	// compile_def_function() may cause def_functions.ga_data to change
+	dfunc = ((dfunc_T *)def_functions.ga_data) + cdf_idx;
+    }
+    if (res == FAIL || INSTRUCTIONS(dfunc) == NULL)
     {
 	if (did_emsg_cumul + did_emsg == did_emsg_before)
 	    semsg(_(e_function_is_not_compiled_str),
@@ -1444,9 +1462,23 @@ handle_debug(isn_T *iptr, ectx_T *ectx)
     garray_T	ga;
     int		lnum;
 
+    if (ex_nesting_level > debug_break_level)
+    {
+	linenr_T breakpoint;
+
+	if (!ufunc->uf_has_breakpoint)
+	    return;
+
+	// check for the next breakpoint if needed
+	breakpoint = dbg_find_breakpoint(FALSE, ufunc->uf_name,
+					   iptr->isn_arg.debug.dbg_break_lnum);
+	if (breakpoint <= 0 || breakpoint > iptr->isn_lnum)
+	    return;
+    }
+
     SOURCING_LNUM = iptr->isn_lnum;
     debug_context = ectx;
-    debug_var_count = iptr->isn_arg.number;
+    debug_var_count = iptr->isn_arg.debug.dbg_var_names_len;
 
     for (ni = iptr + 1; ni->isn_type != ISN_FINISH; ++ni)
 	if (ni->isn_type == ISN_DEBUG
@@ -1462,9 +1494,11 @@ handle_debug(isn_T *iptr, ectx_T *ectx)
 	ga_init2(&ga, sizeof(char_u *), 10);
 	for (lnum = iptr->isn_lnum; lnum < end_lnum; ++lnum)
 	{
-	    char_u *p = skipwhite(
-			       ((char_u **)ufunc->uf_lines.ga_data)[lnum - 1]);
+	    char_u *p = ((char_u **)ufunc->uf_lines.ga_data)[lnum - 1];
 
+	    if (p == NULL)
+		continue;  // left over from continuation line
+	    p = skipwhite(p);
 	    if (*p == '#')
 		break;
 	    if (ga_grow(&ga, 1) == OK)
@@ -1531,20 +1565,38 @@ exec_instructions(ectx_T *ectx)
 	    *msg_list = NULL;
 	}
 
-	if (did_throw && !ectx->ec_in_catch)
+	if (did_throw)
 	{
 	    garray_T	*trystack = &ectx->ec_trystack;
 	    trycmd_T    *trycmd = NULL;
+	    int		index = trystack->ga_len;
 
 	    // An exception jumps to the first catch, finally, or returns from
 	    // the current function.
-	    if (trystack->ga_len > 0)
-		trycmd = ((trycmd_T *)trystack->ga_data) + trystack->ga_len - 1;
+	    while (index > 0)
+	    {
+		trycmd = ((trycmd_T *)trystack->ga_data) + index - 1;
+		if (!trycmd->tcd_in_catch || trycmd->tcd_finally_idx != 0)
+		    break;
+		// In the catch and finally block of this try we have to go up
+		// one level.
+		--index;
+		trycmd = NULL;
+	    }
 	    if (trycmd != NULL && trycmd->tcd_frame_idx == ectx->ec_frame_idx)
 	    {
-		// jump to ":catch" or ":finally"
-		ectx->ec_in_catch = TRUE;
-		ectx->ec_iidx = trycmd->tcd_catch_idx;
+		if (trycmd->tcd_in_catch)
+		{
+		    // exception inside ":catch", jump to ":finally" once
+		    ectx->ec_iidx = trycmd->tcd_finally_idx;
+		    trycmd->tcd_finally_idx = 0;
+		}
+		else
+		    // jump to first ":catch"
+		    ectx->ec_iidx = trycmd->tcd_catch_idx;
+		trycmd->tcd_in_catch = TRUE;
+		did_throw = FALSE;  // don't come back here until :endtry
+		trycmd->tcd_did_throw = TRUE;
 	    }
 	    else
 	    {
@@ -3168,6 +3220,7 @@ exec_instructions(ectx_T *ectx)
 			trycmd_T    *trycmd = ((trycmd_T *)trystack->ga_data)
 							+ trystack->ga_len - 1;
 			trycmd->tcd_caught = TRUE;
+			trycmd->tcd_did_throw = FALSE;
 		    }
 		    did_emsg = got_int = did_throw = FALSE;
 		    force_abort = need_rethrow = FALSE;
@@ -3229,9 +3282,10 @@ exec_instructions(ectx_T *ectx)
 
 			--trystack->ga_len;
 			--trylevel;
-			ectx->ec_in_catch = FALSE;
 			trycmd = ((trycmd_T *)trystack->ga_data)
 							    + trystack->ga_len;
+			if (trycmd->tcd_did_throw)
+			    did_throw = TRUE;
 			if (trycmd->tcd_caught && current_exception != NULL)
 			{
 			    // discard the exception
@@ -3798,12 +3852,12 @@ exec_instructions(ectx_T *ectx)
 	    case ISN_GETITEM:
 		{
 		    listitem_T	*li;
-		    int		index = iptr->isn_arg.number;
+		    getitem_T	*gi = &iptr->isn_arg.getitem;
 
 		    // Get list item: list is at stack-1, push item.
 		    // List type and length is checked for when compiling.
-		    tv = STACK_TV_BOT(-1);
-		    li = list_find(tv->vval.v_list, index);
+		    tv = STACK_TV_BOT(-1 - gi->gi_with_op);
+		    li = list_find(tv->vval.v_list, gi->gi_index);
 
 		    if (GA_GROW(&ectx->ec_stack, 1) == FAIL)
 			goto theend;
@@ -3812,7 +3866,7 @@ exec_instructions(ectx_T *ectx)
 
 		    // Useful when used in unpack assignment.  Reset at
 		    // ISN_DROP.
-		    ectx->ec_where.wt_index = index + 1;
+		    ectx->ec_where.wt_index = gi->gi_index + 1;
 		    ectx->ec_where.wt_variable = TRUE;
 		}
 		break;
@@ -4206,8 +4260,7 @@ exec_instructions(ectx_T *ectx)
 		break;
 
 	    case ISN_DEBUG:
-		if (ex_nesting_level <= debug_break_level)
-		    handle_debug(iptr, ectx);
+		handle_debug(iptr, ectx);
 		break;
 
 	    case ISN_SHUFFLE:
@@ -4382,6 +4435,9 @@ call_def_function(
 // Get pointer to a local variable on the stack.  Negative for arguments.
 #undef STACK_TV_VAR
 #define STACK_TV_VAR(idx) (((typval_T *)ectx.ec_stack.ga_data) + ectx.ec_frame_idx + STACK_FRAME_SIZE + idx)
+
+    // Update uf_has_breakpoint if needed.
+    update_has_breakpoint(ufunc);
 
     if (ufunc->uf_def_status == UF_NOT_COMPILED
 	    || ufunc->uf_def_status == UF_COMPILE_ERROR
@@ -4681,7 +4737,8 @@ failed_early:
     // Not sure if this is necessary.
     suppress_errthrow = save_suppress_errthrow;
 
-    if (ret != OK && did_emsg_cumul + did_emsg == did_emsg_before)
+    if (ret != OK && did_emsg_cumul + did_emsg == did_emsg_before
+							      && !need_rethrow)
 	semsg(_(e_unknown_error_while_executing_str),
 						   printable_func_name(ufunc));
     funcdepth_restore(orig_funcdepth);
@@ -5340,8 +5397,10 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 	    case ISN_ANYSLICE: smsg("%s%4d ANYSLICE", pfx, current); break;
 	    case ISN_SLICE: smsg("%s%4d SLICE %lld",
 					 pfx, current, iptr->isn_arg.number); break;
-	    case ISN_GETITEM: smsg("%s%4d ITEM %lld",
-					 pfx, current, iptr->isn_arg.number); break;
+	    case ISN_GETITEM: smsg("%s%4d ITEM %lld%s", pfx, current,
+					 iptr->isn_arg.getitem.gi_index,
+					 iptr->isn_arg.getitem.gi_with_op ?
+						       " with op" : ""); break;
 	    case ISN_MEMBER: smsg("%s%4d MEMBER", pfx, current); break;
 	    case ISN_STRINGMEMBER: smsg("%s%4d MEMBER %s", pfx, current,
 						  iptr->isn_arg.string); break;
@@ -5438,8 +5497,10 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 		break;
 
 	    case ISN_DEBUG:
-		smsg("%s%4d DEBUG line %d varcount %lld", pfx, current,
-					 iptr->isn_lnum, iptr->isn_arg.number);
+		smsg("%s%4d DEBUG line %d-%d varcount %lld", pfx, current,
+			iptr->isn_arg.debug.dbg_break_lnum + 1,
+			iptr->isn_lnum,
+			iptr->isn_arg.debug.dbg_var_names_len);
 		break;
 
 	    case ISN_UNPACK: smsg("%s%4d UNPACK %d%s", pfx, current,
