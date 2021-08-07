@@ -311,7 +311,7 @@ ex_import(exarg_T *eap)
     cmd_end = handle_import(eap->arg, NULL, current_sctx.sc_sid,
 							       &evalarg, NULL);
     if (cmd_end != NULL)
-	eap->nextcmd = check_nextcmd(cmd_end);
+	set_nextcmd(eap, cmd_end);
     clear_evalarg(&evalarg, eap);
 }
 
@@ -411,7 +411,9 @@ handle_import(
     int		mult = FALSE;
     garray_T	names;
     garray_T	as_names;
+    long	start_lnum = SOURCING_LNUM;
 
+    tv.v_type = VAR_UNKNOWN;
     ga_init2(&names, sizeof(char_u *), 10);
     ga_init2(&as_names, sizeof(char_u *), 10);
     if (*arg == '{')
@@ -496,19 +498,22 @@ handle_import(
 	goto erret;
     }
 
+    // The name of the file can be an expression, which must evaluate to a
+    // string.
     arg = skipwhite_and_linebreak(arg + 4, evalarg);
-    tv.v_type = VAR_UNKNOWN;
-    // TODO: should we accept any expression?
-    if (*arg == '\'')
-	ret = eval_lit_string(&arg, &tv, TRUE);
-    else if (*arg == '"')
-	ret = eval_string(&arg, &tv, TRUE);
-    if (ret == FAIL || tv.vval.v_string == NULL || *tv.vval.v_string == NUL)
+    ret = eval0(arg, &tv, NULL, evalarg);
+    if (ret == FAIL)
+	goto erret;
+    if (tv.v_type != VAR_STRING
+		       || tv.vval.v_string == NULL || *tv.vval.v_string == NUL)
     {
 	emsg(_(e_invalid_string_after_from));
 	goto erret;
     }
     cmd_end = arg;
+
+    // Give error messages for the start of the line.
+    SOURCING_LNUM = start_lnum;
 
     /*
      * find script file
@@ -524,10 +529,7 @@ handle_import(
 	len = STRLEN(si->sn_name) - STRLEN(tail) + STRLEN(tv.vval.v_string) + 2;
 	from_name = alloc((int)len);
 	if (from_name == NULL)
-	{
-	    clear_tv(&tv);
 	    goto erret;
-	}
 	vim_strncpy(from_name, si->sn_name, tail - si->sn_name);
 	add_pathsep(from_name);
 	STRCAT(from_name, tv.vval.v_string);
@@ -550,7 +552,6 @@ handle_import(
 	from_name = alloc((int)len);
 	if (from_name == NULL)
 	{
-	    clear_tv(&tv);
 	    goto erret;
 	}
 	vim_snprintf((char *)from_name, len, "import/%s", tv.vval.v_string);
@@ -561,10 +562,8 @@ handle_import(
     if (res == FAIL || sid <= 0)
     {
 	semsg(_(e_could_not_import_str), tv.vval.v_string);
-	clear_tv(&tv);
 	goto erret;
     }
-    clear_tv(&tv);
 
     if (*arg_start == '*')
     {
@@ -624,9 +623,10 @@ handle_import(
 		    && (imported->imp_flags & IMP_FLAGS_RELOAD)
 		    && imported->imp_sid == sid
 		    && (idx >= 0
-			? (equal_type(imported->imp_type, type)
+			? (equal_type(imported->imp_type, type, 0)
 			    && imported->imp_var_vals_idx == idx)
-			: (equal_type(imported->imp_type, ufunc->uf_func_type)
+			: (equal_type(imported->imp_type, ufunc->uf_func_type,
+							     ETYPE_ARG_UNKNOWN)
 			    && STRCMP(imported->imp_funcname,
 							ufunc->uf_name) == 0)))
 	    {
@@ -669,6 +669,7 @@ handle_import(
 	}
     }
 erret:
+    clear_tv(&tv);
     ga_clear_strings(&names);
     ga_clear_strings(&as_names);
     return cmd_end;
@@ -762,47 +763,72 @@ update_vim9_script_var(
 {
     scriptitem_T    *si = SCRIPT_ITEM(current_sctx.sc_sid);
     hashitem_T	    *hi;
-    svar_T	    *sv;
+    svar_T	    *sv = NULL;
 
     if (create)
     {
-	sallvar_T	    *newsav;
+	sallvar_T   *newsav;
+	sallvar_T   *sav = NULL;
 
 	// Store a pointer to the typval_T, so that it can be found by index
 	// instead of using a hastab lookup.
 	if (ga_grow(&si->sn_var_vals, 1) == FAIL)
 	    return;
 
-	sv = ((svar_T *)si->sn_var_vals.ga_data) + si->sn_var_vals.ga_len;
-	newsav = (sallvar_T *)alloc_clear(
-				       sizeof(sallvar_T) + STRLEN(di->di_key));
-	if (newsav == NULL)
-	    return;
-
-	sv->sv_tv = &di->di_tv;
-	sv->sv_const = (flags & ASSIGN_FINAL) ? ASSIGN_FINAL
-				   : (flags & ASSIGN_CONST) ? ASSIGN_CONST : 0;
-	sv->sv_export = is_export;
-	newsav->sav_var_vals_idx = si->sn_var_vals.ga_len;
-	++si->sn_var_vals.ga_len;
-	STRCPY(&newsav->sav_key, di->di_key);
-	sv->sv_name = newsav->sav_key;
-	newsav->sav_di = di;
-	newsav->sav_block_id = si->sn_current_block_id;
-
-	hi = hash_find(&si->sn_all_vars.dv_hashtab, newsav->sav_key);
+	hi = hash_find(&si->sn_all_vars.dv_hashtab, di->di_key);
 	if (!HASHITEM_EMPTY(hi))
 	{
-	    sallvar_T *sav = HI2SAV(hi);
-
-	    // variable with this name exists in another block
-	    while (sav->sav_next != NULL)
-		sav = sav->sav_next;
-	    sav->sav_next = newsav;
+	    // Variable with this name exists, either in this block or in
+	    // another block.
+	    for (sav = HI2SAV(hi); ; sav = sav->sav_next)
+	    {
+		if (sav->sav_block_id == si->sn_current_block_id)
+		{
+		    // variable defined in a loop, re-use the entry
+		    sv = ((svar_T *)si->sn_var_vals.ga_data)
+						       + sav->sav_var_vals_idx;
+		    // unhide the variable
+		    if (sv->sv_tv == &sav->sav_tv)
+		    {
+			clear_tv(&sav->sav_tv);
+			sv->sv_tv = &di->di_tv;
+			sav->sav_di = di;
+		    }
+		    break;
+		}
+		if (sav->sav_next == NULL)
+		    break;
+	    }
 	}
-	else
-	    // new variable name
-	    hash_add(&si->sn_all_vars.dv_hashtab, newsav->sav_key);
+
+	if (sv == NULL)
+	{
+	    // Variable not defined or not defined in current block: Add a
+	    // svar_T and create a new sallvar_T.
+	    sv = ((svar_T *)si->sn_var_vals.ga_data) + si->sn_var_vals.ga_len;
+	    newsav = (sallvar_T *)alloc_clear(
+				       sizeof(sallvar_T) + STRLEN(di->di_key));
+	    if (newsav == NULL)
+		return;
+
+	    sv->sv_tv = &di->di_tv;
+	    sv->sv_const = (flags & ASSIGN_FINAL) ? ASSIGN_FINAL
+				   : (flags & ASSIGN_CONST) ? ASSIGN_CONST : 0;
+	    sv->sv_export = is_export;
+	    newsav->sav_var_vals_idx = si->sn_var_vals.ga_len;
+	    ++si->sn_var_vals.ga_len;
+	    STRCPY(&newsav->sav_key, di->di_key);
+	    sv->sv_name = newsav->sav_key;
+	    newsav->sav_di = di;
+	    newsav->sav_block_id = si->sn_current_block_id;
+
+	    if (HASHITEM_EMPTY(hi))
+		// new variable name
+		hash_add(&si->sn_all_vars.dv_hashtab, newsav->sav_key);
+	    else if (sav != NULL)
+		// existing name in a new block, append to the list
+		sav->sav_next = newsav;
+	}
     }
     else
     {
@@ -811,8 +837,7 @@ update_vim9_script_var(
     if (sv != NULL)
     {
 	if (*type == NULL)
-	    *type = typval2type(tv, get_copyID(), &si->sn_type_list,
-								    do_member);
+	    *type = typval2type(tv, get_copyID(), &si->sn_type_list, do_member);
 	sv->sv_type = *type;
     }
 
@@ -966,7 +991,7 @@ check_script_var_type(
     {
 	if (sv->sv_const != 0)
 	{
-	    semsg(_(e_readonlyvar), name);
+	    semsg(_(e_cannot_change_readonly_variable_str), name);
 	    return FAIL;
 	}
 	ret = check_typval_type(sv->sv_type, value, where);

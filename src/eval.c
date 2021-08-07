@@ -146,10 +146,14 @@ fill_evalarg_from_eap(evalarg_T *evalarg, exarg_T *eap, int skip)
 {
     CLEAR_FIELD(*evalarg);
     evalarg->eval_flags = skip ? 0 : EVAL_EVALUATE;
-    if (eap != NULL && getline_equal(eap->getline, eap->cookie, getsourceline))
+    if (eap != NULL)
     {
-	evalarg->eval_getline = eap->getline;
-	evalarg->eval_cookie = eap->cookie;
+	evalarg->eval_cstack = eap->cstack;
+	if (getline_equal(eap->getline, eap->cookie, getsourceline))
+	{
+	    evalarg->eval_getline = eap->getline;
+	    evalarg->eval_cookie = eap->cookie;
+	}
     }
 }
 
@@ -1358,14 +1362,15 @@ set_var_lval(
 			 || (!var_check_ro(di->di_flags, lp->ll_name, FALSE)
 			   && !tv_check_lock(&di->di_tv, lp->ll_name, FALSE)))
 			&& tv_op(&tv, rettv, op) == OK)
-		    set_var(lp->ll_name, &tv, FALSE);
+		    set_var_const(lp->ll_name, NULL, &tv, FALSE,
+							    ASSIGN_NO_DECL, 0);
 		clear_tv(&tv);
 	    }
 	}
 	else
 	{
-	    if (lp->ll_type != NULL
-		       && check_typval_arg_type(lp->ll_type, rettv, 0) == FAIL)
+	    if (lp->ll_type != NULL && check_typval_arg_type(lp->ll_type, rettv,
+							      NULL, 0) == FAIL)
 		return;
 	    set_var_const(lp->ll_name, lp->ll_type, rettv, copy,
 							       flags, var_idx);
@@ -1449,7 +1454,8 @@ set_var_lval(
 	}
 
 	if (lp->ll_valtype != NULL
-		    && check_typval_arg_type(lp->ll_valtype, rettv, 0) == FAIL)
+		    && check_typval_arg_type(lp->ll_valtype, rettv,
+							      NULL, 0) == FAIL)
 	    return;
 
 	if (lp->ll_newkey != NULL)
@@ -1509,9 +1515,11 @@ tv_op(typval_T *tv1, typval_T *tv2, char_u *op)
     char_u	*s;
     int		failed = FALSE;
 
-    // Can't do anything with a Funcref, Dict, v:true on the right.
+    // Can't do anything with a Funcref or Dict on the right.
+    // v:true and friends only work with "..=".
     if (tv2->v_type != VAR_FUNC && tv2->v_type != VAR_DICT
-		      && tv2->v_type != VAR_BOOL && tv2->v_type != VAR_SPECIAL)
+		    && ((tv2->v_type != VAR_BOOL && tv2->v_type != VAR_SPECIAL)
+								|| *op == '.'))
     {
 	switch (tv1->v_type)
 	{
@@ -1741,7 +1749,7 @@ eval_for_line(
 	    }
 	    else
 	    {
-		emsg(_(e_listreq));
+		emsg(_(e_string_list_or_blob_required));
 		clear_tv(&tv);
 	    }
 	}
@@ -1784,6 +1792,8 @@ next_for_item(void *fi_void, char_u *arg)
 			     | ASSIGN_NO_MEMBER_TYPE)
 			 : 0);
     listitem_T	*item;
+    int		skip_assign = in_vim9script() && arg[0] == '_'
+						      && !eval_isnamec(arg[1]);
 
     if (fi->fi_blob != NULL)
     {
@@ -1795,6 +1805,8 @@ next_for_item(void *fi_void, char_u *arg)
 	tv.v_lock = VAR_FIXED;
 	tv.vval.v_number = blob_get(fi->fi_blob, fi->fi_bi);
 	++fi->fi_bi;
+	if (skip_assign)
+	    return TRUE;
 	return ex_let_vars(arg, &tv, TRUE, fi->fi_semicolon,
 					    fi->fi_varcount, flag, NULL) == OK;
     }
@@ -1812,7 +1824,10 @@ next_for_item(void *fi_void, char_u *arg)
 	tv.vval.v_string = vim_strnsave(fi->fi_string + fi->fi_byte_idx, len);
 	fi->fi_byte_idx += len;
 	++fi->fi_bi;
-	result = ex_let_vars(arg, &tv, TRUE, fi->fi_semicolon,
+	if (skip_assign)
+	    result = TRUE;
+	else
+	    result = ex_let_vars(arg, &tv, TRUE, fi->fi_semicolon,
 					    fi->fi_varcount, flag, NULL) == OK;
 	vim_free(tv.vval.v_string);
 	return result;
@@ -1825,7 +1840,10 @@ next_for_item(void *fi_void, char_u *arg)
     {
 	fi->fi_lw.lw_item = item->li_next;
 	++fi->fi_bi;
-	result = (ex_let_vars(arg, &item->li_tv, TRUE, fi->fi_semicolon,
+	if (skip_assign)
+	    result = TRUE;
+	else
+	    result = (ex_let_vars(arg, &item->li_tv, TRUE, fi->fi_semicolon,
 					   fi->fi_varcount, flag, NULL) == OK);
     }
     return result;
@@ -2177,6 +2195,11 @@ eval_next_line(evalarg_T *evalarg)
 	vim_free(evalarg->eval_tofree);
 	evalarg->eval_tofree = line;
     }
+
+    // Advanced to the next line, "arg" no longer points into the previous
+    // line.
+    VIM_CLEAR(evalarg->eval_tofree_cmdline);
+
     return skipwhite(line);
 }
 
@@ -2291,7 +2314,7 @@ eval0(
     }
 
     if (eap != NULL)
-	eap->nextcmd = check_nextcmd(p);
+	set_nextcmd(eap, p);
 
     return ret;
 }
@@ -3305,7 +3328,8 @@ eval7t(
 				       : (evalarg->eval_flags & EVAL_EVALUATE);
 
     // Recognize <type> in Vim9 script only.
-    if (in_vim9script() && **arg == '<' && eval_isnamec1((*arg)[1]))
+    if (in_vim9script() && **arg == '<' && eval_isnamec1((*arg)[1])
+					     && STRNCMP(*arg, "<SNR>", 5) != 0)
     {
 	++*arg;
 	ga_init2(&type_list, sizeof(type_T *), 10);
@@ -3337,7 +3361,7 @@ eval7t(
 	{
 	    type_T *actual = typval2type(rettv, get_copyID(), &type_list, TRUE);
 
-	    if (!equal_type(want_type, actual))
+	    if (!equal_type(want_type, actual, 0))
 	    {
 		if (want_type == &t_bool && actual != &t_bool
 					&& (actual->tt_flags & TTFLAG_BOOL_OK))
@@ -3351,9 +3375,8 @@ eval7t(
 		}
 		else
 		{
-		    where_T where;
+		    where_T where = WHERE_INIT;
 
-		    where.wt_index = 0;
 		    where.wt_variable = TRUE;
 		    res = check_type(want_type, actual, TRUE, where);
 		}
@@ -4168,6 +4191,15 @@ check_can_index(typval_T *rettv, int evaluate, int verbose)
     void
 f_slice(typval_T *argvars, typval_T *rettv)
 {
+    if (in_vim9script()
+	    && ((argvars[0].v_type != VAR_STRING
+		    && argvars[0].v_type != VAR_LIST
+		    && argvars[0].v_type != VAR_BLOB
+		    && check_for_list_arg(argvars, 0) == FAIL)
+		|| check_for_number_arg(argvars, 1) == FAIL
+		|| check_for_opt_number_arg(argvars, 2) == FAIL))
+	return;
+
     if (check_can_index(argvars, TRUE, FALSE) == OK)
     {
 	copy_tv(argvars, rettv);
@@ -6141,7 +6173,7 @@ ex_echo(exarg_T *eap)
 	clear_tv(&rettv);
 	arg = skipwhite(arg);
     }
-    eap->nextcmd = check_nextcmd(arg);
+    set_nextcmd(eap, arg);
     clear_evalarg(&evalarg, eap);
 
     if (eap->skip)
@@ -6285,7 +6317,7 @@ ex_execute(exarg_T *eap)
     if (eap->skip)
 	--emsg_skip;
 
-    eap->nextcmd = check_nextcmd(arg);
+    set_nextcmd(eap, arg);
 }
 
 /*

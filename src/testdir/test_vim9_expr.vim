@@ -372,9 +372,9 @@ enddef
 
 def Test_expr2_fails()
   var msg = "White space required before and after '||'"
-  call CheckDefAndScriptFailure(["var x = 1||2"], msg, 1)
-  call CheckDefAndScriptFailure(["var x = 1 ||2"], msg, 1)
-  call CheckDefAndScriptFailure(["var x = 1|| 2"], msg, 1)
+  call CheckDefAndScriptFailure(["var x = 1||0"], msg, 1)
+  call CheckDefAndScriptFailure(["var x = 1 ||0"], msg, 1)
+  call CheckDefAndScriptFailure(["var x = 1|| 0"], msg, 1)
 
   call CheckDefFailure(["var x = false || "], 'E1097:', 3)
   call CheckScriptFailure(['vim9script', "var x = false || "], 'E15:', 2)
@@ -386,8 +386,8 @@ def Test_expr2_fails()
 
   call CheckDefAndScriptFailure2(["if 'yes' || 0", 'echo 0', 'endif'], 'E1012: Type mismatch; expected bool but got string', 'E1135: Using a String as a Bool', 1)
 
-  # TODO: should fail at compile time
-  call CheckDefExecAndScriptFailure(["var x = 3 || 7"], 'E1023:', 1)
+  call CheckDefAndScriptFailure2(["var x = 3 || false"], 'E1012:', 'E1023:', 1)
+  call CheckDefAndScriptFailure2(["var x = false || 3"], 'E1012:', 'E1023:', 1)
 
   call CheckDefAndScriptFailure(["if 3"], 'E1023:', 1)
   call CheckDefExecAndScriptFailure(['var x = 3', 'if x', 'endif'], 'E1023:', 2)
@@ -505,15 +505,15 @@ enddef
 
 def Test_expr3_fails()
   var msg = "White space required before and after '&&'"
-  CheckDefAndScriptFailure(["var x = 1&&2"], msg, 1)
-  CheckDefAndScriptFailure(["var x = 1 &&2"], msg, 1)
-  CheckDefAndScriptFailure(["var x = 1&& 2"], msg, 1)
+  CheckDefAndScriptFailure(["var x = 1&&0"], msg, 1)
+  CheckDefAndScriptFailure(["var x = 1 &&0"], msg, 1)
+  CheckDefAndScriptFailure(["var x = 1&& 0"], msg, 1)
   var lines =<< trim END
     var x = 1
-      &&2
+      &&0
     # comment
   END
-  CheckDefAndScriptFailure(lines, 'E1004: White space required before and after ''&&'' at "&&2"', 2)
+  CheckDefAndScriptFailure(lines, 'E1004: White space required before and after ''&&'' at "&&0"', 2)
 
   g:vals = []
   CheckDefAndScriptFailure2(["if 'yes' && 0", 'echo 0', 'endif'], 'E1012: Type mismatch; expected bool but got string', 'E1135: Using a String as a Bool', 1)
@@ -525,7 +525,14 @@ def Test_expr3_fails()
           && true
       endif
   END
-  CheckDefExecAndScriptFailure(lines, 'E1023:', 1)
+  CheckDefAndScriptFailure2(lines, 'E1012:', 'E1023:', 1)
+
+  lines =<< trim END
+      if true
+          && 3
+      endif
+  END
+  CheckDefAndScriptFailure2(lines, 'E1012:', 'E1023:', 2)
 
   lines =<< trim END
       if 'yes'
@@ -660,13 +667,36 @@ def Test_expr4_equal()
   CheckDefExecAndScriptFailure(["var x: any = true", 'echo x == ""'], 'E1072: Cannot compare bool with string', 2)
   CheckDefExecAndScriptFailure2(["var x: any = 99", 'echo x == true'], 'E1138', 'E1072:', 2)
   CheckDefExecAndScriptFailure2(["var x: any = 'a'", 'echo x == 99'], 'E1030:', 'E1072:', 2)
+enddef
 
+def Test_expr4_wrong_type()
   for op in ['>', '>=', '<', '<=', '=~', '!~']
     CheckDefExecAndScriptFailure([
         "var a: any = 'a'",
         'var b: any = true',
         'echo a ' .. op .. ' b'], 'E1072:', 3)
   endfor
+  for op in ['>', '>=', '<', '<=']
+    CheckDefExecAndScriptFailure2([
+        "var n: any = 2",
+        'echo n ' .. op .. ' "3"'], 'E1030:', 'E1072:', 2)
+  endfor
+  for op in ['=~', '!~']
+    CheckDefExecAndScriptFailure([
+        "var n: any = 2",
+        'echo n ' .. op .. ' "3"'], 'E1072:', 2)
+  endfor
+
+  CheckDefAndScriptFailure([
+      'echo v:none == true'], 'E1072:', 1)
+  CheckDefAndScriptFailure([
+      'echo false >= true'], 'E1072:', 1)
+  CheckDefExecAndScriptFailure([
+      "var n: any = v:none",
+      'echo n == true'], 'E1072:', 2)
+  CheckDefExecAndScriptFailure([
+      "var n: any = v:none",
+      'echo n < true'], 'E1072:', 2)
 enddef
 
 " test != comperator
@@ -2052,6 +2082,10 @@ def Test_expr7_lambda_block()
         })
       assert_equal(['no', 'yes', 'no'], dll)
 
+      # ignored_inline(0, (_) => {
+      #   echo 'body'
+      # })
+
       sandbox var Safe = (nr: number): number => {
           return nr + 7
         }
@@ -3080,7 +3114,7 @@ func Test_expr7_fails()
   call CheckDefExecAndScriptFailure(["var x = +g:alist"], 'E745:', 1)
   call CheckDefExecAndScriptFailure(["var x = +g:adict"], 'E728:', 1)
 
-  call CheckDefAndScriptFailure2(["var x = ''", "var y = x.memb"], 'E715:', 'E488:', 2)
+  call CheckDefAndScriptFailure2(["var x = ''", "var y = x.memb"], 'E1229: Expected dictionary for using key "memb", but got string', 'E488:', 2)
 
   call CheckDefAndScriptFailure2(["'yes'->", "Echo()"], 'E488: Trailing characters: ->', 'E260: Missing name after ->', 1)
 

@@ -960,6 +960,12 @@ def Test_call_lambda_args()
     echo ((a) => a)('aa', 'bb')
   END
   CheckDefAndScriptFailure(lines, 'E118:', 1)
+
+  lines =<< trim END
+    echo 'aa'->((a) => a)('bb')
+  END
+  CheckDefFailure(lines, 'E118: Too many arguments for function: ->((a) => a)(''bb'')', 1)
+  CheckScriptFailure(['vim9script'] + lines, 'E118: Too many arguments for function: <lambda>', 2)
 enddef
 
 def FilterWithCond(x: string, Cond: func(string): bool): bool
@@ -2244,15 +2250,14 @@ def Test_double_nested_lambda()
 enddef
 
 def Test_nested_inline_lambda()
-  # TODO: use the "text" argument
   var lines =<< trim END
       vim9script
       def F(text: string): func(string): func(string): string
         return (arg: string): func(string): string => ((sep: string): string => {
-            return sep .. arg
+            return sep .. arg .. text
           })
       enddef
-      assert_equal('--there', F('unused')('there')('--'))
+      assert_equal('--there++', F('++')('there')('--'))
   END
   CheckScriptSuccess(lines)
 
@@ -2263,6 +2268,22 @@ def Test_nested_inline_lambda()
           return string(s)
           })
         })
+  END
+  CheckScriptSuccess(lines)
+
+  lines =<< trim END
+      vim9script
+
+      def s:func()
+        range(10)
+          ->mapnew((_, _) => ({
+            key: range(10)->mapnew((_, _) => {
+              return ' '
+            }),
+          }))
+      enddef
+
+      defcomp
   END
   CheckScriptSuccess(lines)
 enddef
@@ -2328,6 +2349,51 @@ def Test_list_lambda()
          ->substitute("')", '', '')
          ->substitute('function\zs', ' ', ''))
   assert_match('def <lambda>\d\+(_: any): number\n1  return 0\n   enddef', body)
+enddef
+
+def Test_lambda_block_variable()
+  var lines =<< trim END
+      vim9script
+      var flist: list<func>
+      for i in range(10)
+          var inloop = i
+          flist[i] = () => inloop
+      endfor
+  END
+  CheckScriptSuccess(lines)
+
+  lines =<< trim END
+      vim9script
+      if true
+        var outloop = 5
+        var flist: list<func>
+        for i in range(10)
+          flist[i] = () => outloop
+        endfor
+      endif
+  END
+  CheckScriptSuccess(lines)
+
+  lines =<< trim END
+      vim9script
+      if true
+        var outloop = 5
+      endif
+      var flist: list<func>
+      for i in range(10)
+        flist[i] = () => outloop
+      endfor
+  END
+  CheckScriptFailure(lines, 'E1001: Variable not found: outloop', 1)
+
+  lines =<< trim END
+      vim9script
+      for i in range(10)
+        var Ref = () => 0
+      endfor
+      assert_equal(0, ((i) => 0)(0))
+  END
+  CheckScriptSuccess(lines)
 enddef
 
 def Test_legacy_lambda()
@@ -2515,24 +2581,31 @@ def Test_invalid_function_name()
 enddef
 
 def Test_partial_call()
-  var Xsetlist = function('setloclist', [0])
-  Xsetlist([], ' ', {title: 'test'})
-  getloclist(0, {title: 1})->assert_equal({title: 'test'})
+  var lines =<< trim END
+      var Xsetlist: func
+      Xsetlist = function('setloclist', [0])
+      Xsetlist([], ' ', {title: 'test'})
+      getloclist(0, {title: 1})->assert_equal({title: 'test'})
 
-  Xsetlist = function('setloclist', [0, [], ' '])
-  Xsetlist({title: 'test'})
-  getloclist(0, {title: 1})->assert_equal({title: 'test'})
+      Xsetlist = function('setloclist', [0, [], ' '])
+      Xsetlist({title: 'test'})
+      getloclist(0, {title: 1})->assert_equal({title: 'test'})
 
-  Xsetlist = function('setqflist')
-  Xsetlist([], ' ', {title: 'test'})
-  getqflist({title: 1})->assert_equal({title: 'test'})
+      Xsetlist = function('setqflist')
+      Xsetlist([], ' ', {title: 'test'})
+      getqflist({title: 1})->assert_equal({title: 'test'})
 
-  Xsetlist = function('setqflist', [[], ' '])
-  Xsetlist({title: 'test'})
-  getqflist({title: 1})->assert_equal({title: 'test'})
+      Xsetlist = function('setqflist', [[], ' '])
+      Xsetlist({title: 'test'})
+      getqflist({title: 1})->assert_equal({title: 'test'})
 
-  var Len: func: number = function('len', ['word'])
-  assert_equal(4, Len())
+      var Len: func: number = function('len', ['word'])
+      assert_equal(4, Len())
+
+      var RepeatFunc = function('repeat', ['o'])
+      assert_equal('ooooo', RepeatFunc(5))
+  END
+  CheckDefAndScriptSuccess(lines)
 enddef
 
 def Test_cmd_modifier()

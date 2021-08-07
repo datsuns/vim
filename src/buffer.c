@@ -1942,7 +1942,7 @@ no_write_message(void)
 	emsg(_("E948: Job still running (add ! to end the job)"));
     else
 #endif
-	emsg(_("E37: No write since last change (add ! to override)"));
+	emsg(_(e_no_write_since_last_change_add_bang_to_override));
 }
 
     void
@@ -1953,7 +1953,7 @@ no_write_message_nobang(buf_T *buf UNUSED)
 	emsg(_("E948: Job still running"));
     else
 #endif
-	emsg(_("E37: No write since last change"));
+	emsg(_(e_no_write_since_last_change));
 }
 
 /*
@@ -2306,6 +2306,10 @@ free_buf_options(
     clear_string_option(&buf->b_p_fex);
 #endif
 #ifdef FEAT_CRYPT
+# ifdef FEAT_SODIUM
+    if (buf->b_p_key != NULL && (crypt_get_method_nr(buf) == CRYPT_M_SOD))
+	sodium_munlock(buf->b_p_key, STRLEN(buf->b_p_key));
+# endif
     clear_string_option(&buf->b_p_key);
 #endif
     clear_string_option(&buf->b_p_kp);

@@ -853,6 +853,12 @@ f_charidx(typval_T *argvars, typval_T *rettv)
 
     rettv->vval.v_number = -1;
 
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_number_arg(argvars, 1) == FAIL
+		|| check_for_opt_bool_arg(argvars, 2) == FAIL))
+	return;
+
     if (argvars[0].v_type != VAR_STRING || argvars[1].v_type != VAR_NUMBER
 	    || (argvars[2].v_type != VAR_UNKNOWN
 					   && argvars[2].v_type != VAR_NUMBER
@@ -904,8 +910,7 @@ f_str2list(typval_T *argvars, typval_T *rettv)
 
     if (in_vim9script()
 	    && (check_for_string_arg(argvars, 0) == FAIL
-		|| (argvars[1].v_type != VAR_UNKNOWN
-		    && check_for_bool_arg(argvars, 1) == FAIL)))
+		|| check_for_opt_bool_arg(argvars, 1) == FAIL))
 	return;
 
     if (argvars[1].v_type != VAR_UNKNOWN)
@@ -948,6 +953,13 @@ f_str2nr(typval_T *argvars, typval_T *rettv)
     varnumber_T	n;
     int		what = 0;
     int		isneg;
+
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_opt_number_arg(argvars, 1) == FAIL
+		|| (argvars[1].v_type != VAR_UNKNOWN
+		    && check_for_opt_bool_arg(argvars, 2) == FAIL)))
+	return;
 
     if (argvars[1].v_type != VAR_UNKNOWN)
     {
@@ -1032,6 +1044,12 @@ f_stridx(typval_T *argvars, typval_T *rettv)
     char_u	*pos;
     int		start_idx;
 
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_string_arg(argvars, 1) == FAIL
+		|| check_for_opt_number_arg(argvars, 2) == FAIL))
+	return;
+
     needle = tv_get_string_chk(&argvars[1]);
     save_haystack = haystack = tv_get_string_buf_chk(&argvars[0], buf);
     rettv->vval.v_number = -1;
@@ -1077,6 +1095,10 @@ f_string(typval_T *argvars, typval_T *rettv)
     void
 f_strlen(typval_T *argvars, typval_T *rettv)
 {
+    if (in_vim9script()
+	    && check_for_string_or_number_arg(argvars, 0) == FAIL)
+	return;
+
     rettv->vval.v_number = (varnumber_T)(STRLEN(
 					      tv_get_string(&argvars[0])));
 }
@@ -1103,6 +1125,10 @@ strchar_common(typval_T *argvars, typval_T *rettv, int skipcc)
     void
 f_strcharlen(typval_T *argvars, typval_T *rettv)
 {
+    if (in_vim9script()
+	    && check_for_string_or_number_arg(argvars, 0) == FAIL)
+	return;
+
     strchar_common(argvars, rettv, TRUE);
 }
 
@@ -1116,8 +1142,7 @@ f_strchars(typval_T *argvars, typval_T *rettv)
 
     if (in_vim9script()
 	    && (check_for_string_arg(argvars, 0) == FAIL
-		|| (argvars[1].v_type != VAR_UNKNOWN
-		    && check_for_bool_arg(argvars, 1) == FAIL)))
+		|| check_for_opt_bool_arg(argvars, 1) == FAIL))
 	return;
 
     if (argvars[1].v_type != VAR_UNKNOWN)
@@ -1141,8 +1166,7 @@ f_strdisplaywidth(typval_T *argvars, typval_T *rettv)
 
     if (in_vim9script()
 	    && (check_for_string_arg(argvars, 0) == FAIL
-		|| (argvars[1].v_type != VAR_UNKNOWN
-		    && check_for_number_arg(argvars, 1) == FAIL)))
+		|| check_for_opt_number_arg(argvars, 1) == FAIL))
 	return;
 
     s = tv_get_string(&argvars[0]);
@@ -1158,8 +1182,12 @@ f_strdisplaywidth(typval_T *argvars, typval_T *rettv)
     void
 f_strwidth(typval_T *argvars, typval_T *rettv)
 {
-    char_u	*s = tv_get_string_strict(&argvars[0]);
+    char_u	*s;
 
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
+    s = tv_get_string_strict(&argvars[0]);
     rettv->vval.v_number = (varnumber_T)(mb_string2cells(s, -1));
 }
 
@@ -1177,6 +1205,14 @@ f_strcharpart(typval_T *argvars, typval_T *rettv)
     int		len = 0;
     int		slen;
     int		error = FALSE;
+
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_number_arg(argvars, 1) == FAIL
+		|| check_for_opt_number_arg(argvars, 2) == FAIL
+		|| (argvars[2].v_type != VAR_UNKNOWN
+		    && check_for_opt_bool_arg(argvars, 3) == FAIL)))
+	return;
 
     p = tv_get_string(&argvars[0]);
     slen = (int)STRLEN(p);
@@ -1261,6 +1297,14 @@ f_strpart(typval_T *argvars, typval_T *rettv)
     int		slen;
     int		error = FALSE;
 
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_number_arg(argvars, 1) == FAIL
+		|| check_for_opt_number_arg(argvars, 2) == FAIL
+		|| (argvars[2].v_type != VAR_UNKNOWN
+		    && check_for_opt_bool_arg(argvars, 3) == FAIL)))
+	return;
+
     p = tv_get_string(&argvars[0]);
     slen = (int)STRLEN(p);
 
@@ -1313,6 +1357,12 @@ f_strridx(typval_T *argvars, typval_T *rettv)
     char_u	*lastmatch = NULL;
     int		haystack_len, end_idx;
 
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_string_arg(argvars, 1) == FAIL
+		|| check_for_opt_number_arg(argvars, 2) == FAIL))
+	return;
+
     needle = tv_get_string_chk(&argvars[1]);
     haystack = tv_get_string_buf_chk(&argvars[0], buf);
 
@@ -1359,6 +1409,9 @@ f_strridx(typval_T *argvars, typval_T *rettv)
     void
 f_strtrans(typval_T *argvars, typval_T *rettv)
 {
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
     rettv->v_type = VAR_STRING;
     rettv->vval.v_string = transstr(tv_get_string(&argvars[0]));
 }
@@ -1369,6 +1422,9 @@ f_strtrans(typval_T *argvars, typval_T *rettv)
     void
 f_tolower(typval_T *argvars, typval_T *rettv)
 {
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
     rettv->v_type = VAR_STRING;
     rettv->vval.v_string = strlow_save(tv_get_string(&argvars[0]));
 }
@@ -1379,6 +1435,9 @@ f_tolower(typval_T *argvars, typval_T *rettv)
     void
 f_toupper(typval_T *argvars, typval_T *rettv)
 {
+    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+	return;
+
     rettv->v_type = VAR_STRING;
     rettv->vval.v_string = strup_save(tv_get_string(&argvars[0]));
 }
@@ -1403,6 +1462,12 @@ f_tr(typval_T *argvars, typval_T *rettv)
     char_u	buf[NUMBUFLEN];
     char_u	buf2[NUMBUFLEN];
     garray_T	ga;
+
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_string_arg(argvars, 1) == FAIL
+		|| check_for_string_arg(argvars, 2) == FAIL))
+	return;
 
     in_str = tv_get_string(&argvars[0]);
     fromstr = tv_get_string_buf_chk(&argvars[1], buf);
@@ -1504,7 +1569,7 @@ f_trim(typval_T *argvars, typval_T *rettv)
 {
     char_u	buf1[NUMBUFLEN];
     char_u	buf2[NUMBUFLEN];
-    char_u	*head = tv_get_string_buf_chk(&argvars[0], buf1);
+    char_u	*head;
     char_u	*mask = NULL;
     char_u	*tail;
     char_u	*prev;
@@ -1514,6 +1579,15 @@ f_trim(typval_T *argvars, typval_T *rettv)
 
     rettv->v_type = VAR_STRING;
     rettv->vval.v_string = NULL;
+
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_opt_string_arg(argvars, 1) == FAIL
+		|| (argvars[1].v_type != VAR_UNKNOWN
+		    && check_for_opt_number_arg(argvars, 2) == FAIL)))
+	return;
+
+    head = tv_get_string_buf_chk(&argvars[0], buf1);
     if (head == NULL)
 	return;
 

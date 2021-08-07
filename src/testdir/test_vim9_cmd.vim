@@ -14,6 +14,20 @@ def Test_vim9cmd()
   END
   CheckScriptSuccess(lines)
   assert_fails('vim9cmd', 'E1164:')
+
+  lines =<< trim END
+      vim9script
+      def Foo()
+        g:found_bar = "bar"
+      enddef
+      nmap ,; :vim9cmd <SID>Foo()<CR>
+  END
+  CheckScriptSuccess(lines)
+  feedkeys(',;', 'xt')
+  assert_equal("bar", g:found_bar)
+
+  nunmap ,;
+  unlet g:found_bar
 enddef
 
 def Test_edit_wildcards()
@@ -1248,7 +1262,7 @@ def Test_substitute_expr()
   # List results in multiple lines
   new
   setline(1, 'some text here')
-  s/text/\=['aaa', 'bbb', 'ccc']/ 
+  s/text/\=['aaa', 'bbb', 'ccc']/
   assert_equal(['some aaa', 'bbb', 'ccc', ' here'], getline(1, '$'))
   bwipe!
 enddef
@@ -1322,6 +1336,19 @@ def Test_echo_void()
       defcompile
   END
   CheckScriptFailure(lines, 'E1186:', 1)
+enddef
+
+def Test_cmdwin_block()
+  augroup justTesting
+    autocmd BufEnter * {
+      echomsg 'in block'
+    }
+  augroup END
+  feedkeys('q:', 'xt')
+  redraw
+  feedkeys("aclose\<CR>", 'xt')
+
+  au! justTesting
 enddef
 
 

@@ -614,6 +614,35 @@ is_function_cmd(char_u **cmd)
 }
 
 /*
+ * Called when defining a function: The context may be needed for script
+ * variables declared in a block that is visible now but not when the function
+ * is compiled or called later.
+ */
+    static void
+function_using_block_scopes(ufunc_T *fp, cstack_T *cstack)
+{
+    if (cstack != NULL && cstack->cs_idx >= 0)
+    {
+	int	    count = cstack->cs_idx + 1;
+	int	    i;
+
+	fp->uf_block_ids = ALLOC_MULT(int, count);
+	if (fp->uf_block_ids != NULL)
+	{
+	    mch_memmove(fp->uf_block_ids, cstack->cs_block_id,
+							  sizeof(int) * count);
+	    fp->uf_block_depth = count;
+	}
+
+	// Set flag in each block to indicate a function was defined.  This
+	// is used to keep the variable when leaving the block, see
+	// hide_script_var().
+	for (i = 0; i <= cstack->cs_idx; ++i)
+	    cstack->cs_flags[i] |= CSF_FUNC_DEF;
+    }
+}
+
+/*
  * Read the body of a function, put every line in "newlines".
  * This stops at "}", "endfunction" or "enddef".
  * "newlines" must already have been initialized.
@@ -866,26 +895,42 @@ get_function_body(
 		}
 	    }
 
-	    // Check for nested inline function.
-	    end = p + STRLEN(p) - 1;
-	    while (end > p && VIM_ISWHITE(*end))
-		--end;
-	    if (end > p && *end == '{')
+	    if (nesting_def[nesting] ? *p != '#' : *p != '"')
 	    {
-		--end;
+		// Not a comment line: check for nested inline function.
+		end = p + STRLEN(p) - 1;
 		while (end > p && VIM_ISWHITE(*end))
 		    --end;
-		if (end > p + 2 && end[-1] == '=' && end[0] == '>')
+		if (end > p + 1 && *end == '{' && VIM_ISWHITE(end[-1]))
 		{
-		    // found trailing "=> {", start of an inline function
-		    if (nesting == MAX_FUNC_NESTING - 1)
-			emsg(_(e_function_nesting_too_deep));
-		    else
+		    int	    is_block;
+
+		    // check for trailing "=> {": start of an inline function
+		    --end;
+		    while (end > p && VIM_ISWHITE(*end))
+			--end;
+		    is_block = end > p + 2 && end[-1] == '=' && end[0] == '>';
+		    if (!is_block)
 		    {
-			++nesting;
-			nesting_def[nesting] = TRUE;
-			nesting_inline[nesting] = TRUE;
-			indent += 2;
+			char_u *s = p;
+
+			// check for line starting with "au" for :autocmd or
+			// "com" for :command, these can use a {} block
+			is_block = checkforcmd_noparen(&s, "autocmd", 2)
+				      || checkforcmd_noparen(&s, "command", 3);
+		    }
+
+		    if (is_block)
+		    {
+			if (nesting == MAX_FUNC_NESTING - 1)
+			    emsg(_(e_function_nesting_too_deep));
+			else
+			{
+			    ++nesting;
+			    nesting_def[nesting] = TRUE;
+			    nesting_inline[nesting] = TRUE;
+			    indent += 2;
+			}
 		    }
 		}
 	    }
@@ -1192,6 +1237,8 @@ lambda_function_body(
     ufunc->uf_script_ctx.sc_lnum += sourcing_lnum_top;
     set_function_type(ufunc);
 
+    function_using_block_scopes(ufunc, evalarg->eval_cstack);
+
     rettv->vval.v_partial = pt;
     rettv->v_type = VAR_PARTIAL;
     ufunc = NULL;
@@ -1364,7 +1411,7 @@ get_lambda_tv(
 
 	// If there are line breaks, we need to split up the string.
 	line_end = vim_strchr(start, '\n');
-	if (line_end == NULL)
+	if (line_end == NULL || line_end > end)
 	    line_end = end;
 
 	// Add "return " before the expression (or the first line).
@@ -1439,6 +1486,8 @@ get_lambda_tv(
 	fp->uf_script_ctx = current_sctx;
 	fp->uf_script_ctx.sc_lnum += SOURCING_LNUM - newlines.ga_len;
 
+	function_using_block_scopes(fp, evalarg->eval_cstack);
+
 	pt->pt_func = fp;
 	pt->pt_refcount = 1;
 	rettv->vval.v_partial = pt;
@@ -1456,6 +1505,7 @@ theend:
     vim_free(tofree2);
     if (types_optional)
 	ga_clear_strings(&argtypes);
+
     return OK;
 
 errret:
@@ -1637,7 +1687,8 @@ get_func_tv(
 
     if (ret == OK)
     {
-	int		i = 0;
+	int	i = 0;
+	int	did_emsg_before = did_emsg;
 
 	if (get_vim_var_nr(VV_TESTING))
 	{
@@ -1652,6 +1703,13 @@ get_func_tv(
 	}
 
 	ret = call_func(name, len, rettv, argcount, argvars, funcexe);
+	if (in_vim9script() && did_emsg > did_emsg_before)
+	{
+	    // An error in a builtin function does not return FAIL, but we do
+	    // want to abort further processing if an error was given.
+	    ret = FAIL;
+	    clear_tv(rettv);
+	}
 
 	funcargs.ga_len -= i;
     }
@@ -3784,7 +3842,7 @@ define_function(exarg_T *eap, char_u *name_arg)
     {
 	if (!eap->skip)
 	    list_functions(NULL);
-	eap->nextcmd = check_nextcmd(eap->arg);
+	set_nextcmd(eap, eap->arg);
 	return NULL;
     }
 
@@ -3811,7 +3869,7 @@ define_function(exarg_T *eap, char_u *name_arg)
 	}
 	if (*p == '/')
 	    ++p;
-	eap->nextcmd = check_nextcmd(p);
+	set_nextcmd(eap, p);
 	return NULL;
     }
 
@@ -3889,7 +3947,7 @@ define_function(exarg_T *eap, char_u *name_arg)
 	    semsg(_(e_trailing_arg), p);
 	    goto ret_free;
 	}
-	eap->nextcmd = check_nextcmd(p);
+	set_nextcmd(eap, p);
 	if (eap->nextcmd != NULL)
 	    *p = NUL;
 	if (!eap->skip && !got_int)
@@ -4310,28 +4368,8 @@ define_function(exarg_T *eap, char_u *name_arg)
 	// error messages are for the first function line
 	SOURCING_LNUM = sourcing_lnum_top;
 
-	if (cstack != NULL && cstack->cs_idx >= 0)
-	{
-	    int	    count = cstack->cs_idx + 1;
-	    int	    i;
-
-	    // The block context may be needed for script variables declared in
-	    // a block that is visible now but not when the function is called
-	    // later.
-	    fp->uf_block_ids = ALLOC_MULT(int, count);
-	    if (fp->uf_block_ids != NULL)
-	    {
-		mch_memmove(fp->uf_block_ids, cstack->cs_block_id,
-							  sizeof(int) * count);
-		fp->uf_block_depth = count;
-	    }
-
-	    // Set flag in each block to indicate a function was defined.  This
-	    // is used to keep the variable when leaving the block, see
-	    // hide_script_var().
-	    for (i = 0; i <= cstack->cs_idx; ++i)
-		cstack->cs_flags[i] |= CSF_FUNC_DEF;
-	}
+	// The function may use script variables from the context.
+	function_using_block_scopes(fp, cstack);
 
 	if (parse_argument_types(fp, &argtypes, varargs) == FAIL)
 	{
@@ -4617,7 +4655,7 @@ ex_delfunction(exarg_T *eap)
 	semsg(_(e_trailing_arg), p);
 	return;
     }
-    eap->nextcmd = check_nextcmd(p);
+    set_nextcmd(eap, p);
     if (eap->nextcmd != NULL)
 	*p = NUL;
 
@@ -4806,7 +4844,7 @@ ex_return(exarg_T *eap)
     if (returning)
 	eap->nextcmd = NULL;
     else if (eap->nextcmd == NULL)	    // no argument
-	eap->nextcmd = check_nextcmd(arg);
+	set_nextcmd(eap, arg);
 
     if (eap->skip)
 	--emsg_skip;
@@ -4966,7 +5004,7 @@ ex_call(exarg_T *eap)
 	    }
 	}
 	else
-	    eap->nextcmd = check_nextcmd(arg);
+	    set_nextcmd(eap, arg);
     }
 
 end:
@@ -5025,7 +5063,7 @@ do_return(
 		if ((cstack->cs_rettv[idx] = alloc_tv()) != NULL)
 		    *(typval_T *)cstack->cs_rettv[idx] = *(typval_T *)rettv;
 		else
-		    emsg(_(e_outofmem));
+		    emsg(_(e_out_of_memory));
 	    }
 	    else
 		cstack->cs_rettv[idx] = NULL;

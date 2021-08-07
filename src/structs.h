@@ -231,6 +231,10 @@ typedef struct
 #define w_p_nu w_onebuf_opt.wo_nu	// 'number'
     int		wo_rnu;
 #define w_p_rnu w_onebuf_opt.wo_rnu	// 'relativenumber'
+    char_u	*wo_ve;
+#define w_p_ve w_onebuf_opt.wo_ve	// 'virtualedit'
+    unsigned	wo_ve_flags;
+#define	w_ve_flags w_onebuf_opt.wo_ve_flags	// flags for 'virtualedit'
 #ifdef FEAT_LINEBREAK
     long	wo_nuw;
 # define w_p_nuw w_onebuf_opt.wo_nuw	// 'numberwidth'
@@ -1887,6 +1891,9 @@ typedef struct {
 
     // used when compiling a :def function, NULL otherwise
     cctx_T	*eval_cctx;
+
+    // used when executing commands from a script, NULL otherwise
+    cstack_T	*eval_cstack;
 
     // Used to collect lines while parsing them, so that they can be
     // concatenated later.  Used when "eval_ga.ga_itemsize" is not zero.
@@ -4438,7 +4445,10 @@ typedef enum {
 
 // Struct used to pass to error messages about where the error happened.
 typedef struct {
+    char    *wt_func_name;  // function name or NULL
     char    wt_index;	    // argument or variable index, 0 means unknown
     char    wt_variable;    // "variable" when TRUE, "argument" otherwise
 } where_T;
+
+#define WHERE_INIT {NULL, 0, 0}
 
