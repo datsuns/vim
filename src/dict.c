@@ -805,7 +805,7 @@ dict2string(typval_T *tv, int copyID, int restore_copyID)
  * Advance over a literal key, including "-".  If the first character is not a
  * literal key character then "key" is returned.
  */
-    char_u *
+    static char_u *
 skip_literal_key(char_u *key)
 {
     char_u *p;
@@ -1209,10 +1209,11 @@ dict_list(typval_T *argvars, typval_T *rettv, int what)
 	emsg(_(e_dictreq));
 	return;
     }
-    if ((d = argvars[0].vval.v_dict) == NULL)
-	return;
 
     if (rettv_list_alloc(rettv) == FAIL)
+	return;
+    if ((d = argvars[0].vval.v_dict) == NULL)
+	// empty dict behaves like an empty dict
 	return;
 
     todo = (int)d->dv_hashtab.ht_used;

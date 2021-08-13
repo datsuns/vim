@@ -85,8 +85,8 @@ struct ectx_S {
 
     garray_T	ec_trystack;	// stack of trycmd_T values
 
-    int		ec_dfunc_idx;	// current function index
     isn_T	*ec_instr;	// array with instructions
+    int		ec_dfunc_idx;	// current function index
     int		ec_iidx;	// index in ec_instr: instruction to execute
 
     garray_T	ec_funcrefs;	// partials that might be a closure
@@ -893,7 +893,7 @@ call_by_name(
 
     if (ufunc != NULL)
     {
-	if (ufunc->uf_arg_types != NULL)
+	if (ufunc->uf_arg_types != NULL || ufunc->uf_va_type != NULL)
 	{
 	    int i;
 	    typval_T	*argv = STACK_TV_BOT(0) - argcount;
@@ -904,7 +904,7 @@ call_by_name(
 	    {
 		type_T *type = NULL;
 
-		if (i < ufunc->uf_args.ga_len)
+		if (i < ufunc->uf_args.ga_len && ufunc->uf_arg_types != NULL)
 		    type = ufunc->uf_arg_types[i];
 		else if (ufunc->uf_va_type != NULL)
 		    type = ufunc->uf_va_type->tt_member;
@@ -1869,9 +1869,11 @@ exec_instructions(ectx_T *ectx)
 
 	    // :execute {string} ...
 	    // :echomsg {string} ...
+	    // :echoconsole {string} ...
 	    // :echoerr {string} ...
 	    case ISN_EXECUTE:
 	    case ISN_ECHOMSG:
+	    case ISN_ECHOCONSOLE:
 	    case ISN_ECHOERR:
 		{
 		    int		count = iptr->isn_arg.number;
@@ -1940,6 +1942,12 @@ exec_instructions(ectx_T *ectx)
 			    {
 				msg_attr(ga.ga_data, echo_attr);
 				out_flush();
+			    }
+			    else if (iptr->isn_type == ISN_ECHOCONSOLE)
+			    {
+				ui_write(ga.ga_data, (int)STRLEN(ga.ga_data),
+									 TRUE);
+				ui_write((char_u *)"\r\n", 2, TRUE);
 			    }
 			    else
 			    {
@@ -2495,14 +2503,53 @@ exec_instructions(ectx_T *ectx)
 		    // -4 value to be stored
 		    // -3 first index or "none"
 		    // -2 second index or "none"
-		    // -1 destination blob
+		    // -1 destination list or blob
 		    tv = STACK_TV_BOT(-4);
-		    if (tv_dest->v_type != VAR_BLOB)
+		    if (tv_dest->v_type == VAR_LIST)
 		    {
-			status = FAIL;
-			emsg(_(e_blob_required));
+			long	n1;
+			long	n2;
+			int	error = FALSE;
+
+			SOURCING_LNUM = iptr->isn_lnum;
+			n1 = (long)tv_get_number_chk(tv_idx1, &error);
+			if (error)
+			    status = FAIL;
+			else
+			{
+			    if (tv_idx2->v_type == VAR_SPECIAL
+					&& tv_idx2->vval.v_number == VVAL_NONE)
+				n2 = list_len(tv_dest->vval.v_list) - 1;
+			    else
+				n2 = (long)tv_get_number_chk(tv_idx2, &error);
+			    if (error)
+				status = FAIL;
+			    else
+			    {
+				listitem_T *li1 = check_range_index_one(
+					tv_dest->vval.v_list, &n1, FALSE);
+
+				if (li1 == NULL)
+				    status = FAIL;
+				else
+				{
+				    status = check_range_index_two(
+					    tv_dest->vval.v_list,
+					    &n1, li1, &n2, FALSE);
+				    if (status != FAIL)
+					status = list_assign_range(
+						tv_dest->vval.v_list,
+						tv->vval.v_list,
+						n1,
+						n2,
+						tv_idx2->v_type == VAR_SPECIAL,
+						(char_u *)"=",
+						(char_u *)"[unknown]");
+				}
+			    }
+			}
 		    }
-		    else
+		    else if (tv_dest->v_type == VAR_BLOB)
 		    {
 			varnumber_T n1;
 			varnumber_T n2;
@@ -2522,7 +2569,7 @@ exec_instructions(ectx_T *ectx)
 				status = FAIL;
 			    else
 			    {
-				long	bloblen = blob_len(tv_dest->vval.v_blob);
+				long  bloblen = blob_len(tv_dest->vval.v_blob);
 
 				if (check_blob_index(bloblen,
 							     n1, FALSE) == FAIL
@@ -2534,6 +2581,11 @@ exec_instructions(ectx_T *ectx)
 					     tv_dest->vval.v_blob, n1, n2, tv);
 			    }
 			}
+		    }
+		    else
+		    {
+			status = FAIL;
+			emsg(_(e_blob_required));
 		    }
 
 		    clear_tv(tv_idx1);
@@ -3427,13 +3479,22 @@ exec_instructions(ectx_T *ectx)
 		    typval_T	*tv2 = STACK_TV_BOT(-1);
 		    varnumber_T arg1 = tv1->vval.v_number;
 		    varnumber_T arg2 = tv2->vval.v_number;
-		    varnumber_T res;
+		    varnumber_T res = 0;
+		    int		div_zero = FALSE;
 
 		    switch (iptr->isn_arg.op.op_type)
 		    {
 			case EXPR_MULT: res = arg1 * arg2; break;
-			case EXPR_DIV: res = arg1 / arg2; break;
-			case EXPR_REM: res = arg1 % arg2; break;
+			case EXPR_DIV:  if (arg2 == 0)
+					    div_zero = TRUE;
+					else
+					    res = arg1 / arg2;
+					break;
+			case EXPR_REM:  if (arg2 == 0)
+					    div_zero = TRUE;
+					else
+					    res = arg1 % arg2;
+					break;
 			case EXPR_SUB: res = arg1 - arg2; break;
 			case EXPR_ADD: res = arg1 + arg2; break;
 
@@ -3443,7 +3504,7 @@ exec_instructions(ectx_T *ectx)
 			case EXPR_GEQUAL: res = arg1 >= arg2; break;
 			case EXPR_SMALLER: res = arg1 < arg2; break;
 			case EXPR_SEQUAL: res = arg1 <= arg2; break;
-			default: res = 0; break;
+			default: break;
 		    }
 
 		    --ectx->ec_stack.ga_len;
@@ -3454,6 +3515,12 @@ exec_instructions(ectx_T *ectx)
 		    }
 		    else
 			tv1->vval.v_number = res;
+		    if (div_zero)
+		    {
+			SOURCING_LNUM = iptr->isn_lnum;
+			emsg(_(e_divide_by_zero));
+			goto on_error;
+		    }
 		}
 		break;
 
@@ -4900,15 +4967,19 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 		break;
 	    case ISN_EXECUTE:
 		smsg("%s%4d EXECUTE %lld", pfx, current,
-					    (varnumber_T)(iptr->isn_arg.number));
+					  (varnumber_T)(iptr->isn_arg.number));
 		break;
 	    case ISN_ECHOMSG:
 		smsg("%s%4d ECHOMSG %lld", pfx, current,
-					    (varnumber_T)(iptr->isn_arg.number));
+					  (varnumber_T)(iptr->isn_arg.number));
+		break;
+	    case ISN_ECHOCONSOLE:
+		smsg("%s%4d ECHOCONSOLE %lld", pfx, current,
+					  (varnumber_T)(iptr->isn_arg.number));
 		break;
 	    case ISN_ECHOERR:
 		smsg("%s%4d ECHOERR %lld", pfx, current,
-					    (varnumber_T)(iptr->isn_arg.number));
+					  (varnumber_T)(iptr->isn_arg.number));
 		break;
 	    case ISN_LOAD:
 		{
@@ -5442,7 +5513,7 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 	    case ISN_ANYINDEX: smsg("%s%4d ANYINDEX", pfx, current); break;
 	    case ISN_ANYSLICE: smsg("%s%4d ANYSLICE", pfx, current); break;
 	    case ISN_SLICE: smsg("%s%4d SLICE %lld",
-					 pfx, current, iptr->isn_arg.number); break;
+				    pfx, current, iptr->isn_arg.number); break;
 	    case ISN_GETITEM: smsg("%s%4d ITEM %lld%s", pfx, current,
 					 iptr->isn_arg.getitem.gi_index,
 					 iptr->isn_arg.getitem.gi_with_op ?
@@ -5463,7 +5534,8 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 					  type_name(ct->ct_type, &tofree),
 					  (int)ct->ct_off);
 		      else
-			  smsg("%s%4d CHECKTYPE %s stack[%d] arg %d", pfx, current,
+			  smsg("%s%4d CHECKTYPE %s stack[%d] arg %d",
+					  pfx, current,
 					  type_name(ct->ct_type, &tofree),
 					  (int)ct->ct_off,
 					  (int)ct->ct_arg_idx);
