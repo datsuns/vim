@@ -852,6 +852,7 @@ list_assign_range(
     long	idx1 = idx1_arg;
     listitem_T	*first_li = list_find_index(dest, &idx1);
     long	idx;
+    type_T	*member_type = NULL;
 
     /*
      * Check whether any of the list items is locked before making any changes.
@@ -869,6 +870,10 @@ list_assign_range(
 	++idx;
     }
 
+    if (in_vim9script() && dest->lv_type != NULL
+					   && dest->lv_type->tt_member != NULL)
+	member_type = dest->lv_type->tt_member;
+
     /*
      * Assign the List values to the list items.
      */
@@ -880,6 +885,10 @@ list_assign_range(
 	    tv_op(&dest_li->li_tv, &src_li->li_tv, op);
 	else
 	{
+	    if (member_type != NULL
+		    && check_typval_arg_type(member_type, &src_li->li_tv,
+							      NULL, 0) == FAIL)
+		return FAIL;
 	    clear_tv(&dest_li->li_tv);
 	    copy_tv(&src_li->li_tv, &dest_li->li_tv);
 	}
@@ -943,7 +952,10 @@ list_flatten(list_T *list, long maxdepth)
 
 	    vimlist_remove(list, item, item);
 	    if (list_extend(list, item->li_tv.vval.v_list, next) == FAIL)
+	    {
+		list_free_item(list, item);
 		return;
+	    }
 	    clear_tv(&item->li_tv);
 	    tofree = item;
 
@@ -1014,6 +1026,9 @@ flatten_common(typval_T *argvars, typval_T *rettv, int make_copy)
 	rettv->vval.v_list = l;
 	if (l == NULL)
 	    return;
+	// The type will change.
+	free_type(l->lv_type);
+	l->lv_type = NULL;
     }
     else
     {
@@ -1208,6 +1223,7 @@ list_copy(list_T *orig, int deep, int copyID)
     copy = list_alloc();
     if (copy != NULL)
     {
+	copy->lv_type = alloc_type(orig->lv_type);
 	if (copyID != 0)
 	{
 	    // Do this before adding the items, because one of the items may

@@ -822,6 +822,8 @@ get_function_body(
 		    else if (*p != NUL && *p != (vim9_function ? '#' : '"')
 					   && (vim9_function || p_verbose > 0))
 		    {
+			SOURCING_LNUM = sourcing_lnum_top
+							+ newlines->ga_len + 1;
 			if (eap->cmdidx == CMD_def)
 			    semsg(_(e_text_found_after_enddef_str), p);
 			else
@@ -4623,7 +4625,8 @@ get_user_func_name(expand_T *xp, int idx)
 	    return fp->uf_name;	// prevents overflow
 
 	cat_func_name(IObuff, fp);
-	if (xp->xp_context != EXPAND_USER_FUNC)
+	if (xp->xp_context != EXPAND_USER_FUNC
+				       && xp->xp_context != EXPAND_DISASSEMBLE)
 	{
 	    STRCAT(IObuff, "(");
 	    if (!has_varargs(fp) && fp->uf_args.ga_len == 0)
@@ -4666,6 +4669,13 @@ ex_delfunction(exarg_T *eap)
     if (eap->nextcmd != NULL)
 	*p = NUL;
 
+    if (isdigit(*name) && fudi.fd_dict == NULL)
+    {
+	if (!eap->skip)
+	    semsg(_(e_invarg2), eap->arg);
+	vim_free(name);
+	return;
+    }
     if (!eap->skip)
 	fp = find_func(name, is_global, NULL);
     vim_free(name);
@@ -4918,11 +4928,14 @@ ex_call(exarg_T *eap)
     // Skip white space to allow ":call func ()".  Not good, but required for
     // backward compatibility.
     startarg = skipwhite(arg);
-    rettv.v_type = VAR_UNKNOWN;	// clear_tv() uses this
-
     if (*startarg != '(')
     {
 	semsg(_(e_missing_paren), eap->arg);
+	goto end;
+    }
+    if (in_vim9script() && startarg > arg)
+    {
+	semsg(_(e_no_white_space_allowed_before_str_str), "(", eap->arg);
 	goto end;
     }
 
@@ -4966,6 +4979,7 @@ ex_call(exarg_T *eap)
 	funcexe.partial = partial;
 	funcexe.selfdict = fudi.fd_dict;
 	funcexe.check_type = type;
+	rettv.v_type = VAR_UNKNOWN;	// clear_tv() uses this
 	if (get_func_tv(name, -1, &rettv, &arg, &evalarg, &funcexe) == FAIL)
 	{
 	    failed = TRUE;
@@ -4998,7 +5012,7 @@ ex_call(exarg_T *eap)
     clear_evalarg(&evalarg, eap);
 
     // When inside :try we need to check for following "| catch".
-    if (!failed || eap->cstack->cs_trylevel > 0)
+    if (!aborting() && (!failed || eap->cstack->cs_trylevel > 0))
     {
 	// Check for trailing illegal characters and a following command.
 	arg = skipwhite(arg);

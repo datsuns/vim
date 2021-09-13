@@ -708,6 +708,7 @@ static argcheck_T arg2_buffer_number[] = {arg_buffer, arg_number};
 static argcheck_T arg2_buffer_string[] = {arg_buffer, arg_string};
 static argcheck_T arg2_chan_or_job_dict[] = {arg_chan_or_job, arg_dict_any};
 static argcheck_T arg2_chan_or_job_string[] = {arg_chan_or_job, arg_string};
+static argcheck_T arg2_dict_any_list_any[] = {arg_dict_any, arg_list_any};
 static argcheck_T arg2_dict_any_string_or_nr[] = {arg_dict_any, arg_string_or_nr};
 static argcheck_T arg2_dict_string[] = {arg_dict_any, arg_string};
 static argcheck_T arg2_float_or_nr[] = {arg_float_or_nr, arg_float_or_nr};
@@ -1304,9 +1305,9 @@ static funcentry_T global_functions[] =
 			ret_number,	    f_diff_hlID},
     {"digraph_get",	1, 1, FEARG_1,	    arg1_string,
 			ret_string,	    f_digraph_get},
-    {"digraph_getlist",0, 1, FEARG_1,	    arg1_number,
+    {"digraph_getlist",0, 1, FEARG_1,	    arg1_bool,
 			ret_list_string_items, f_digraph_getlist},
-    {"digraph_set",	2, 2, FEARG_1,	    arg2_string_number,
+    {"digraph_set",	2, 2, FEARG_1,	    arg2_string,
 			ret_bool,	f_digraph_set},
     {"digraph_setlist",1, 1, FEARG_1,	    arg1_list_string,
 			ret_bool,	    f_digraph_setlist},
@@ -1353,9 +1354,9 @@ static funcentry_T global_functions[] =
     {"filter",		2, 2, FEARG_1,	    arg2_mapfilter,
 			ret_first_arg,	    f_filter},
     {"finddir",		1, 3, FEARG_1,	    arg3_string_string_number,
-			ret_string,	    f_finddir},
+			ret_any,	    f_finddir},
     {"findfile",	1, 3, FEARG_1,	    arg3_string_string_number,
-			ret_string,	    f_findfile},
+			ret_any,	    f_findfile},
     {"flatten",		1, 2, FEARG_1,	    arg2_list_any_number,
 			ret_list_any,	    f_flatten},
     {"flattennew",	1, 2, FEARG_1,	    arg2_list_any_number,
@@ -1740,6 +1741,8 @@ static funcentry_T global_functions[] =
 			ret_void,	    JOB_FUNC(f_prompt_setprompt)},
     {"prop_add",	3, 3, FEARG_1,	    arg3_number_number_dict,
 			ret_void,	    PROP_FUNC(f_prop_add)},
+    {"prop_add_list",	2, 2, FEARG_1,	    arg2_dict_any_list_any,
+			ret_void,	    PROP_FUNC(f_prop_add_list)},
     {"prop_clear",	1, 3, FEARG_1,	    arg3_number_number_dict,
 			ret_void,	    PROP_FUNC(f_prop_clear)},
     {"prop_find",	1, 2, FEARG_1,	    arg2_dict_string,
@@ -2306,7 +2309,8 @@ get_function_name(expand_T *xp, int idx)
 	name = get_user_func_name(xp, idx);
 	if (name != NULL)
 	{
-	    if (*name != '<' && STRNCMP("g:", xp->xp_pattern, 2) == 0)
+	    if (*name != NUL && *name != '<'
+				      && STRNCMP("g:", xp->xp_pattern, 2) == 0)
 		return cat_prefix_varname('g', name);
 	    return name;
 	}
@@ -2950,8 +2954,6 @@ f_confirm(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
 	error = TRUE;
     if (argvars[1].v_type != VAR_UNKNOWN)
     {
-	if (in_vim9script() && check_for_string_arg(argvars, 1) == FAIL)
-	    return;
 	buttons = tv_get_string_buf_chk(&argvars[1], buf);
 	if (buttons == NULL)
 	    error = TRUE;
@@ -2960,8 +2962,6 @@ f_confirm(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
 	    def = (int)tv_get_number_chk(&argvars[2], &error);
 	    if (argvars[3].v_type != VAR_UNKNOWN)
 	    {
-		if (in_vim9script() && check_for_string_arg(argvars, 3) == FAIL)
-		    return;
 		typestr = tv_get_string_buf_chk(&argvars[3], buf2);
 		if (typestr == NULL)
 		    error = TRUE;
@@ -3927,6 +3927,11 @@ common_function(typval_T *argvars, typval_T *rettv, int is_funcref)
 	// function('MyFunc', [arg], dict)
 	s = tv_get_string(&argvars[0]);
 	use_string = TRUE;
+    }
+    if (s == NULL)
+    {
+	semsg(_(e_invarg2), "NULL");
+	return;
     }
 
     if ((use_string && vim_strchr(s, AUTOLOAD_CHAR) == NULL) || is_funcref)
@@ -6680,9 +6685,14 @@ libcall_common(typval_T *argvars UNUSED, typval_T *rettv, int type)
 	if (argvars[2].v_type == VAR_STRING)
 	    string_in = argvars[2].vval.v_string;
 	if (type == VAR_NUMBER)
+	{
 	    string_result = NULL;
+	}
 	else
+	{
+	    rettv->vval.v_string = NULL;
 	    string_result = &rettv->vval.v_string;
+	}
 	if (mch_libcall(argvars[0].vval.v_string,
 			     argvars[1].vval.v_string,
 			     string_in,

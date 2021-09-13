@@ -485,6 +485,7 @@ do_exmode(
     else
 	exmode_active = EXMODE_NORMAL;
     State = NORMAL;
+    trigger_modechanged();
 
     // When using ":global /pat/ visual" and then "Q" we return to continue
     // the :global command.
@@ -2807,7 +2808,16 @@ parse_command_modifiers(
 
 	// ignore comment and empty lines
 	if (comment_start(eap->cmd, starts_with_colon))
+	{
+	    // a comment ends at a NL
+	    if (eap->nextcmd == NULL)
+	    {
+		eap->nextcmd = vim_strchr(eap->cmd, '\n');
+		if (eap->nextcmd != NULL)
+		    ++eap->nextcmd;
+	    }
 	    return FAIL;
+	}
 	if (*eap->cmd == NUL)
 	{
 	    if (!skip_only)
@@ -2951,7 +2961,7 @@ parse_command_modifiers(
 			    if (ends_excmd2(p, eap->cmd))
 			    {
 				*errormsg =
-				      _(e_vim9cmd_must_be_followed_by_command);
+				      _(e_legacy_must_be_followed_by_command);
 				return FAIL;
 			    }
 			    cmod->cmod_flags |= CMOD_LEGACY;
@@ -3425,12 +3435,41 @@ find_ex_command(
     {
 	char_u *pskip = skip_option_env_lead(eap->cmd);
 
-	if (vim_strchr((char_u *)"{('[\"@", *p) != NULL
+	if (vim_strchr((char_u *)"{('[\"@&$", *p) != NULL
 	       || ((p = to_name_const_end(pskip)) > eap->cmd && *p != NUL))
 	{
 	    int	    oplen;
 	    int	    heredoc;
-	    char_u  *swp = skipwhite(p);
+	    char_u  *swp;
+
+	    if (*eap->cmd == '&'
+		    || *eap->cmd == '$'
+		    || (eap->cmd[0] == '@'
+					&& (valid_yank_reg(eap->cmd[1], FALSE)
+						       || eap->cmd[1] == '@')))
+	    {
+		if (*eap->cmd == '&')
+		{
+		    p = eap->cmd + 1;
+		    if (STRNCMP("l:", p, 2) == 0 || STRNCMP("g:", p, 2) == 0)
+			p += 2;
+		    p = to_name_end(p, FALSE);
+		}
+		else if (*eap->cmd == '$')
+		    p = to_name_end(eap->cmd + 1, FALSE);
+		else
+		    p = eap->cmd + 2;
+		if (ends_excmd(*skipwhite(p)))
+		{
+		    // "&option <NL>", "$ENV <NL>" and "@r <NL>" are the start
+		    // of an expression.
+		    eap->cmdidx = CMD_eval;
+		    return eap->cmd;
+		}
+		// "&option" can be followed by "->" or "=", check below
+	    }
+
+	    swp = skipwhite(p);
 
 	    if (
 		// "(..." is an expression.
@@ -3530,10 +3569,10 @@ find_ex_command(
 
 	    // Recognize an assignment if we recognize the variable name:
 	    // "g:var = expr"
+	    // "@r = expr"
+	    // "&opt = expr"
 	    // "var = expr"  where "var" is a variable name or we are skipping
 	    // (variable declaration might have been skipped).
-	    if (*eap->cmd == '@')
-		p = eap->cmd + 2;
 	    oplen = assignment_len(skipwhite(p), &heredoc);
 	    if (oplen > 0)
 	    {
@@ -3857,8 +3896,8 @@ f_fullcommand(typval_T *argvars, typval_T *rettv)
     }
 
     rettv->vval.v_string = vim_strsave(IS_USER_CMDIDX(ea.cmdidx)
-				    ? get_user_commands(NULL, ea.useridx)
-				    : cmdnames[ea.cmdidx].cmd_name);
+				 ? get_user_command_name(ea.useridx, ea.cmdidx)
+				 : cmdnames[ea.cmdidx].cmd_name);
 }
 #endif
 
@@ -5481,7 +5520,7 @@ check_more(
 get_command_name(expand_T *xp UNUSED, int idx)
 {
     if (idx >= (int)CMD_SIZE)
-	return get_user_command_name(idx);
+	return expand_user_command_name(idx);
     return cmdnames[idx].cmd_name;
 }
 

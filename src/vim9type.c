@@ -258,7 +258,7 @@ func_type_add_arg_types(
 typval2type_int(typval_T *tv, int copyID, garray_T *type_gap, int do_member)
 {
     type_T  *type;
-    type_T  *member_type = &t_any;
+    type_T  *member_type = NULL;
     int	    argcount = 0;
     int	    min_argcount = 0;
 
@@ -268,6 +268,8 @@ typval2type_int(typval_T *tv, int copyID, garray_T *type_gap, int do_member)
 	return &t_bool;
     if (tv->v_type == VAR_STRING)
 	return &t_string;
+    if (tv->v_type == VAR_BLOB)
+	return &t_blob;
 
     if (tv->v_type == VAR_LIST)
     {
@@ -327,7 +329,7 @@ typval2type_int(typval_T *tv, int copyID, garray_T *type_gap, int do_member)
 	char_u	*name = NULL;
 	ufunc_T *ufunc = NULL;
 
-	if (tv->v_type == VAR_PARTIAL)
+	if (tv->v_type == VAR_PARTIAL && tv->vval.v_partial != NULL)
 	{
 	    if (tv->vval.v_partial->pt_func != NULL)
 		ufunc = tv->vval.v_partial->pt_func;
@@ -382,7 +384,8 @@ typval2type_int(typval_T *tv, int copyID, garray_T *type_gap, int do_member)
     type->tt_type = tv->v_type;
     type->tt_argcount = argcount;
     type->tt_min_argcount = min_argcount;
-    if (tv->v_type == VAR_PARTIAL && tv->vval.v_partial->pt_argc > 0)
+    if (tv->v_type == VAR_PARTIAL && tv->vval.v_partial != NULL
+					    && tv->vval.v_partial->pt_argc > 0)
     {
 	type->tt_argcount -= tv->vval.v_partial->pt_argc;
 	type->tt_min_argcount -= tv->vval.v_partial->pt_argc;
@@ -460,6 +463,16 @@ check_typval_type(type_T *expected, typval_T *actual_tv, where_T where)
     garray_T	type_list;
     type_T	*actual_type;
     int		res = FAIL;
+
+    // For some values there is no type, assume an error will be given later
+    // for an invalid value.
+    if ((actual_tv->v_type == VAR_FUNC && actual_tv->vval.v_string == NULL)
+	    || (actual_tv->v_type == VAR_PARTIAL
+					 && actual_tv->vval.v_partial == NULL))
+    {
+	emsg(_(e_function_reference_is_not_set));
+	return FAIL;
+    }
 
     ga_init2(&type_list, sizeof(type_T *), 10);
     actual_type = typval2type(actual_tv, get_copyID(), &type_list, TRUE);

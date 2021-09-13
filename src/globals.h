@@ -238,8 +238,8 @@ EXTERN int	did_emsg_def;		    // set by emsg() when emsg_silent
 EXTERN int	did_emsg_cumul;		    // cumulative did_emsg, increased
 					    // when did_emsg is reset.
 EXTERN int	called_vim_beep;	    // set if vim_beep() is called
-EXTERN int	did_uncaught_emsg;	    // emsg() was called and did not
-					    // cause an exception
+EXTERN int	uncaught_emsg;		    // number of times emsg() was
+					    // called and did show a message
 #endif
 EXTERN int	did_emsg_syntax;	    // did_emsg set because of a
 					    // syntax error
@@ -1256,6 +1256,9 @@ EXTERN int	listcmd_busy INIT(= FALSE); // set when :argdo, :windo or
 					    // :bufdo is executing
 EXTERN int	need_start_insertmode INIT(= FALSE);
 					    // start insert mode soon
+#if defined(FEAT_EVAL) || defined(PROTO)
+EXTERN char_u	last_mode[MODE_MAX_LENGTH] INIT(= "n"); // for ModeChanged event
+#endif
 EXTERN char_u	*last_cmdline INIT(= NULL); // last command line (for ":)
 EXTERN char_u	*repeat_cmdline INIT(= NULL); // command line for "."
 EXTERN char_u	*new_last_cmdline INIT(= NULL);	// new value for last_cmdline
@@ -1835,6 +1838,8 @@ EXTERN int  timer_busy INIT(= 0);   // when timer is inside vgetc() then > 0
 #endif
 #ifdef FEAT_EVAL
 EXTERN int  input_busy INIT(= 0);   // when inside get_user_input() then > 0
+
+EXTERN typval_T	*lval_root INIT(= NULL);
 #endif
 
 #ifdef FEAT_BEVAL_TERM
@@ -1900,7 +1905,7 @@ EXTERN int channel_need_redraw INIT(= FALSE);
 #endif
 
 #define FOR_ALL_LIST_ITEMS(l, li) \
-    for ((li) = (l)->lv_first; (li) != NULL; (li) = (li)->li_next)
+    for ((li) = (l) == NULL ? NULL : (l)->lv_first; (li) != NULL; (li) = (li)->li_next)
 
 // While executing a regexp and set to OPTION_MAGIC_ON or OPTION_MAGIC_OFF this
 // overrules p_magic.  Otherwise set to OPTION_MAGIC_NOT_SET.

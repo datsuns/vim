@@ -561,16 +561,19 @@ eval_to_string_safe(
     char_u	*retval;
     funccal_entry_T funccal_entry;
     int		save_sc_version = current_sctx.sc_version;
+    int		save_garbage = may_garbage_collect;
 
     current_sctx.sc_version = 1;
     save_funccal(&funccal_entry);
     if (use_sandbox)
 	++sandbox;
     ++textwinlock;
+    may_garbage_collect = FALSE;
     retval = eval_to_string(arg, FALSE);
     if (use_sandbox)
 	--sandbox;
     --textwinlock;
+    may_garbage_collect = save_garbage;
     restore_funccal();
     current_sctx.sc_version = save_sc_version;
     return retval;
@@ -887,7 +890,13 @@ get_lval(
 	    if (*p == ':')
 	    {
 		scriptitem_T *si = SCRIPT_ITEM(current_sctx.sc_sid);
-		char_u	 *tp = skipwhite(p + 1);
+		char_u	     *tp = skipwhite(p + 1);
+
+		if (tp == p + 1 && !quiet)
+		{
+		    semsg(_(e_white_space_required_after_str_str), ":", p);
+		    return NULL;
+		}
 
 		// parse the type after the name
 		lp->ll_type = parse_type(&tp, &si->sn_type_list, !quiet);
@@ -902,17 +911,27 @@ get_lval(
     if ((*p != '[' && *p != '.') || lp->ll_name == NULL)
 	return p;
 
-    cc = *p;
-    *p = NUL;
-    // When we would write to the variable pass &ht and prevent autoload.
-    writing = !(flags & GLV_READ_ONLY);
-    v = find_var(lp->ll_name, writing ? &ht : NULL,
+    if (in_vim9script() && lval_root != NULL)
+    {
+	// using local variable
+	lp->ll_tv = lval_root;
+	v = NULL;
+    }
+    else
+    {
+	cc = *p;
+	*p = NUL;
+	// When we would write to the variable pass &ht and prevent autoload.
+	writing = !(flags & GLV_READ_ONLY);
+	v = find_var(lp->ll_name, writing ? &ht : NULL,
 					 (flags & GLV_NO_AUTOLOAD) || writing);
-    if (v == NULL && !quiet)
-	semsg(_(e_undefined_variable_str), lp->ll_name);
-    *p = cc;
-    if (v == NULL)
-	return NULL;
+	if (v == NULL && !quiet)
+	    semsg(_(e_undefined_variable_str), lp->ll_name);
+	*p = cc;
+	if (v == NULL)
+	    return NULL;
+	lp->ll_tv = &v->di_tv;
+    }
 
     if (in_vim9script() && (flags & GLV_NO_DECL) == 0)
     {
@@ -924,7 +943,6 @@ get_lval(
     /*
      * Loop until no more [idx] or .key is following.
      */
-    lp->ll_tv = &v->di_tv;
     var1.v_type = VAR_UNKNOWN;
     var2.v_type = VAR_UNKNOWN;
     while (*p == '[' || (*p == '.' && p[1] != '=' && p[1] != '.'))
@@ -959,6 +977,7 @@ get_lval(
 	}
 
 	if (in_vim9script() && lp->ll_valtype == NULL
+		&& v != NULL
 		&& lp->ll_tv == &v->di_tv
 		&& ht != NULL && ht == get_script_local_ht())
 	{
@@ -2850,7 +2869,7 @@ eval5(char_u **arg, typval_T *rettv, evalarg_T *evalarg)
 	// "++" and "--" on the next line are a separate command.
 	p = eval_next_non_blank(*arg, evalarg, &getnext);
 	op = *p;
-	concat = op == '.' && (*(p + 1) == '.' || current_sctx.sc_version < 2);
+	concat = op == '.' && (*(p + 1) == '.' || in_old_script(2));
 	if ((op != '+' && op != '-' && !concat) || p[1] == '='
 					       || (p[1] == '.' && p[2] == '='))
 	    break;
@@ -3391,7 +3410,7 @@ eval7(
 
     if (**arg == '.' && (!isdigit(*(*arg + 1))
 #ifdef FEAT_FLOAT
-	    || current_sctx.sc_version < 2
+	    || in_old_script(2)
 #endif
 	    ))
     {
@@ -5866,7 +5885,7 @@ handle_subscript(
 		|| (**arg == '.' && (rettv->v_type == VAR_DICT
 			|| (!evaluate
 			    && (*arg)[1] != '.'
-			    && current_sctx.sc_version >= 2))))
+			    && !in_old_script(2)))))
 	{
 	    dict_unref(selfdict);
 	    if (rettv->v_type == VAR_DICT)
