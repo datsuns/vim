@@ -758,6 +758,64 @@ static char *(features[]) =
 static int included_patches[] =
 {   /* Add new patch number below this line */
 /**/
+    3487,
+/**/
+    3486,
+/**/
+    3485,
+/**/
+    3484,
+/**/
+    3483,
+/**/
+    3482,
+/**/
+    3481,
+/**/
+    3480,
+/**/
+    3479,
+/**/
+    3478,
+/**/
+    3477,
+/**/
+    3476,
+/**/
+    3475,
+/**/
+    3474,
+/**/
+    3473,
+/**/
+    3472,
+/**/
+    3471,
+/**/
+    3470,
+/**/
+    3469,
+/**/
+    3468,
+/**/
+    3467,
+/**/
+    3466,
+/**/
+    3465,
+/**/
+    3464,
+/**/
+    3463,
+/**/
+    3462,
+/**/
+    3461,
+/**/
+    3460,
+/**/
+    3459,
+/**/
     3458,
 /**/
     3457,
@@ -7744,7 +7802,7 @@ ex_version(exarg_T *eap)
     static void
 version_msg_wrap(char_u *s, int wrap)
 {
-    int		len = (int)vim_strsize(s) + (wrap ? 2 : 0);
+    int		len = vim_strsize(s) + (wrap ? 2 : 0);
 
     if (!got_int && len < (int)Columns && msg_col + len >= (int)Columns
 								&& *s != '\n')
@@ -7796,7 +7854,7 @@ list_in_columns(char_u **items, int size, int current)
     // width.
     for (i = 0; size < 0 ? items[i] != NULL : i < size; ++i)
     {
-	int l = (int)vim_strsize(items[i]) + (i == current ? 2 : 0);
+	int l = vim_strsize(items[i]) + (i == current ? 2 : 0);
 
 	if (l > width)
 	    width = l;
