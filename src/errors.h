@@ -160,6 +160,12 @@ EXTERN char e_list_value_does_not_have_enough_items[]
 	INIT(= N_("E711: List value does not have enough items"));
 EXTERN char e_cannot_slice_dictionary[]
 	INIT(= N_("E719: Cannot slice a Dictionary"));
+#endif
+EXTERN char e_conflicts_with_value_of_listchars[]
+	INIT(= N_("E834: Conflicts with value of 'listchars'"));
+EXTERN char e_conflicts_with_value_of_fillchars[]
+	INIT(= N_("E835: Conflicts with value of 'fillchars'"));
+#ifdef FEAT_EVAL
 EXTERN char e_assert_fails_second_arg[]
 	INIT(= N_("E856: \"assert_fails()\" second argument must be a string or a list with one or two strings"));
 EXTERN char e_using_invalid_value_as_string_str[]
@@ -664,3 +670,11 @@ EXTERN char e_blob_required_for_argument_nr[]
 	INIT(= N_("E1238: Blob required for argument %d"));
 EXTERN char e_invalid_value_for_blob_nr[]
 	INIT(= N_("E1239: Invalid value for blob: %d"));
+EXTERN char e_resulting_text_too_long[]
+	INIT(= N_("E1240: Resulting text too long"));
+EXTERN char e_separator_not_supported_str[]
+	INIT(= N_("E1241: Separator not supported: %s"));
+EXTERN char e_no_white_space_allowed_before_separator_str[]
+	INIT(= N_("E1242: No white space allowed before separator: %s"));
+EXTERN char e_ascii_code_not_in_range[]
+	INIT(= N_("E1243: ASCII code not in 32-127 range"));
