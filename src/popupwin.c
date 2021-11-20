@@ -1851,13 +1851,13 @@ popup_create(typval_T *argvars, typval_T *rettv, create_type_T type)
     int		nr;
     int		i;
 
-    if (in_vim9script()
-	    && (check_for_string_or_number_or_list_arg(argvars, 0) == FAIL
-		|| check_for_dict_arg(argvars, 1) == FAIL))
-	return NULL;
-
     if (argvars != NULL)
     {
+	if (in_vim9script()
+		&& (check_for_string_or_number_or_list_arg(argvars, 0) == FAIL
+		    || check_for_dict_arg(argvars, 1) == FAIL))
+	    return NULL;
+
 	// Check that arguments look OK.
 	if (argvars[0].v_type == VAR_NUMBER)
 	{
@@ -3654,7 +3654,11 @@ may_update_popup_mask(int type)
 	    for (col = wp->w_wincol;
 		 col < wp->w_wincol + width - wp->w_popup_leftoff
 						&& col < screen_Columns; ++col)
-		if (wp->w_popup_mask_cells == NULL
+		if (wp->w_zindex < POPUPMENU_ZINDEX
+			&& pum_visible()
+			&& pum_under_menu(line, col, FALSE))
+		    mask[line * screen_Columns + col] = POPUPMENU_ZINDEX;
+		else if (wp->w_popup_mask_cells == NULL
 				|| !popup_masked(wp, width, height, col, line))
 		    mask[line * screen_Columns + col] = wp->w_zindex;
     }

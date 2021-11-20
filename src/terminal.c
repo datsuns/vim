@@ -1130,10 +1130,24 @@ get_tty_part(term_T *term UNUSED)
  * Write job output "msg[len]" to the vterm.
  */
     static void
-term_write_job_output(term_T *term, char_u *msg, size_t len)
+term_write_job_output(term_T *term, char_u *msg_arg, size_t len_arg)
 {
+    char_u	*msg = msg_arg;
+    size_t	len = len_arg;
     VTerm	*vterm = term->tl_vterm;
     size_t	prevlen = vterm_output_get_buffer_current(vterm);
+    size_t	limit = term->tl_buffer->b_p_twsl * term->tl_cols * 3;
+
+    // Limit the length to 'termwinscroll' * cols * 3 bytes.  Keep the text at
+    // the end.
+    if (len > limit)
+    {
+	char_u *p = msg + len - limit;
+
+	p -= (*mb_head_off)(msg, p);
+	len -= p - msg;
+	msg = p;
+    }
 
     vterm_input_write(vterm, (char *)msg, len);
 
@@ -4473,7 +4487,8 @@ static VTermStateFallbacks state_fallbacks = {
     static void *
 vterm_malloc(size_t size, void *data UNUSED)
 {
-    return alloc_clear(size);
+    // make sure that the length is not zero
+    return alloc_clear(size == 0 ? 1L : size);
 }
 
     static void
@@ -4620,6 +4635,15 @@ term_get_status_text(term_T *term)
 								   fname, txt);
     }
     return term->tl_status_text;
+}
+
+/*
+ * Clear the cached value of the status text.
+ */
+    void
+term_clear_status_text(term_T *term)
+{
+    VIM_CLEAR(term->tl_status_text);
 }
 
 /*

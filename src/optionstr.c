@@ -1331,11 +1331,10 @@ ambw_end:
 	    if (!(opt_flags & OPT_GLOBAL))
 		clear_string_option(&curwin->w_p_lcs);
 	    FOR_ALL_TAB_WINDOWS(tp, wp)
-	    {
-		errmsg = set_chars_option(wp, &wp->w_p_lcs);
-		if (errmsg)
-		    break;
-	    }
+		// If no error was returned above, we don't expect an error
+		// here, so ignore the return value.
+		(void)set_chars_option(wp, &wp->w_p_lcs);
+
 	    redraw_all_later(NOT_VALID);
 	}
     }
@@ -2321,10 +2320,18 @@ ambw_end:
 # endif
 #endif
 
+    // 'operatorfunc'
+    else if (varp == &p_opfunc)
+    {
+	if (set_operatorfunc_option() == FAIL)
+	    errmsg = e_invarg;
+    }
+
 #ifdef FEAT_QUICKFIX
+    // 'quickfixtextfunc'
     else if (varp == &p_qftf)
     {
-	if (qf_process_qftf_option() == FALSE)
+	if (qf_process_qftf_option() == FAIL)
 	    errmsg = e_invarg;
     }
 #endif

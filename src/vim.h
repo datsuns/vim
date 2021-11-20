@@ -431,7 +431,7 @@ typedef unsigned int u8char_T;	// int is 32 bits or more
 
 #include "ascii.h"
 #include "keymap.h"
-#include "term.h"
+#include "termdefs.h"
 #include "macros.h"
 
 #ifdef LATTICE
@@ -1379,6 +1379,7 @@ enum auto_event
     EVENT_WINENTER,		// after entering a window
     EVENT_WINLEAVE,		// before leaving a window
     EVENT_WINNEW,		// when entering a new window
+    EVENT_WINCLOSED,		// after closing a window
     EVENT_VIMSUSPEND,		// before Vim is suspended
     EVENT_VIMRESUME,		// after Vim is resumed
 

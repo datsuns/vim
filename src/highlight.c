@@ -2332,39 +2332,6 @@ colorname2rgb(char_u *name)
     return INVALCOLOR;
 }
 
-// Maps the given name to the given color value, overwriting any current
-// mapping. If allocation fails the named color will no longer exist in the
-// table and the user will receive an error message.
-    void
-save_colorname_hexstr(int r, int g, int b, char_u *name)
-{
-    int        result;
-    dict_T     *colornames_table;
-    dictitem_T *existing;
-    char_u     hexstr[8];
-
-    if (vim_snprintf((char *)hexstr, sizeof(hexstr),
-						 "#%02x%02x%02x", r, g, b) < 0)
-    {
-	semsg(_(e_cannot_allocate_color_str), name);
-	return;
-    }
-
-    colornames_table = get_vim_var_dict(VV_COLORNAMES);
-    // The colornames_table dict is safe to use here because it is allocated at
-    // startup in evalvars.c
-    existing = dict_find(colornames_table, name, -1);
-    if (existing != NULL)
-    {
-	dictitem_remove(colornames_table, existing);
-	existing = NULL; // dictitem_remove freed the item
-    }
-
-    result = dict_add_string(colornames_table, (char *)name, hexstr);
-    if (result == FAIL)
-	semsg(_(e_cannot_allocate_color_str), name);
-}
-
 /*
  * Load a default color list. Intended to support legacy color names but allows
  * the user to override the color values. Only loaded once.
@@ -4209,6 +4176,9 @@ highlight_get_info(int hl_idx, int resolve_link)
 	link = HL_TABLE()[sgp->sg_link - 1].sg_name;
 	if (link != NULL && dict_add_string(dict, "linksto", link) == FAIL)
 	    goto error;
+
+	if (sgp->sg_deflink)
+	    dict_add_bool(dict, "default", VVAL_TRUE);
     }
     if (dict_len(dict) == 2)
 	// If only 'name' is present, then the highlight group is cleared.
@@ -4370,25 +4340,19 @@ hlg_add_or_update(dict_T *dict)
 # ifdef FEAT_GUI
     char_u	*font;
 # endif
+    int		forceit = FALSE;
+    int		dodefault = FALSE;
+    int		done = FALSE;
 
     name = hldict_get_string(dict, (char_u *)"name", &error);
     if (name == NULL || error)
 	return FALSE;
 
-    if (dict_find(dict, (char_u *)"linksto", -1) != NULL)
-    {
-	char_u	*linksto;
+    if (dict_get_bool(dict, (char_u *)"force", VVAL_FALSE) == VVAL_TRUE)
+	forceit = TRUE;
 
-	// link highlight groups
-	linksto = hldict_get_string(dict, (char_u *)"linksto", &error);
-	if (linksto == NULL || error)
-	    return FALSE;
-
-	vim_snprintf((char *)IObuff, IOSIZE, "link %s %s", name, linksto);
-	do_highlight(IObuff, FALSE, FALSE);
-
-	return TRUE;
-    }
+    if (dict_get_bool(dict, (char_u *)"default", VVAL_FALSE) == VVAL_TRUE)
+	dodefault = TRUE;
 
     if (dict_find(dict, (char_u *)"cleared", -1) != NULL)
     {
@@ -4399,11 +4363,31 @@ hlg_add_or_update(dict_T *dict)
 	if (cleared == TRUE)
 	{
 	    vim_snprintf((char *)IObuff, IOSIZE, "clear %s", name);
-	    do_highlight(IObuff, FALSE, FALSE);
+	    do_highlight(IObuff, forceit, FALSE);
+	    done = TRUE;
 	}
-
-	return TRUE;
     }
+
+    if (dict_find(dict, (char_u *)"linksto", -1) != NULL)
+    {
+	char_u	*linksto;
+
+	// link highlight groups
+	linksto = hldict_get_string(dict, (char_u *)"linksto", &error);
+	if (linksto == NULL || error)
+	    return FALSE;
+
+	vim_snprintf((char *)IObuff, IOSIZE, "%slink %s %s",
+				dodefault ? "default " : "", name, linksto);
+	do_highlight(IObuff, forceit, FALSE);
+
+	done = TRUE;
+    }
+
+    // If 'cleared' or 'linksto' are specified, then don't process the other
+    // attributes.
+    if (done)
+	return TRUE;
 
     start = hldict_get_string(dict, (char_u *)"start", &error);
     if (error)
@@ -4467,7 +4451,8 @@ hlg_add_or_update(dict_T *dict)
 	return TRUE;
 
     vim_snprintf((char *)IObuff, IOSIZE,
-	    "%s %s%s %s%s %s%s %s%s %s%s %s%s %s%s %s%s %s%s %s%s %s%s %s%s",
+	    "%s%s %s%s %s%s %s%s %s%s %s%s %s%s %s%s %s%s %s%s %s%s %s%s %s%s",
+	    dodefault ? "default " : "",
 	    name,
 	    term_attr[0] != NUL ? "term=" : "",
 	    term_attr[0] != NUL ? term_attr : (char_u *)"",
@@ -4499,7 +4484,7 @@ hlg_add_or_update(dict_T *dict)
 	    guisp != NULL ? guisp : (char_u *)""
 		);
 
-    do_highlight(IObuff, FALSE, FALSE);
+    do_highlight(IObuff, forceit, FALSE);
 
     return TRUE;
 }
