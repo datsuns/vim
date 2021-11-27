@@ -632,7 +632,7 @@ popup_highlight_curline(win_T *wp)
 
 	    if (syn_name2id((char_u *)linehl) == 0)
 		linehl = "PmenuSel";
-	    sign_define_by_name(sign_name, NULL, (char_u *)linehl, NULL, NULL);
+	    sign_define_by_name(sign_name, NULL, (char_u *)linehl, NULL, NULL, NULL);
 	}
 
 	sign_place(&sign_id, (char_u *)"PopUpMenu", sign_name,
@@ -732,8 +732,13 @@ apply_general_options(win_T *wp, dict_T *dict)
 
     str = dict_get_string(dict, (char_u *)"highlight", FALSE);
     if (str != NULL)
+    {
 	set_string_option_direct_in_win(wp, (char_u *)"wincolor", -1,
 						   str, OPT_FREE|OPT_LOCAL, 0);
+#ifdef FEAT_TERMINAL
+	term_update_wincolor(wp);
+#endif
+    }
 
     set_padding_border(dict, wp->w_popup_padding, "padding", 999);
     set_padding_border(dict, wp->w_popup_border, "border", 1);

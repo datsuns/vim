@@ -810,6 +810,7 @@ free_all_options(void)
 	    clear_string_option((char_u **)options[i].var);
     }
     free_operatorfunc_option();
+    free_tagfunc_option();
 }
 #endif
 
@@ -3258,6 +3259,10 @@ set_bool_option(
 	    set_termname(T_NAME);
 	    init_highlight(TRUE, FALSE);
 	}
+# endif
+# ifdef FEAT_TERMINAL
+	term_update_colors_all();
+	term_update_wincolor_all();
 # endif
     }
 #endif
@@ -5952,6 +5957,7 @@ buf_copy_options(buf_T *buf, int flags)
 #ifdef FEAT_EVAL
 	    buf->b_p_tfu = vim_strsave(p_tfu);
 	    COPY_OPT_SCTX(buf, BV_TFU);
+	    buf_set_tfu_callback(buf);
 #endif
 	    buf->b_p_sts = p_sts;
 	    COPY_OPT_SCTX(buf, BV_STS);

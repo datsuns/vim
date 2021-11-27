@@ -162,8 +162,8 @@ func Test_very_large_count_64bit()
   endif
 
   new
-  let @" = 'x'
-  call assert_fails('norm 44444444444444p', 'E1240:')
+  let @" = repeat('x', 100)
+  call assert_fails('norm 999999999p', 'E1240:')
   bwipe!
 endfunc
 
@@ -182,9 +182,9 @@ func Test_very_large_count_block_64bit()
   endif
 
   new
-  call setline(1, 'x')
-  exe "norm \<C-V>y"
-  call assert_fails('norm 44444444444444p', 'E1240:')
+  call setline(1, repeat('x', 100))
+  exe "norm \<C-V>$y"
+  call assert_fails('norm 999999999p', 'E1240:')
   bwipe!
 endfunc
 
@@ -194,6 +194,19 @@ func Test_put_above_first_line()
   silent! normal 0o00
   0put
   call assert_equal('text', getline(1))
+  bwipe!
+endfunc
+
+func Test_multibyte_op_end_mark()
+  new
+  call setline(1, 'тест')
+  normal viwdp
+  call assert_equal([0, 1, 7, 0], getpos("'>"))
+  call assert_equal([0, 1, 7, 0], getpos("']"))
+
+  normal Vyp
+  call assert_equal([0, 1, 2147483647, 0], getpos("'>"))
+  call assert_equal([0, 2, 7, 0], getpos("']"))
   bwipe!
 endfunc
 
