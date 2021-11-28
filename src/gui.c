@@ -4425,6 +4425,10 @@ gui_update_scrollbars(
 					    val, size, max);
 	}
     }
+
+    // update the title, it may show the scroll position
+    maketitle();
+
     prev_curwin = curwin;
     --hold_gui_events;
 }
