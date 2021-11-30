@@ -297,6 +297,9 @@ func Test_dict()
   call assert_fails('let d={[] : 10}', 'E730:')
   " undefined variable as value
   call assert_fails("let d={'k' : i}", 'E121:')
+
+  " allow key starting with number at the start, not a curly expression
+  call assert_equal({'1foo': 77}, #{1foo: 77})
 endfunc
 
 " This was allowed in legacy Vim script
@@ -453,6 +456,25 @@ func Test_dict_func_remove()
       call remove(d, 'a')
   END
   call CheckLegacyAndVim9Failure(lines, 'E716:')
+
+  let lines =<< trim END
+      let d = {'a-b': 55}
+      echo d.a-b
+  END
+  call CheckScriptFailure(lines, 'E716: Key not present in Dictionary: "a"')
+
+  let lines =<< trim END
+      vim9script
+      var d = {'a-b': 55}
+      echo d.a-b
+  END
+  call CheckScriptFailure(lines, 'E716: Key not present in Dictionary: "a"')
+
+  let lines =<< trim END
+      var d = {'a-b': 55}
+      echo d.a-b
+  END
+  call CheckDefFailure(lines, 'E1004: White space required before and after ''-''')
 
   let lines =<< trim END
       let d = {1: 'a', 3: 'c'}
