@@ -1,4 +1,4 @@
-*vim9.txt*	For Vim version 8.2.  Last change: 2021 Nov 22
+*vim9.txt*	For Vim version 8.2.  Last change: 2021 Dec 15
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -234,9 +234,10 @@ the "name#" prefix is sufficient. >
 	def scriptname#function()   # autoload
 
 When using `:function` or `:def` to specify a nested function inside a `:def`
-function, this nested function is local to the code block it is defined in.
-In a `:def` function it is not possible to define a script-local function.  It
-is possible to define a global function by using the "g:" prefix.
+function and no namespace was given, this nested function is local to the code
+block it is defined in.  In a `:def` function it is not possible to define a
+script-local function.  It is possible to define a global function by using
+the "g:" prefix.
 
 When referring to a function and no "s:" or "g:" prefix is used, Vim will
 search for the function:
@@ -420,12 +421,11 @@ similar to how a function argument can be ignored: >
 To ignore any remaining items: >
 	[a, b; _] = longList
 
-<							*E1092*
 Declaring more than one variable at a time, using the unpack notation, is
-currently not supported: >
-	var [v1, v2] = GetValues()  # Error!
-That is because the type needs to be inferred from the list item type, which
-isn't that easy.
+possible.  Each variable can have a type or infer it from the value: >
+	var [v1: number, v2] = GetValues()
+Use this only when there is a list with values, declaring one variable per
+line is much easier to read and change later.
 
 
 Constants ~
@@ -560,13 +560,30 @@ This can be useful for a timer, for example: >
 		 echom 'Handler called ' .. count
 	     }, {repeat: 3})
 
-
 The ending "}" must be at the start of a line.  It can be followed by other
 characters, e.g.: >
 	var d = mapnew(dict, (k, v): string => {
 	     return 'value'
 	   })
 No command can follow the "{", only a comment can be used there.
+
+							*command-block*
+The block can also be used for defining a user command.  Inside the block Vim9
+syntax will be used.
+
+If the statements include a dictionary, its closing bracket must not be
+written at the start of a line.  Otherwise, it would be parsed as the end of
+the block.  This does not work: >
+	command NewCommand {
+	     g:mydict = {
+	       'key': 'value',
+	       }  # ERROR: will be recognized as the end of the block
+	   }
+Put the '}' after the last item to avoid this: >
+	command NewCommand {
+	     g:mydict = {
+	       'key': 'value' }
+	   }
 
 Rationale: The "}" cannot be after a command because it would require parsing
 the commands to find it.  For consistency with that no command can follow the
@@ -821,9 +838,15 @@ error.  Example: >
 
 For loop ~
 
-The loop variable must not exist yet: >
+The loop variable must not be declared yet: >
 	var i = 1
 	for i in [1, 2, 3]   # Error!
+
+It is possible to use a global variable though: >
+	g:i = 1
+	for g:i in [1, 2, 3]
+	  echo g:i
+	endfor
 
 Legacy Vim script has some tricks to make a for loop over a list handle
 deleting items at the current or previous item.  In Vim9 script it just uses
@@ -1125,17 +1148,11 @@ function scope.  Instead, use a lambda: >
 	  return range(1, 2)->map((_, v) => list[v])
 	enddef
 
-The same is true for commands that are not compiled, such as `:global`.
-For these the backtick expansion can be used.  Example: >
+For commands that are not compiled, such as `:edit`, backtick expansion can be
+used and it can use the local scope.  Example: >
 	def Replace()
-	  var newText = 'blah'
-	  g/pattern/s/^/`=newText`/
-	enddef
-
-Or a script variable can be used: >
-	var newText = 'blah'
-	def Replace()
-	  g/pattern/s/^/\=newText/
+	  var fname = 'blah.txt'
+	  edit `=fname`
 	enddef
 
 Closures defined in a loop will share the same context.  For example: >

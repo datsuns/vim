@@ -1232,7 +1232,7 @@ def Wrong_dict_key_type(items: list<number>): list<number>
 enddef
 
 def Test_filter()
-  CheckDefAndScriptFailure2(['filter(1.1, "1")'], 'E1013: Argument 1: type mismatch, expected list<any> but got float', 'E1228: List, Dictionary or Blob required for argument 1')
+  CheckDefAndScriptFailure2(['filter(1.1, "1")'], 'E1013: Argument 1: type mismatch, expected list<any> but got float', 'E1228: List, Dictionary, Blob or String required for argument 1')
   assert_equal([], filter([1, 2, 3], '0'))
   assert_equal([1, 2, 3], filter([1, 2, 3], '1'))
   assert_equal({b: 20}, filter({a: 10, b: 20}, 'v:val == 20'))
@@ -1879,17 +1879,7 @@ def Test_job_info()
   endif
 enddef
 
-def Test_job_info_return_type()
-  if !has('job')
-    CheckFeature job
-  else
-    job_start(&shell)
-    var jobs = job_info()
-    assert_equal('list<job>', typename(jobs))
-    assert_equal('dict<any>', typename(job_info(jobs[0])))
-    job_stop(jobs[0])
-  endif
-enddef
+" Test_job_info_return_type() is in test_vim9_fails.vim
 
 def Test_job_setoptions()
   if !has('job')
@@ -2037,8 +2027,8 @@ def Test_luaeval()
 enddef
 
 def Test_map()
-  CheckDefAndScriptFailure2(['map("x", "1")'], 'E1013: Argument 1: type mismatch, expected list<any> but got string', 'E1228: List, Dictionary or Blob required for argument 1')
-  CheckDefAndScriptFailure2(['map(1, "1")'], 'E1013: Argument 1: type mismatch, expected list<any> but got number', 'E1228: List, Dictionary or Blob required for argument 1')
+  CheckDefAndScriptFailure2(['map(test_null_channel(), "1")'], 'E1013: Argument 1: type mismatch, expected list<any> but got channel', 'E1228: List, Dictionary, Blob or String required for argument 1')
+  CheckDefAndScriptFailure2(['map(1, "1")'], 'E1013: Argument 1: type mismatch, expected list<any> but got number', 'E1228: List, Dictionary, Blob or String required for argument 1')
 enddef
 
 def Test_map_failure()
@@ -2154,8 +2144,8 @@ def Test_mapcheck()
 enddef
 
 def Test_mapnew()
-  CheckDefAndScriptFailure2(['mapnew("x", "1")'], 'E1013: Argument 1: type mismatch, expected list<any> but got string', 'E1228: List, Dictionary or Blob required for argument 1')
-  CheckDefAndScriptFailure2(['mapnew(1, "1")'], 'E1013: Argument 1: type mismatch, expected list<any> but got number', 'E1228: List, Dictionary or Blob required for argument 1')
+  CheckDefAndScriptFailure2(['mapnew(test_null_job(), "1")'], 'E1013: Argument 1: type mismatch, expected list<any> but got job', 'E1228: List, Dictionary, Blob or String required for argument 1')
+  CheckDefAndScriptFailure2(['mapnew(1, "1")'], 'E1013: Argument 1: type mismatch, expected list<any> but got number', 'E1228: List, Dictionary, Blob or String required for argument 1')
 enddef
 
 def Test_mapset()

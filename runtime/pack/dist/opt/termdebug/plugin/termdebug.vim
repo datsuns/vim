@@ -2,7 +2,7 @@
 "
 " Author: Bram Moolenaar
 " Copyright: Vim license applies, see ":help license"
-" Last Change: 2021 Nov 27
+" Last Change: 2021 Dec 16
 "
 " WORK IN PROGRESS - Only the basics work
 " Note: On MS-Windows you need a recent version of gdb.  The one included with
@@ -479,7 +479,7 @@ func s:StartDebugCommon(dict)
   " Run the command if the bang attribute was given and got to the debug
   " window.
   if get(a:dict, 'bang', 0)
-    call s:SendCommand('-exec-run')
+    call s:SendResumingCommand('-exec-run')
     call win_gotoid(s:ptywin)
   endif
 endfunc
@@ -512,9 +512,14 @@ func TermDebugSendCommand(cmd)
   endif
 endfunc
 
-" Send a command only when stopped.  Used for :Next and :Step.
-func s:SendCommandIfStopped(cmd)
+" Send a command that resumes the program.  If the program isn't stopped the
+" command is not sent (to avoid a repeated command to cause trouble).
+" If the command is sent then reset s:stopped.
+func s:SendResumingCommand(cmd)
   if s:stopped
+    " reset s:stopped here, it may take a bit of time before we get a response
+    let s:stopped = 0
+    call ch_log('assume that program is running after this command')
     call s:SendCommand(a:cmd)
   else
     call ch_log('dropping command, program is running: ' . a:cmd)
@@ -580,7 +585,7 @@ endfunc
 " to the next ", unescaping characters:
 " - remove line breaks
 " - change \\t to \t
-" - change \0xhh to \xhh
+" - change \0xhh to \xhh (disabled for now)
 " - change \ooo to octal
 " - change \\ to \
 func s:DecodeMessage(quotedText)
@@ -589,12 +594,21 @@ func s:DecodeMessage(quotedText)
     return
   endif
   return a:quotedText
-        \->substitute('^"\|".*\|\\n', '', 'g')
-        \->substitute('\\t', "\t", 'g')
-        \->substitute('\\0x\(\x\x\)', {-> eval('"\x' .. submatch(1) .. '"')}, 'g')
-        \->substitute('\\\o\o\o', {-> eval('"' .. submatch(0) .. '"')}, 'g')
-        \->substitute('\\\\', '\', 'g')
+        \ ->substitute('^"\|".*\|\\n', '', 'g')
+        \ ->substitute('\\t', "\t", 'g')
+        " multi-byte characters arrive in octal form
+        " NULL-values must be kept encoded as those break the string otherwise
+        \ ->substitute('\\000', s:NullRepl, 'g')
+        \ ->substitute('\\\o\o\o', {-> eval('"' .. submatch(0) .. '"')}, 'g')
+        " Note: GDB docs also mention hex encodings - the translations below work
+        "       but we keep them out for performance-reasons until we actually see
+        "       those in mi-returns
+        " \ ->substitute('\\0x\(\x\x\)', {-> eval('"\x' .. submatch(1) .. '"')}, 'g')
+        " \ ->substitute('\\0x00', s:NullRepl, 'g')
+        \ ->substitute('\\\\', '\', 'g')
+        \ ->substitute(s:NullRepl, '\\000', 'g')
 endfunc
+const s:NullRepl = 'XXXNULLXXX'
 
 " Extract the "name" value from a gdb message with fullname="name".
 func s:GetFullname(msg)
@@ -808,11 +822,11 @@ func s:InstallCommands()
 
   command -nargs=? Break call s:SetBreakpoint(<q-args>)
   command Clear call s:ClearBreakpoint()
-  command Step call s:SendCommandIfStopped('-exec-step')
-  command Over call s:SendCommandIfStopped('-exec-next')
-  command Finish call s:SendCommandIfStopped('-exec-finish')
+  command Step call s:SendResumingCommand('-exec-step')
+  command Over call s:SendResumingCommand('-exec-next')
+  command Finish call s:SendResumingCommand('-exec-finish')
   command -nargs=* Run call s:Run(<q-args>)
-  command -nargs=* Arguments call s:SendCommand('-exec-arguments ' . <q-args>)
+  command -nargs=* Arguments call s:SendResumingCommand('-exec-arguments ' . <q-args>)
 
   if s:way == 'prompt'
     command Stop call s:PromptInterrupt()
@@ -995,9 +1009,9 @@ endfunc
 
 func s:Run(args)
   if a:args != ''
-    call s:SendCommand('-exec-arguments ' . a:args)
+    call s:SendResumingCommand('-exec-arguments ' . a:args)
   endif
-  call s:SendCommand('-exec-run')
+  call s:SendResumingCommand('-exec-run')
 endfunc
 
 func s:SendEval(expr)
@@ -1076,10 +1090,19 @@ let s:evalFromBalloonExpr = 0
 
 " Handle the result of data-evaluate-expression
 func s:HandleEvaluate(msg)
-  let value = substitute(a:msg, '.*value="\(.*\)"', '\1', '')
-  let value = substitute(value, '\\"', '"', 'g')
-  " multi-byte characters arrive in octal form
-  let value = substitute(value, '\\\o\o\o', {-> eval('"' .. submatch(0) .. '"')}, 'g')
+  let value = a:msg
+    \ ->substitute('.*value="\(.*\)"', '\1', '')
+    \ ->substitute('\\"', '"', 'g')
+    \ ->substitute('\\\\', '\\', 'g')
+    "\ multi-byte characters arrive in octal form, replace everthing but NULL values
+    \ ->substitute('\\000', s:NullRepl, 'g')
+    \ ->substitute('\\\o\o\o', {-> eval('"' .. submatch(0) .. '"')}, 'g')
+    "\ Note: GDB docs also mention hex encodings - the translations below work
+    "\       but we keep them out for performance-reasons until we actually see
+    "\       those in mi-returns
+    "\ ->substitute('\\0x00', s:NullRep, 'g')
+    "\ ->substitute('\\0x\(\x\x\)', {-> eval('"\x' .. submatch(1) .. '"')}, 'g')
+    \ ->substitute(s:NullRepl, '\\000', 'g')
   if s:evalFromBalloonExpr
     if s:evalFromBalloonExprResult == ''
       let s:evalFromBalloonExprResult = s:evalexpr . ': ' . value

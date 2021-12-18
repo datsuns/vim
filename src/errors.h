@@ -105,6 +105,8 @@ EXTERN char e_corrupted_regexp_program[]
 EXTERN char e_readonly_option_is_set_add_bang_to_override[]
 	INIT(= N_("E45: 'readonly' option is set (add ! to override)"));
 #ifdef FEAT_EVAL
+EXTERN char e_cannot_change_readonly_variable[]
+	INIT(= N_("E46: Cannot change read-only variable"));
 EXTERN char e_cannot_change_readonly_variable_str[]
 	INIT(= N_("E46: Cannot change read-only variable \"%s\""));
 #endif
@@ -134,13 +136,139 @@ EXTERN char e_invalid_character_after_str_at[]
 	INIT(= N_("E59: invalid character after %s@"));
 EXTERN char e_too_many_complex_str_curly[]
 	INIT(= N_("E60: Too many complex %s{...}s"));
-
+EXTERN char e_nested_str[]
+	INIT(= N_("E61: Nested %s*"));
+EXTERN char e_nested_str_chr[]
+	INIT(= N_("E62: Nested %s%c"));
+EXTERN char e_invalid_use_of_underscore[]
+	INIT(= N_("E63: invalid use of \\_"));
+EXTERN char e_str_chr_follows_nothing[]
+	INIT(= N_("E64: %s%c follows nothing"));
+EXTERN char e_illegal_back_reference[]
+	INIT(= N_("E65: Illegal back reference"));
+#ifdef FEAT_SYN_HL
+EXTERN char e_z_not_allowed_here[]
+	INIT(= N_("E66: \\z( not allowed here"));
+EXTERN char e_z1_z9_not_allowed_here[]
+	INIT(= N_("E67: \\z1 - \\z9 not allowed here"));
+#endif
+EXTERN char e_missing_sb_after_str[]
+	INIT(= N_("E69: Missing ] after %s%%["));
+EXTERN char e_empty_str_brackets[]
+	INIT(= N_("E70: Empty %s%%[]"));
+EXTERN char e_invalid_character_after_str[]
+	INIT(= N_("E71: Invalid character after %s%%"));
+EXTERN char e_close_error_on_swap_file[]
+	INIT(= N_("E72: Close error on swap file"));
+EXTERN char e_tag_stack_empty[]
+	INIT(= N_("E73: tag stack empty"));
+EXTERN char e_command_too_complex[]
+	INIT(= N_("E74: Command too complex"));
+EXTERN char e_name_too_long[]
+	INIT(= N_("E75: Name too long"));
+EXTERN char e_too_many_brackets[]
+	INIT(= N_("E76: Too many ["));
+EXTERN char e_too_many_file_names[]
+	INIT(= N_("E77: Too many file names"));
+EXTERN char e_unknown_mark[]
+	INIT(= N_("E78: Unknown mark"));
+EXTERN char e_cannot_expand_wildcards[]
+	INIT(= N_("E79: Cannot expand wildcards"));
+EXTERN char e_error_while_writing[]
+	INIT(= N_("E80: Error while writing"));
 #ifdef FEAT_EVAL
+EXTERN char e_using_sid_not_in_script_context[]
+	INIT(= N_("E81: Using <SID> not in a script context"));
+#endif
+EXTERN char e_cannot_allocate_any_buffer_exiting[]
+	INIT(= N_("E82: Cannot allocate any buffer, exiting..."));
+EXTERN char e_cannot_allocate_buffer_using_other_one[]
+	INIT(= N_("E83: Cannot allocate buffer, using other one..."));
+EXTERN char e_no_modified_buffer_found[]
+	INIT(= N_("E84: No modified buffer found"));
+EXTERN char e_there_is_no_listed_buffer[]
+	INIT(= N_("E85: There is no listed buffer"));
+EXTERN char e_buffer_nr_does_not_exist[]
+	INIT(= N_("E86: Buffer %ld does not exist"));
+EXTERN char e_cannot_go_beyond_last_buffer[]
+	INIT(= N_("E87: Cannot go beyond last buffer"));
+EXTERN char e_cannot_go_before_first_buffer[]
+	INIT(= N_("E88: Cannot go before first buffer"));
+EXTERN char e_no_write_since_last_change_for_buffer_nr_add_bang_to_override[]
+	INIT(= N_("E89: No write since last change for buffer %d (add ! to override)"));
+EXTERN char e_cannot_unload_last_buffer[]
+	INIT(= N_("E90: Cannot unload last buffer"));
+EXTERN char e_shell_option_is_empty[]
+	INIT(= N_("E91: 'shell' option is empty"));
+EXTERN char e_buffer_nr_not_found[]
+	INIT(= N_("E92: Buffer %d not found"));
+EXTERN char e_more_than_one_match_for_str[]
+	INIT(= N_("E93: More than one match for %s"));
+EXTERN char e_no_matching_buffer_for_str[]
+	INIT(= N_("E94: No matching buffer for %s"));
+EXTERN char e_buffer_with_this_name_already_exists[]
+	INIT(= N_("E95: Buffer with this name already exists"));
+#if defined(FEAT_DIFF)
+EXTERN char e_cannot_diff_more_than_nr_buffers[]
+	INIT(= N_("E96: Cannot diff more than %d buffers"));
+EXTERN char e_cannot_create_diffs[]
+	INIT(= N_("E97: Cannot create diffs"));
+EXTERN char e_cannot_read_diff_output[]
+	INIT(= N_("E98: Cannot read diff output"));
+EXTERN char e_current_buffer_is_not_in_diff_mode[]
+	INIT(= N_("E99: Current buffer is not in diff mode"));
+EXTERN char e_no_other_buffer_in_diff_mode[]
+	INIT(= N_("E100: No other buffer in diff mode"));
+EXTERN char e_more_than_two_buffers_in_diff_mode_dont_know_which_one_to_use[]
+	INIT(= N_("E101: More than two buffers in diff mode, don't know which one to use"));
+EXTERN char e_cant_find_buffer_str[]
+	INIT(= N_("E102: Can't find buffer \"%s\""));
+EXTERN char e_buffer_str_is_not_in_diff_mode[]
+	INIT(= N_("E103: Buffer \"%s\" is not in diff mode"));
+#endif
+EXTERN char e_escape_not_allowed_in_digraph[]
+	INIT(= N_("E104: Escape not allowed in digraph"));
+EXTERN char e_using_loadkeymap_not_in_sourced_file[]
+	INIT(= N_("E105: Using :loadkeymap not in a sourced file"));
+// E106 unused
+EXTERN char e_missing_parenthesis_str[]
+	INIT(= N_("E107: Missing parentheses: %s"));
+#ifdef FEAT_EVAL
+EXTERN char e_no_such_variable_str[]
+	INIT(= N_("E108: No such variable: \"%s\""));
+EXTERN char e_missing_colon_after_questionmark[]
+	INIT(= N_("E109: Missing ':' after '?'"));
+EXTERN char e_missing_closing_paren[]
+	INIT(= N_("E110: Missing ')'"));
+EXTERN char e_missing_closing_square_brace[]
+	INIT(= N_("E111: Missing ']'"));
+#endif
+EXTERN char e_option_name_missing_str[]
+	INIT(= N_("E112: Option name missing: %s"));
+EXTERN char e_unknown_option_str[]
+	INIT(= N_("E113: Unknown option: %s"));
+EXTERN char e_missing_double_quote_str[]
+	INIT(= N_("E114: Missing double quote: %s"));
+EXTERN char e_missing_single_quote_str[]
+	INIT(= N_("E115: Missing single quote: %s"));
+#ifdef FEAT_EVAL
+EXTERN char e_invalid_arguments_for_function_str[]
+	INIT(= N_("E116: Invalid arguments for function %s"));
+EXTERN char e_unknown_function_str[]
+	INIT(= N_("E117: Unknown function: %s"));
+EXTERN char e_too_many_arguments_for_function_str[]
+	INIT(= N_("E118: Too many arguments for function: %s"));
+EXTERN char e_not_enough_arguments_for_function_str[]
+	INIT(= N_("E119: Not enough arguments for function: %s"));
+EXTERN char e_using_sid_not_in_script_context_str[]
+	INIT(= N_("E120: Using <SID> not in a script context: %s"));
 EXTERN char e_undefined_variable_str[]
 	INIT(= N_("E121: Undefined variable: %s"));
 EXTERN char e_undefined_variable_char_str[]
 	INIT(= N_("E121: Undefined variable: %c:%s"));
 #endif
+
+
 EXTERN char e_no_such_user_defined_command_str[]
 	INIT(= N_("E184: No such user-defined command: %s"));
 #ifndef FEAT_DIGRAPHS
@@ -164,6 +292,22 @@ EXTERN char e_list_value_does_not_have_enough_items[]
 	INIT(= N_("E711: List value does not have enough items"));
 EXTERN char e_cannot_slice_dictionary[]
 	INIT(= N_("E719: Cannot slice a Dictionary"));
+EXTERN char e_value_is_locked[]
+	INIT(= N_("E741: Value is locked"));
+EXTERN char e_value_is_locked_str[]
+	INIT(= N_("E741: Value is locked: %s"));
+EXTERN char e_cannot_change_value[]
+	INIT(= N_("E742: Cannot change value"));
+EXTERN char e_cannot_change_value_of_str[]
+	INIT(= N_("E742: Cannot change value of %s"));
+EXTERN char e_cannot_set_variable_in_sandbox[]
+	INIT(= N_("E794: Cannot set variable in the sandbox"));
+EXTERN char e_cannot_set_variable_in_sandbox_str[]
+	INIT(= N_("E794: Cannot set variable in the sandbox: \"%s\""));
+EXTERN char e_cannot_delete_variable[]
+	INIT(= N_("E795: Cannot delete variable"));
+EXTERN char e_cannot_delete_variable_str[]
+	INIT(= N_("E795: Cannot delete variable %s"));
 #endif
 EXTERN char e_conflicts_with_value_of_listchars[]
 	INIT(= N_("E834: Conflicts with value of 'listchars'"));
@@ -316,7 +460,10 @@ EXTERN char e_cannot_index_number[]
 	INIT(= N_("E1062: Cannot index a Number"));
 EXTERN char e_type_mismatch_for_v_variable[]
 	INIT(= N_("E1063: Type mismatch for v: variable"));
-// E1064 unused
+#endif
+EXTERN char e_yank_register_changed_while_using_it[]
+	INIT(= N_("E1064: Yank register changed while using it"));
+#ifdef FEAT_EVAL
 // E1065 unused
 EXTERN char e_cannot_declare_a_register_str[]
 	INIT(= N_("E1066: Cannot declare a register: %s"));
@@ -366,8 +513,7 @@ EXTERN char e_cannot_assign_to_argument[]
 	INIT(= N_("E1090: Cannot assign to argument %s"));
 EXTERN char e_function_is_not_compiled_str[]
 	INIT(= N_("E1091: Function is not compiled: %s"));
-EXTERN char e_cannot_use_list_for_declaration[]
-	INIT(= N_("E1092: Cannot use a list for a declaration"));
+// E1092 unused
 EXTERN char e_expected_nr_items_but_got_nr[]
 	INIT(= N_("E1093: Expected %d items but got %d"));
 EXTERN char e_import_can_only_be_used_in_script[]
@@ -690,3 +836,11 @@ EXTERN char e_cannot_find_variable_to_unlock_str[]
 	INIT(= N_("E1246: Cannot find variable to (un)lock: %s"));
 EXTERN char e_line_number_out_of_range[]
 	INIT(= N_("E1247: Line number out of range"));
+EXTERN char e_closure_called_from_invalid_context[]
+	INIT(= N_("E1248: Closure called from invalid context"));
+EXTERN char e_highlight_group_name_too_long[]
+	INIT(= N_("E1249: Highlight group name too long"));
+EXTERN char e_argument_of_str_must_be_list_string_dictionary_or_blob[]
+	INIT(= N_("E1250: Argument of %s must be a List, String, Dictionary or Blob"));
+EXTERN char e_list_dict_blob_or_string_required_for_argument_nr[]
+	INIT(= N_("E1228: List, Dictionary, Blob or String required for argument %d"));

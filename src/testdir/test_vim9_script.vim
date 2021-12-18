@@ -496,8 +496,9 @@ def Test_try_catch_throw()
   endtry
   assert_equal(266, n)
 
+  l = [1, 2, 3] 
   try
-    [n] = [1, 2, 3]
+    [n] = l
   catch /E1093:/
     n = 277
   endtry
@@ -1535,6 +1536,21 @@ def Test_import_star_fails()
   CheckScriptFailure(lines, 'E1047:')
 
   delete('Xfoo.vim')
+
+  lines =<< trim END
+      vim9script
+      def TheFunc()
+        echo 'the func'
+      enddef
+      export var Ref = TheFunc
+  END
+  writefile([], 'Xthat.vim')
+  lines =<< trim END
+      import * as That from './Xthat.vim'
+      That()
+  END
+  CheckDefAndScriptFailure2(lines, 'E1094:', 'E1236: Cannot use That itself')
+  delete('Xthat.vim')
 enddef
 
 def Test_import_as()
@@ -1895,6 +1911,17 @@ def Test_script_var_shadows_function()
   CheckScriptFailure(lines, 'E1041:', 5)
 enddef
 
+def Test_function_shadows_script_var()
+  var lines =<< trim END
+      vim9script
+      var Func = 1
+      def Func(): number
+        return 123
+      enddef
+  END
+  CheckScriptFailure(lines, 'E1041:', 3)
+enddef
+
 def Test_script_var_shadows_command()
   var lines =<< trim END
       var undo = 1
@@ -1908,6 +1935,15 @@ def Test_script_var_shadows_command()
       undo
   END
   CheckDefAndScriptFailure(lines, 'E1207:', 2)
+enddef
+
+def Test_vim9script_call_wrong_type()
+  var lines =<< trim END
+      vim9script
+      var Time = 'localtime'
+      Time()
+  END
+  CheckScriptFailure(lines, 'E1085:')
 enddef
 
 def s:RetSome(): string
@@ -2197,7 +2233,7 @@ def Test_func_overrules_import_fails()
       echo 'local to function'
     enddef
   END
-  CheckScriptFailure(lines, 'E1073:')
+  CheckScriptFailure(lines, 'E1041:')
 
   lines =<< trim END
     vim9script
@@ -2230,7 +2266,7 @@ def Test_func_redefine_fails()
     vim9script
     def Foo(): string
       return 'foo'
-      enddef
+    enddef
     def Func()
       var  Foo = {-> 'lambda'}
     enddef
@@ -3987,6 +4023,41 @@ def Test_vim9_autoload()
   &rtp = save_rtp
 enddef
 
+" test disassembling an auto-loaded function starting with "debug"
+def Test_vim9_autoload_disass()
+  mkdir('Xdir/autoload', 'p')
+  var save_rtp = &rtp
+  exe 'set rtp^=' .. getcwd() .. '/Xdir'
+
+  var lines =<< trim END
+     vim9script
+     def debugit#test(): string
+       return 'debug'
+     enddef
+  END
+  writefile(lines, 'Xdir/autoload/debugit.vim')
+
+  lines =<< trim END
+     vim9script
+     def profileit#test(): string
+       return 'profile'
+     enddef
+  END
+  writefile(lines, 'Xdir/autoload/profileit.vim')
+
+  lines =<< trim END
+    vim9script
+    assert_equal('debug', debugit#test())
+    disass debugit#test
+    assert_equal('profile', profileit#test())
+    disass profileit#test
+  END
+  CheckScriptSuccess(lines)
+
+  delete('Xdir', 'rf')
+  &rtp = save_rtp
+enddef
+
 " test using a vim9script that is auto-loaded from an autocmd
 def Test_vim9_aucmd_autoload()
   var lines =<< trim END
@@ -4327,7 +4398,8 @@ def Test_catch_exception_in_callback()
         var x: string
         var y: string
         # this error should be caught with CHECKLEN
-        [x, y] = ['']
+        var sl = ['']
+        [x, y] = sl
       catch
         g:caught = 'yes'
       endtry
@@ -4595,6 +4667,34 @@ def Test_xxx_echoerr_line_number()
          .. ' continued'
   END
   CheckDefExecAndScriptFailure(lines, 'some error continued', 1)
+enddef
+
+func Test_debug_with_lambda()
+  CheckRunVimInTerminal
+
+  " call indirectly to avoid compilation error for missing functions
+  call Run_Test_debug_with_lambda()
+endfunc
+
+def Run_Test_debug_with_lambda()
+  var lines =<< trim END
+      vim9script
+      def Func()
+        var n = 0
+        echo [0]->filter((_, v) => v == n)
+      enddef
+      breakadd func Func
+      Func()
+  END
+  writefile(lines, 'XdebugFunc')
+  var buf = RunVimInTerminal('-S XdebugFunc', {rows: 6, wait_for_ruler: 0})
+  WaitForAssert(() => assert_match('^>', term_getline(buf, 6)))
+
+  term_sendkeys(buf, "cont\<CR>")
+  WaitForAssert(() => assert_match('\[0\]', term_getline(buf, 5)))
+
+  StopVimInTerminal(buf)
+  delete('XdebugFunc')
 enddef
 
 def ProfiledWithLambda()

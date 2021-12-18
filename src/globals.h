@@ -1680,7 +1680,6 @@ EXTERN char e_loclist[]		INIT(= N_("E776: No location list"));
 EXTERN char e_letwrong[]	INIT(= N_("E734: Wrong variable type for %s="));
 EXTERN char e_illvar[]		INIT(= N_("E461: Illegal variable name: %s"));
 EXTERN char e_cannot_mod[]	INIT(= N_("E995: Cannot modify existing variable"));
-EXTERN char e_readonlysbx[]	INIT(= N_("E794: Cannot set variable in the sandbox: \"%s\""));
 EXTERN char e_stringreq[]	INIT(= N_("E928: String required"));
 EXTERN char e_numberreq[]	INIT(= N_("E889: Number required"));
 EXTERN char e_boolreq[]		INIT(= N_("E839: Bool required"));
@@ -1689,8 +1688,6 @@ EXTERN char e_dictreq[]		INIT(= N_("E715: Dictionary required"));
 EXTERN char e_listidx[]		INIT(= N_("E684: list index out of range: %ld"));
 EXTERN char e_blobidx[]		INIT(= N_("E979: Blob index out of range: %ld"));
 EXTERN char e_invalblob[]	INIT(= N_("E978: Invalid operation for Blob"));
-EXTERN char e_toomanyarg[]	INIT(= N_("E118: Too many arguments for function: %s"));
-EXTERN char e_toofewarg[]	INIT(= N_("E119: Not enough arguments for function: %s"));
 EXTERN char e_func_deleted[]	INIT(= N_("E933: Function was deleted: %s"));
 EXTERN char e_dictkey[]		INIT(= N_("E716: Key not present in Dictionary: \"%s\""));
 EXTERN char e_listreq[]		INIT(= N_("E714: List required"));
@@ -1700,7 +1697,6 @@ EXTERN char e_listdictarg[]	INIT(= N_("E712: Argument of %s must be a List or Di
 EXTERN char e_listdictblobarg[]	INIT(= N_("E896: Argument of %s must be a List, Dictionary or Blob"));
 EXTERN char e_modulus[]		INIT(= N_("E804: Cannot use '%' with Float"));
 EXTERN char e_const_option[]	INIT(= N_("E996: Cannot lock an option"));
-EXTERN char e_unknown_option[]	INIT(= N_("E113: Unknown option: %s"));
 EXTERN char e_reduceempty[]	INIT(= N_("E998: Reduce of an empty %s with no initial value"));
 EXTERN char e_no_dict_key[]	INIT(= N_("E857: Dictionary key \"%s\" required"));
 #endif
@@ -1711,28 +1707,15 @@ EXTERN char e_textwinlock[]	INIT(= N_("E565: Not allowed to change text or chang
 	|| defined(UNIX) || defined(VMS)
 EXTERN char e_screenmode[]	INIT(= N_("E359: Screen mode setting not supported"));
 #endif
-EXTERN char e_shellempty[]	INIT(= N_("E91: 'shell' option is empty"));
 #if defined(FEAT_SIGN_ICONS) && !defined(FEAT_GUI_GTK)
 EXTERN char e_signdata[]	INIT(= N_("E255: Couldn't read in sign data!"));
 #endif
-EXTERN char e_swapclose[]	INIT(= N_("E72: Close error on swap file"));
-EXTERN char e_tagstack[]	INIT(= N_("E73: tag stack empty"));
-EXTERN char e_toocompl[]	INIT(= N_("E74: Command too complex"));
-EXTERN char e_longname[]	INIT(= N_("E75: Name too long"));
-EXTERN char e_toomsbra[]	INIT(= N_("E76: Too many ["));
-EXTERN char e_toomany[]	INIT(= N_("E77: Too many file names"));
 EXTERN char e_trailing[]	INIT(= N_("E488: Trailing characters"));
 EXTERN char e_trailing_arg[]	INIT(= N_("E488: Trailing characters: %s"));
-EXTERN char e_umark[]		INIT(= N_("E78: Unknown mark"));
-EXTERN char e_wildexpand[]	INIT(= N_("E79: Cannot expand wildcards"));
 EXTERN char e_winheight[]	INIT(= N_("E591: 'winheight' cannot be smaller than 'winminheight'"));
 EXTERN char e_winwidth[]	INIT(= N_("E592: 'winwidth' cannot be smaller than 'winminwidth'"));
-EXTERN char e_write[]		INIT(= N_("E80: Error while writing"));
 EXTERN char e_zerocount[]	INIT(= N_("E939: Positive count required"));
 #ifdef FEAT_EVAL
-EXTERN char e_usingsid[]	INIT(= N_("E81: Using <SID> not in a script context"));
-EXTERN char e_missing_paren[]	INIT(= N_("E107: Missing parentheses: %s"));
-EXTERN char e_missing_close[]	INIT(= N_("E110: Missing ')'"));
 EXTERN char e_missing_dict_colon[] INIT(= N_("E720: Missing colon in Dictionary: %s"));
 EXTERN char e_duplicate_key[]	INIT(= N_("E721: Duplicate key in Dictionary: \"%s\""));
 EXTERN char e_missing_dict_comma[] INIT(= N_("E722: Missing comma in Dictionary: %s"));
@@ -1747,7 +1730,6 @@ EXTERN char e_nbreadonly[]	INIT(= N_("E744: NetBeans does not allow changes in r
 #endif
 EXTERN char e_maxmempat[]	INIT(= N_("E363: pattern uses more memory than 'maxmempattern'"));
 EXTERN char e_emptybuf[]	INIT(= N_("E749: empty buffer"));
-EXTERN char e_nobufnr[]	INIT(= N_("E86: Buffer %ld does not exist"));
 
 EXTERN char e_invalpat[]	INIT(= N_("E682: Invalid search pattern or delimiter"));
 EXTERN char e_bufloaded[]	INIT(= N_("E139: File is loaded in another buffer"));
@@ -1769,10 +1751,7 @@ EXTERN char e_menuothermode[]	INIT(= N_("E328: Menu only exists in another mode"
 EXTERN char e_invalwindow[]	INIT(= N_("E957: Invalid window number"));
 EXTERN char e_listarg[]		INIT(= N_("E686: Argument of %s must be a List"));
 #ifdef FEAT_EVAL
-EXTERN char e_missing_colon[]	INIT(= N_("E109: Missing ':' after '?'"));
 EXTERN char e_missing_in[]	INIT(= N_("E690: Missing \"in\" after :for"));
-EXTERN char e_unknownfunc[]	INIT(= N_("E117: Unknown function: %s"));
-EXTERN char e_missbrac[]	INIT(= N_("E111: Missing ']'"));
 EXTERN char e_else_without_if[] INIT(= N_("E581: :else without :if"));
 EXTERN char e_elseif_without_if[] INIT(= N_("E582: :elseif without :if"));
 EXTERN char e_endif_without_if[] INIT(= N_("E580: :endif without :if"));

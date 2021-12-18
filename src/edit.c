@@ -598,9 +598,14 @@ edit(
 	    {
 		c = safe_vgetc();
 
-		if (stop_insert_mode)
+		if (stop_insert_mode
+#ifdef FEAT_TERMINAL
+			|| (c == K_IGNORE && term_use_loop())
+#endif
+		   )
 		{
-		    // Insert mode ended, possibly from a callback.
+		    // Insert mode ended, possibly from a callback, or a timer
+		    // must have opened a terminal window.
 		    if (c != K_IGNORE && c != K_NOP)
 			vungetc(c);
 		    count = 0;
@@ -617,6 +622,11 @@ edit(
 	if (p_hkmap && KeyTyped)
 	    c = hkmap(c);		// Hebrew mode mapping
 #endif
+
+	// If the window was made so small that nothing shows, make it at least
+	// one line and one column when typing.
+	if (KeyTyped && !KeyStuffed)
+	    win_ensure_size();
 
 	/*
 	 * Special handling of keys while the popup menu is visible or wanted
@@ -5142,7 +5152,8 @@ ins_eol(int c)
 
     AppendToRedobuff(NL_STR);
     i = open_line(FORWARD,
-	    has_format_option(FO_RET_COMS) ? OPENLINE_DO_COM : 0, old_indent);
+	    has_format_option(FO_RET_COMS) ? OPENLINE_DO_COM : 0, old_indent,
+	    NULL);
     old_indent = 0;
 #ifdef FEAT_CINDENT
     can_cindent = TRUE;

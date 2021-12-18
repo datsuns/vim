@@ -52,6 +52,7 @@ int set_ref_in_ht(hashtab_T *ht, int copyID, list_stack_T **list_stack);
 int set_ref_in_dict(dict_T *d, int copyID);
 int set_ref_in_list(list_T *ll, int copyID);
 int set_ref_in_list_items(list_T *l, int copyID, ht_stack_T **ht_stack);
+int set_ref_in_callback(callback_T *cb, int copyID);
 int set_ref_in_item(typval_T *tv, int copyID, ht_stack_T **ht_stack, list_stack_T **list_stack);
 char_u *echo_string_core(typval_T *tv, char_u **tofree, char_u *numbuf, int copyID, int echo_style, int restore_copyID, int composite_val);
 char_u *echo_string(typval_T *tv, char_u **tofree, char_u *numbuf, int copyID);
@@ -73,7 +74,7 @@ void ex_echo(exarg_T *eap);
 void ex_echohl(exarg_T *eap);
 int get_echo_attr(void);
 void ex_execute(exarg_T *eap);
-char_u *find_option_end(char_u **arg, int *opt_flags);
+char_u *find_option_end(char_u **arg, int *scope);
 void last_set_msg(sctx_T script_ctx);
 char_u *do_string_sub(char_u *str, char_u *pat, char_u *sub, typval_T *expr, char_u *flags);
 /* vim: set ft=c : */

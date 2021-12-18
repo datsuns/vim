@@ -225,7 +225,8 @@ get_job_options(typval_T *tv, jobopt_T *opt, int supported, int supported2)
 		}
 		if (buflist_findnr(opt->jo_io_buf[part]) == NULL)
 		{
-		    semsg(_(e_nobufnr), (long)opt->jo_io_buf[part]);
+		    semsg(_(e_buffer_nr_does_not_exist),
+						   (long)opt->jo_io_buf[part]);
 		    return FAIL;
 		}
 	    }
@@ -475,7 +476,7 @@ get_job_options(typval_T *tv, jobopt_T *opt, int supported, int supported2)
 		opt->jo_bufnr_buf = buflist_findnr(nr);
 		if (opt->jo_bufnr_buf == NULL)
 		{
-		    semsg(_(e_nobufnr), (long)nr);
+		    semsg(_(e_buffer_nr_does_not_exist), (long)nr);
 		    return FAIL;
 		}
 		if (opt->jo_bufnr_buf->b_nwindows == 0
@@ -1259,7 +1260,7 @@ job_check_ended(void)
     if (channel_need_redraw)
     {
 	channel_need_redraw = FALSE;
-	redraw_after_callback(TRUE);
+	redraw_after_callback(TRUE, FALSE);
     }
     return did_end;
 }
@@ -1332,7 +1333,8 @@ job_start(
 	{
 	    buf = buflist_findnr(opt.jo_io_buf[PART_IN]);
 	    if (buf == NULL)
-		semsg(_(e_nobufnr), (long)opt.jo_io_buf[PART_IN]);
+		semsg(_(e_buffer_nr_does_not_exist),
+						 (long)opt.jo_io_buf[PART_IN]);
 	}
 	else if (!(opt.jo_set & JO_IN_NAME))
 	{
@@ -1576,6 +1578,7 @@ invoke_prompt_interrupt(void)
 {
     typval_T	rettv;
     typval_T	argv[1];
+    int		ret;
 
     if (curbuf->b_prompt_interrupt.cb_name == NULL
 	    || *curbuf->b_prompt_interrupt.cb_name == NUL)
@@ -1583,9 +1586,9 @@ invoke_prompt_interrupt(void)
     argv[0].v_type = VAR_UNKNOWN;
 
     got_int = FALSE; // don't skip executing commands
-    call_callback(&curbuf->b_prompt_interrupt, -1, &rettv, 0, argv);
+    ret = call_callback(&curbuf->b_prompt_interrupt, -1, &rettv, 0, argv);
     clear_tv(&rettv);
-    return TRUE;
+    return ret == FAIL ? FALSE : TRUE;
 }
 
 /*

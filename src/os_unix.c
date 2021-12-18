@@ -2340,6 +2340,7 @@ use_xterm_like_mouse(char_u *name)
 	    && (term_is_xterm
 		|| STRNICMP(name, "screen", 6) == 0
 		|| STRNICMP(name, "tmux", 4) == 0
+		|| STRNICMP(name, "gnome", 5) == 0
 		|| STRICMP(name, "st") == 0
 		|| STRNICMP(name, "st-", 3) == 0
 		|| STRNICMP(name, "stterm", 6) == 0));
@@ -3375,7 +3376,15 @@ exit_scroll(void)
 }
 
 #ifdef USE_GCOV_FLUSH
-extern void __gcov_flush();
+# if (defined(__GNUC__) \
+	    && ((__GNUC__ == 11 && __GNUC_MINOR__ >= 1) || (__GNUC__ >= 12))) \
+	|| (defined(__clang__) && (__clang_major__ >= 12))
+extern void __gcov_dump(void);
+extern void __gcov_reset(void);
+#  define __gcov_flush() do { __gcov_dump(); __gcov_reset(); } while (0)
+# else
+extern void __gcov_flush(void);
+# endif
 #endif
 
     void
@@ -6797,7 +6806,7 @@ mch_expand_wildcards(
 	    if (!(flags & EW_SILENT))
 #endif
 	    {
-		msg(_(e_wildexpand));
+		msg(_(e_cannot_expand_wildcards));
 		msg_start();		// don't overwrite this message
 	    }
 	}
@@ -6817,7 +6826,7 @@ mch_expand_wildcards(
 	// Something went wrong, perhaps a file name with a special char.
 	if (!(flags & EW_SILENT))
 	{
-	    msg(_(e_wildexpand));
+	    msg(_(e_cannot_expand_wildcards));
 	    msg_start();		// don't overwrite this message
 	}
 	vim_free(tempname);

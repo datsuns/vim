@@ -303,7 +303,7 @@
     for ((np) = (node); (np) != NULL; (np) = (np)->wn_sibling)
 
 static int set_spell_finish(spelltab_T	*new_st);
-static int write_spell_prefcond(FILE *fd, garray_T *gap);
+static int write_spell_prefcond(FILE *fd, garray_T *gap, size_t *fwv);
 static int read_region_section(FILE *fd, slang_T *slang, int len);
 static int read_charflags_section(FILE *fd);
 static int read_prefcond_section(FILE *fd, slang_T *lp);
@@ -4977,10 +4977,10 @@ write_vim_spell(spellinfo_T *spin, char_u *fname)
 	putc(SN_PREFCOND, fd);				// <sectionID>
 	putc(SNF_REQUIRED, fd);				// <sectionflags>
 
-	l = write_spell_prefcond(NULL, &spin->si_prefcond);
+	l = write_spell_prefcond(NULL, &spin->si_prefcond, &fwv);
 	put_bytes(fd, (long_u)l, 4);			// <sectionlen>
 
-	write_spell_prefcond(fd, &spin->si_prefcond);
+	write_spell_prefcond(fd, &spin->si_prefcond, &fwv);
     }
 
     // SN_REP: <repcount> <rep> ...
@@ -5259,7 +5259,7 @@ theend:
     if (fwv != (size_t)1)
 	retval = FAIL;
     if (retval == FAIL)
-	emsg(_(e_write));
+	emsg(_(e_error_while_writing));
 
     return retval;
 }
@@ -5404,7 +5404,7 @@ put_node(
 	    if (fd != NULL)
 		if (putc(np->wn_byte, fd) == EOF) // <byte> or <xbyte>
 		{
-		    emsg(_(e_write));
+		    emsg(_(e_error_while_writing));
 		    return 0;
 		}
 	}
@@ -5815,7 +5815,7 @@ sug_write(spellinfo_T *spin, char_u *fname)
      */
     if (fwrite(VIMSUGMAGIC, VIMSUGMAGICL, (size_t)1, fd) != 1) // <fileID>
     {
-	emsg(_(e_write));
+	emsg(_(e_error_while_writing));
 	goto theend;
     }
     putc(VIMSUGVERSION, fd);				// <versionnr>
@@ -5857,7 +5857,7 @@ sug_write(spellinfo_T *spin, char_u *fname)
 	len = (int)STRLEN(line) + 1;
 	if (fwrite(line, (size_t)len, (size_t)1, fd) == 0)
 	{
-	    emsg(_(e_write));
+	    emsg(_(e_error_while_writing));
 	    goto theend;
 	}
 	spin->si_memtot += len;
@@ -5865,7 +5865,7 @@ sug_write(spellinfo_T *spin, char_u *fname)
 
     // Write another byte to check for errors.
     if (putc(0, fd) == EOF)
-	emsg(_(e_write));
+	emsg(_(e_error_while_writing));
 
     vim_snprintf((char *)IObuff, IOSIZE,
 		 _("Estimated runtime memory use: %d bytes"), spin->si_memtot);
@@ -6567,16 +6567,15 @@ set_spell_finish(spelltab_T *new_st)
 
 /*
  * Write the table with prefix conditions to the .spl file.
- * When "fd" is NULL only count the length of what is written.
+ * When "fd" is NULL only count the length of what is written and return it.
  */
     static int
-write_spell_prefcond(FILE *fd, garray_T *gap)
+write_spell_prefcond(FILE *fd, garray_T *gap, size_t *fwv)
 {
     int		i;
     char_u	*p;
     int		len;
     int		totlen;
-    size_t	x = 1;  // collect return value of fwrite()
 
     if (fd != NULL)
 	put_bytes(fd, (long_u)gap->ga_len, 2);	    // <prefcondcnt>
@@ -6593,7 +6592,7 @@ write_spell_prefcond(FILE *fd, garray_T *gap)
 	    if (fd != NULL)
 	    {
 		fputc(len, fd);
-		x &= fwrite(p, (size_t)len, (size_t)1, fd);
+		*fwv &= fwrite(p, (size_t)len, (size_t)1, fd);
 	    }
 	    totlen += len;
 	}
@@ -6603,7 +6602,6 @@ write_spell_prefcond(FILE *fd, garray_T *gap)
 
     return totlen;
 }
-
 
 /*
  * Use map string "map" for languages "lp".

@@ -15,6 +15,7 @@ typedef enum {
     ISN_EXEC,	    // execute Ex command line isn_arg.string
     ISN_EXECCONCAT, // execute Ex command from isn_arg.number items on stack
     ISN_EXEC_SPLIT, // execute Ex command from isn_arg.string split at NL
+    ISN_EXECRANGE,  // execute EX command that is only a range
     ISN_LEGACY_EVAL, // evaluate expression isn_arg.string with legacy syntax.
     ISN_ECHO,	    // :echo with isn_arg.echo.echo_count items on top of stack
     ISN_EXECUTE,    // :execute with isn_arg.number items on top of stack
@@ -54,7 +55,8 @@ typedef enum {
     ISN_STORES,	    // pop into script variable isn_arg.loadstore
     ISN_STOREOUTER,  // pop variable into outer scope isn_arg.outer
     ISN_STORESCRIPT, // pop into script variable isn_arg.script
-    ISN_STOREOPT,    // pop into option isn_arg.string
+    ISN_STOREOPT,    // pop into option isn_arg.storeopt
+    ISN_STOREFUNCOPT, // pop into option isn_arg.storeopt
     ISN_STOREENV,    // pop into environment variable isn_arg.string
     ISN_STOREREG,    // pop into register isn_arg.number
     // ISN_STOREOTHER, // pop into other script variable isn_arg.other.
@@ -290,7 +292,7 @@ typedef struct {
     varnumber_T	stnr_val;
 } storenr_T;
 
-// arguments to ISN_STOREOPT
+// arguments to ISN_STOREOPT and ISN_STOREFUNCOPT
 typedef struct {
     char_u	*so_name;
     int		so_flags;

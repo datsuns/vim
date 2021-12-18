@@ -1367,7 +1367,7 @@ ex_let_option(
     char_u	*op)
 {
     char_u	*p;
-    int		opt_flags;
+    int		scope;
     char_u	*arg_end = NULL;
 
     if ((flags & (ASSIGN_CONST | ASSIGN_FINAL))
@@ -1378,7 +1378,7 @@ ex_let_option(
     }
 
     // Find the end of the name.
-    p = find_option_end(&arg, &opt_flags);
+    p = find_option_end(&arg, &scope);
     if (p == NULL || (endchars != NULL
 			       && vim_strchr(endchars, *skipwhite(p)) == NULL))
 	emsg(_(e_unexpected_characters_in_let));
@@ -1391,11 +1391,15 @@ ex_let_option(
 	char_u	    *stringval = NULL;
 	char_u	    *s = NULL;
 	int	    failed = FALSE;
+	int	    opt_p_flags;
+	char_u	    *tofree = NULL;
+	char_u	    numbuf[NUMBUFLEN];
 
 	c1 = *p;
 	*p = NUL;
 
-	opt_type = get_option_value(arg, &numval, &stringval, opt_flags);
+	opt_type = get_option_value(arg, &numval, &stringval, &opt_p_flags,
+									scope);
 	if ((opt_type == gov_bool
 		    || opt_type == gov_number
 		    || opt_type == gov_hidden_bool
@@ -1410,9 +1414,17 @@ ex_let_option(
 		n = (long)tv_get_number(tv);
 	}
 
+	if ((opt_p_flags & P_FUNC) && (tv->v_type == VAR_PARTIAL
+						|| tv->v_type == VAR_FUNC))
+	{
+	    // If the option can be set to a function reference or a lambda
+	    // and the passed value is a function reference, then convert it to
+	    // the name (string) of the function reference.
+	    s = tv2string(tv, &tofree, numbuf, 0);
+	}
 	// Avoid setting a string option to the text "v:false" or similar.
 	// In Vim9 script also don't convert a number to string.
-	if (tv->v_type != VAR_BOOL && tv->v_type != VAR_SPECIAL
+	else if (tv->v_type != VAR_BOOL && tv->v_type != VAR_SPECIAL
 			 && (!in_vim9script() || tv->v_type != VAR_NUMBER))
 	    s = tv_get_string_chk(tv);
 
@@ -1458,7 +1470,7 @@ ex_let_option(
 	{
 	    if (opt_type != gov_string || s != NULL)
 	    {
-		set_option_value(arg, n, s, opt_flags);
+		set_option_value(arg, n, s, scope);
 		arg_end = p;
 	    }
 	    else
@@ -1466,6 +1478,7 @@ ex_let_option(
 	}
 	*p = c1;
 	vim_free(stringval);
+	vim_free(tofree);
     }
     return arg_end;
 }
@@ -1845,7 +1858,7 @@ do_unlet(char_u *name, int forceit)
     }
     if (forceit)
 	return OK;
-    semsg(_("E108: No such variable: \"%s\""), name);
+    semsg(_(e_no_such_variable_str), name);
     return FAIL;
 }
 
@@ -2301,7 +2314,7 @@ set_vim_var_tv(int idx, typval_T *tv)
     }
     if (sandbox && (vimvars[idx].vv_flags & VV_RO_SBX))
     {
-	semsg(_(e_readonlysbx), vimvars[idx].vv_name);
+	semsg(_(e_cannot_set_variable_in_sandbox_str), vimvars[idx].vv_name);
 	return FAIL;
     }
     clear_tv(&vimvars[idx].vv_di.di_tv);
@@ -2698,7 +2711,7 @@ eval_variable(
 		type = sv->sv_type;
 	    }
 	}
-	else if (in_vim9script())
+	else if (in_vim9script() && (flags & EVAL_VAR_NO_FUNC) == 0)
 	{
 	    ufunc_T *ufunc = find_func(name, FALSE, NULL);
 
@@ -2710,7 +2723,12 @@ eval_variable(
 		if (rettv != NULL)
 		{
 		    rettv->v_type = VAR_FUNC;
-		    rettv->vval.v_string = vim_strsave(ufunc->uf_name);
+		    if (STRNCMP(name, "g:", 2) == 0)
+			// Keep the "g:", otherwise script-local may be
+			// assumed.
+			rettv->vval.v_string = vim_strsave(name);
+		    else
+			rettv->vval.v_string = vim_strsave(ufunc->uf_name);
 		    if (rettv->vval.v_string != NULL)
 			func_ref(ufunc->uf_name);
 		}
@@ -3277,6 +3295,7 @@ set_var_const(
     int		vim9script = in_vim9script();
     int		var_in_vim9script;
     int		flags = flags_arg;
+    int		free_tv_arg = !copy;  // free tv_arg if not used
 
     ht = find_var_ht(name, &varname);
     if (ht == NULL || *varname == NUL)
@@ -3531,6 +3550,7 @@ set_var_const(
 	dest_tv->v_lock = 0;
 	init_tv(tv);
     }
+    free_tv_arg = FALSE;
 
     if (vim9script && type != NULL)
     {
@@ -3559,10 +3579,9 @@ set_var_const(
 	// if the reference count is up to one.  That locks only literal
 	// values.
 	item_lock(dest_tv, DICT_MAXNEST, TRUE, TRUE);
-    return;
 
 failed:
-    if (!copy)
+    if (free_tv_arg)
 	clear_tv(tv_arg);
 }
 
@@ -3591,13 +3610,20 @@ var_check_ro(int flags, char_u *name, int use_gettext)
 {
     if (flags & DI_FLAGS_RO)
     {
-	semsg(_(e_cannot_change_readonly_variable_str),
+	if (name == NULL)
+	    emsg(_(e_cannot_change_readonly_variable));
+	else
+	    semsg(_(e_cannot_change_readonly_variable_str),
 				       use_gettext ? (char_u *)_(name) : name);
 	return TRUE;
     }
     if ((flags & DI_FLAGS_RO_SBX) && sandbox)
     {
-	semsg(_(e_readonlysbx), use_gettext ? (char_u *)_(name) : name);
+	if (name == NULL)
+	    emsg(_(e_cannot_set_variable_in_sandbox));
+	else
+	    semsg(_(e_cannot_set_variable_in_sandbox_str),
+				       use_gettext ? (char_u *)_(name) : name);
 	return TRUE;
     }
     return FALSE;
@@ -3628,7 +3654,10 @@ var_check_fixed(int flags, char_u *name, int use_gettext)
 {
     if (flags & DI_FLAGS_FIX)
     {
-	semsg(_("E795: Cannot delete variable %s"),
+	if (name == NULL)
+	    emsg(_(e_cannot_delete_variable));
+	else
+	    semsg(_(e_cannot_delete_variable_str),
 				      use_gettext ? (char_u *)_(name) : name);
 	return TRUE;
     }
@@ -3677,18 +3706,20 @@ value_check_lock(int lock, char_u *name, int use_gettext)
 {
     if (lock & VAR_LOCKED)
     {
-	semsg(_("E741: Value is locked: %s"),
-				name == NULL ? (char_u *)_("Unknown")
-					     : use_gettext ? (char_u *)_(name)
-					     : name);
+	if (name == NULL)
+	    emsg(_(e_value_is_locked));
+	else
+	    semsg(_(e_value_is_locked_str),
+				       use_gettext ? (char_u *)_(name) : name);
 	return TRUE;
     }
     if (lock & VAR_FIXED)
     {
-	semsg(_("E742: Cannot change value of %s"),
-				name == NULL ? (char_u *)_("Unknown")
-					     : use_gettext ? (char_u *)_(name)
-					     : name);
+	if (name == NULL)
+	    emsg(_(e_cannot_change_value));
+	else
+	    semsg(_(e_cannot_change_value_of_str),
+				       use_gettext ? (char_u *)_(name) : name);
 	return TRUE;
     }
     return FALSE;

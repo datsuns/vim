@@ -468,6 +468,31 @@ call_dfunc(
 // Get pointer to item in the stack.
 #define STACK_TV(idx) (((typval_T *)ectx->ec_stack.ga_data) + idx)
 
+// Double linked list of funcstack_T in use.
+static funcstack_T *first_funcstack = NULL;
+
+    static void
+add_funcstack_to_list(funcstack_T *funcstack)
+{
+	// Link in list of funcstacks.
+    if (first_funcstack != NULL)
+	first_funcstack->fs_prev = funcstack;
+    funcstack->fs_next = first_funcstack;
+    funcstack->fs_prev = NULL;
+    first_funcstack = funcstack;
+}
+
+    static void
+remove_funcstack_from_list(funcstack_T *funcstack)
+{
+    if (funcstack->fs_prev == NULL)
+	first_funcstack = funcstack->fs_next;
+    else
+	funcstack->fs_prev->fs_next = funcstack->fs_next;
+    if (funcstack->fs_next != NULL)
+	funcstack->fs_next->fs_prev = funcstack->fs_prev;
+}
+
 /*
  * Used when returning from a function: Check if any closure is still
  * referenced.  If so then move the arguments and variables to a separate piece
@@ -540,6 +565,7 @@ handle_closure_in_use(ectx_T *ectx, int free_arguments)
 	// Move them to the called function.
 	if (funcstack == NULL)
 	    return FAIL;
+
 	funcstack->fs_var_offset = argcount + STACK_FRAME_SIZE;
 	funcstack->fs_ga.ga_len = funcstack->fs_var_offset + dfunc->df_varcount;
 	stack = ALLOC_CLEAR_MULT(typval_T, funcstack->fs_ga.ga_len);
@@ -549,6 +575,7 @@ handle_closure_in_use(ectx_T *ectx, int free_arguments)
 	    vim_free(funcstack);
 	    return FAIL;
 	}
+	add_funcstack_to_list(funcstack);
 
 	// Move or copy the arguments.
 	for (idx = 0; idx < argcount; ++idx)
@@ -571,7 +598,7 @@ handle_closure_in_use(ectx_T *ectx, int free_arguments)
 	    // local variable, has a reference count for the variable, thus
 	    // will never go down to zero.  When all these refcounts are one
 	    // then the funcstack is unused.  We need to count how many we have
-	    // so we need when to check.
+	    // so we know when to check.
 	    if (tv->v_type == VAR_PARTIAL && tv->vval.v_partial != NULL)
 	    {
 		int	    i;
@@ -643,8 +670,31 @@ funcstack_check_refcount(funcstack_T *funcstack)
 	for (i = 0; i < gap->ga_len; ++i)
 	    clear_tv(stack + i);
 	vim_free(stack);
+	remove_funcstack_from_list(funcstack);
 	vim_free(funcstack);
     }
+}
+
+/*
+ * For garbage collecting: set references in all variables referenced by
+ * all funcstacks.
+ */
+    int
+set_ref_in_funcstacks(int copyID)
+{
+    funcstack_T *funcstack;
+
+    for (funcstack = first_funcstack; funcstack != NULL;
+						funcstack = funcstack->fs_next)
+    {
+	typval_T    *stack = funcstack->fs_ga.ga_data;
+	int	    i;
+
+	for (i = 0; i < funcstack->fs_ga.ga_len; ++i)
+	    if (set_ref_in_item(stack + i, copyID, NULL, NULL))
+		return TRUE;  // abort
+    }
+    return FALSE;
 }
 
 /*
@@ -680,7 +730,9 @@ func_return(ectx_T *ectx)
 	}
     }
 #endif
-    // TODO: when is it safe to delete the function when it is no longer used?
+
+    // No check for uf_refcount being zero, cannot think of a way that would
+    // happen.
     --dfunc->df_ufunc->uf_calls;
 
     // execution context goes one level up
@@ -854,15 +906,15 @@ call_ufunc(
 	if (error != FCERR_UNKNOWN)
 	{
 	    if (error == FCERR_TOOMANY)
-		semsg(_(e_toomanyarg), ufunc->uf_name);
+		semsg(_(e_too_many_arguments_for_function_str), ufunc->uf_name);
 	    else
-		semsg(_(e_toofewarg), ufunc->uf_name);
+		semsg(_(e_not_enough_arguments_for_function_str),
+							       ufunc->uf_name);
 	    return FAIL;
 	}
 
 	// The function has been compiled, can call it quickly.  For a function
 	// that was defined later: we can call it directly next time.
-	// TODO: what if the function was deleted and then defined again?
 	if (iptr != NULL)
 	{
 	    delete_instr(iptr);
@@ -876,13 +928,12 @@ call_ufunc(
     if (call_prepare(argcount, argvars, ectx) == FAIL)
 	return FAIL;
     CLEAR_FIELD(funcexe);
-    funcexe.evaluate = TRUE;
-    funcexe.selfdict = selfdict != NULL ? selfdict : dict_stack_get_dict();
+    funcexe.fe_evaluate = TRUE;
+    funcexe.fe_selfdict = selfdict != NULL ? selfdict : dict_stack_get_dict();
 
     // Call the user function.  Result goes in last position on the stack.
-    // TODO: add selfdict if there is one
     error = call_user_func_check(ufunc, argcount, argvars,
-				 STACK_TV_BOT(-1), &funcexe, funcexe.selfdict);
+			      STACK_TV_BOT(-1), &funcexe, funcexe.fe_selfdict);
 
     // Clear the arguments.
     for (idx = 0; idx < argcount; ++idx)
@@ -890,7 +941,7 @@ call_ufunc(
 
     if (error != FCERR_NONE)
     {
-	user_func_error(error, ufunc->uf_name);
+	user_func_error(error, ufunc->uf_name, &funcexe);
 	return FAIL;
     }
     if (did_emsg > did_emsg_before)
@@ -1054,7 +1105,7 @@ call_partial(
     if (res == FAIL)
     {
 	if (called_emsg == called_emsg_before)
-	    semsg(_(e_unknownfunc),
+	    semsg(_(e_unknown_function_str),
 				  name == NULL ? (char_u *)"[unknown]" : name);
 	return FAIL;
     }
@@ -1408,12 +1459,12 @@ call_eval_func(
 	v = find_var(name, NULL, FALSE);
 	if (v == NULL)
 	{
-	    semsg(_(e_unknownfunc), name);
+	    semsg(_(e_unknown_function_str), name);
 	    return FAIL;
 	}
 	if (v->di_tv.v_type != VAR_PARTIAL && v->di_tv.v_type != VAR_FUNC)
 	{
-	    semsg(_(e_unknownfunc), name);
+	    semsg(_(e_unknown_function_str), name);
 	    return FAIL;
 	}
 	return call_partial(&v->di_tv, argcount, ectx);
@@ -1771,6 +1822,30 @@ exec_instructions(ectx_T *ectx)
 			goto on_error;
 		    }
 		    vim_free(line);
+		}
+		break;
+
+	    // execute Ex command line that is only a range
+	    case ISN_EXECRANGE:
+		{
+		    exarg_T	ea;
+		    char	*error = NULL;
+
+		    CLEAR_FIELD(ea);
+		    ea.cmdidx = CMD_SIZE;
+		    ea.addr_type = ADDR_LINES;
+		    ea.cmd = iptr->isn_arg.string;
+		    parse_cmd_address(&ea, &error, FALSE);
+		    if (ea.cmd == NULL)
+			goto on_error;
+		    if (error == NULL)
+			error = ex_range_without_command(&ea);
+		    if (error != NULL)
+		    {
+			SOURCING_LNUM = iptr->isn_lnum;
+			emsg(error);
+			goto on_error;
+		    }
 		}
 		break;
 
@@ -2312,10 +2387,15 @@ exec_instructions(ectx_T *ectx)
 
 	    // store option
 	    case ISN_STOREOPT:
+	    case ISN_STOREFUNCOPT:
 		{
+		    char_u	*opt_name = iptr->isn_arg.storeopt.so_name;
+		    int		opt_flags = iptr->isn_arg.storeopt.so_flags;
 		    long	n = 0;
 		    char_u	*s = NULL;
 		    char	*msg;
+		    char_u	numbuf[NUMBUFLEN];
+		    char_u	*tofree = NULL;
 
 		    --ectx->ec_stack.ga_len;
 		    tv = STACK_TV_BOT(0);
@@ -2325,12 +2405,26 @@ exec_instructions(ectx_T *ectx)
 			if (s == NULL)
 			    s = (char_u *)"";
 		    }
+		    else if (iptr->isn_type == ISN_STOREFUNCOPT)
+		    {
+			SOURCING_LNUM = iptr->isn_lnum;
+			// If the option can be set to a function reference or
+			// a lambda and the passed value is a function
+			// reference, then convert it to the name (string) of
+			// the function reference.
+			s = tv2string(tv, &tofree, numbuf, 0);
+			if (s == NULL || *s == NUL)
+			{
+			    clear_tv(tv);
+			    goto on_error;
+			}
+		    }
 		    else
 			// must be VAR_NUMBER, CHECKTYPE makes sure
 			n = tv->vval.v_number;
-		    msg = set_option_value(iptr->isn_arg.storeopt.so_name,
-					n, s, iptr->isn_arg.storeopt.so_flags);
+		    msg = set_option_value(opt_name, n, s, opt_flags);
 		    clear_tv(tv);
+		    vim_free(tofree);
 		    if (msg != NULL)
 		    {
 			SOURCING_LNUM = iptr->isn_lnum;
@@ -2711,7 +2805,13 @@ exec_instructions(ectx_T *ectx)
 		    if (outer == NULL)
 		    {
 			SOURCING_LNUM = iptr->isn_lnum;
-			iemsg("LOADOUTER depth more than scope levels");
+			if (ectx->ec_frame_idx == ectx->ec_initial_frame_idx
+						 || ectx->ec_outer_ref == NULL)
+			    // Possibly :def function called from legacy
+			    // context.
+			    emsg(_(e_closure_called_from_invalid_context));
+			else
+			    iemsg("LOADOUTER depth more than scope levels");
 			goto theend;
 		    }
 		    tv = ((typval_T *)outer->out_stack->ga_data)
@@ -2760,21 +2860,29 @@ exec_instructions(ectx_T *ectx)
 			    char_u	*key = tv_idx->vval.v_string;
 			    dictitem_T  *di = NULL;
 
-			    if (key == NULL)
-				key = (char_u *)"";
-			    if (d != NULL)
-				di = dict_find(d, key, (int)STRLEN(key));
-			    if (di == NULL)
-			    {
-				// NULL dict is equivalent to empty dict
-				SOURCING_LNUM = iptr->isn_lnum;
-				semsg(_(e_dictkey), key);
+			    if (d != NULL && value_check_lock(
+						      d->dv_lock, NULL, FALSE))
 				status = FAIL;
-			    }
 			    else
 			    {
-				// TODO: check for dict or item locked
-				dictitem_remove(d, di);
+				SOURCING_LNUM = iptr->isn_lnum;
+				if (key == NULL)
+				    key = (char_u *)"";
+				if (d != NULL)
+				    di = dict_find(d, key, (int)STRLEN(key));
+				if (di == NULL)
+				{
+				    // NULL dict is equivalent to empty dict
+				    semsg(_(e_dictkey), key);
+				    status = FAIL;
+				}
+				else if (var_check_fixed(di->di_flags,
+								   NULL, FALSE)
+					|| var_check_ro(di->di_flags,
+								  NULL, FALSE))
+				    status = FAIL;
+				else
+				    dictitem_remove(d, di);
 			    }
 			}
 		    }
@@ -2790,18 +2898,26 @@ exec_instructions(ectx_T *ectx)
 			{
 			    list_T	*l = tv_dest->vval.v_list;
 			    long	n = (long)tv_idx->vval.v_number;
-			    listitem_T	*li = NULL;
 
-			    li = list_find(l, n);
-			    if (li == NULL)
-			    {
-				SOURCING_LNUM = iptr->isn_lnum;
-				semsg(_(e_listidx), n);
+			    if (l != NULL && value_check_lock(
+						      l->lv_lock, NULL, FALSE))
 				status = FAIL;
-			    }
 			    else
-				// TODO: check for list or item locked
-				listitem_remove(l, li);
+			    {
+				listitem_T	*li = list_find(l, n);
+
+				if (li == NULL)
+				{
+				    SOURCING_LNUM = iptr->isn_lnum;
+				    semsg(_(e_listidx), n);
+				    status = FAIL;
+				}
+				else if (value_check_lock(li->li_tv.v_lock,
+								  NULL, FALSE))
+				    status = FAIL;
+				else
+				    listitem_remove(l, li);
+			    }
 			}
 		    }
 		    else
@@ -4958,8 +5074,9 @@ call_def_function(
     estack_pop();
     current_sctx = save_current_sctx;
 
-    // TODO: when is it safe to delete the function if it is no longer used?
-    --ufunc->uf_calls;
+    if (--ufunc->uf_calls <= 0 && ufunc->uf_refcount <= 0)
+	// Function was unreferenced while being used, free it now.
+	func_clear_free(ufunc, FALSE);
 
     if (*msg_list != NULL && saved_msg_list != NULL)
     {
@@ -5067,6 +5184,9 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 		break;
 	    case ISN_EXEC_SPLIT:
 		smsg("%s%4d EXEC_SPLIT %s", pfx, current, iptr->isn_arg.string);
+		break;
+	    case ISN_EXECRANGE:
+		smsg("%s%4d EXECRANGE %s", pfx, current, iptr->isn_arg.string);
 		break;
 	    case ISN_LEGACY_EVAL:
 		smsg("%s%4d EVAL legacy %s", pfx, current,
@@ -5301,7 +5421,9 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 		}
 		break;
 	    case ISN_STOREOPT:
-		smsg("%s%4d STOREOPT &%s", pfx, current,
+	    case ISN_STOREFUNCOPT:
+		smsg("%s%4d %s &%s", pfx, current,
+		  iptr->isn_type == ISN_STOREOPT ? "STOREOPT" : "STOREFUNCOPT",
 					       iptr->isn_arg.storeopt.so_name);
 		break;
 	    case ISN_STOREENV:
@@ -5568,7 +5690,6 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 		}
 		break;
 	    case ISN_CATCH:
-		// TODO
 		smsg("%s%4d CATCH", pfx, current);
 		break;
 	    case ISN_TRYCONT:
@@ -5764,7 +5885,6 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 					     (long)iptr->isn_arg.put.put_lnum);
 		break;
 
-		// TODO: summarize modifiers
 	    case ISN_CMDMOD:
 		{
 		    char_u  *buf;
@@ -5871,12 +5991,12 @@ ex_disassemble(exarg_T *eap)
     int		is_global = FALSE;
     compiletype_T compile_type = CT_NONE;
 
-    if (STRNCMP(arg, "profile", 7) == 0)
+    if (STRNCMP(arg, "profile", 7) == 0 && VIM_ISWHITE(arg[7]))
     {
 	compile_type = CT_PROFILE;
 	arg = skipwhite(arg + 7);
     }
-    else if (STRNCMP(arg, "debug", 5) == 0)
+    else if (STRNCMP(arg, "debug", 5) == 0 && VIM_ISWHITE(arg[5]))
     {
 	compile_type = CT_DEBUG;
 	arg = skipwhite(arg + 5);

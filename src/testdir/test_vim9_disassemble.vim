@@ -316,6 +316,7 @@ def s:ScriptFuncStore()
   w:windowvar = 'wv'
   t:tabpagevar = 'tv'
   &tabstop = 8
+  &opfunc = (t) => len(t)
   $ENVVAR = 'ev'
   @z = 'rv'
 enddef
@@ -343,12 +344,17 @@ def Test_disassemble_store()
         ' STOREW w:windowvar.*' ..
         't:tabpagevar = ''tv''.*' ..
         ' STORET t:tabpagevar.*' ..
-        '&tabstop = 8.*' ..
-        ' STOREOPT &tabstop.*' ..
-        '$ENVVAR = ''ev''.*' ..
-        ' STOREENV $ENVVAR.*' ..
+        '&tabstop = 8\_s*' ..
+        '\d\+ PUSHNR 8\_s*' ..
+        '\d\+ STOREOPT &tabstop\_s*' ..
+        '&opfunc = (t) => len(t)\_s*' ..
+        '\d\+ FUNCREF <lambda>\d\+\_s*' ..
+        '\d\+ STOREFUNCOPT &opfunc\_s*' ..
+        '$ENVVAR = ''ev''\_s*' ..
+        '\d\+ PUSHS "ev"\_s*' ..
+        '\d\+ STOREENV $ENVVAR\_s*' ..
         '@z = ''rv''.*' ..
-        ' STOREREG @z.*',
+        '\d\+ STOREREG @z.*',
         res)
 enddef
 
@@ -471,7 +477,6 @@ def Test_disassemble_list_assign_with_op()
         '\d\+ PUSHNR 4\_s*' ..
         '\d\+ PUSHNR 5\_s*' ..
         '\d\+ NEWLIST size 2\_s*' ..
-        '\d\+ CHECKLEN 2\_s*' ..
         '\d\+ LOAD $0\_s*' ..
         '\d\+ ITEM 0 with op\_s*' ..
         '\d\+ OPNR +\_s*' ..
@@ -1999,6 +2004,25 @@ def Test_disassemble_execute()
         res)
 enddef
 
+def s:OnlyRange()
+  :$
+  :123
+  :'m
+enddef
+
+def Test_disassemble_range_only()
+  var res = execute('disass s:OnlyRange')
+  assert_match('\<SNR>\d*_OnlyRange\_s*' ..
+        ':$\_s*' ..
+        '\d EXECRANGE $\_s*' ..
+        ':123\_s*' ..
+        '\d EXECRANGE 123\_s*' ..
+        ':''m\_s*' ..
+        '\d EXECRANGE ''m\_s*' ..
+        '\d\+ RETURN void',
+        res)
+enddef
+
 def s:Echomsg()
   echomsg 'some' 'message'
   echoconsole 'nothing'
@@ -2296,6 +2320,38 @@ def Test_debugged()
         res)
 enddef
 
+def s:ElseifConstant()
+  if g:value
+    echo "one"
+  elseif true
+    echo "true"
+  elseif false
+    echo "false"
+  endif
+enddef
+
+def Test_debug_elseif_constant()
+  var res = execute('disass s:ElseifConstant')
+  assert_match('<SNR>\d*_ElseifConstant\_s*' ..
+          'if g:value\_s*' ..
+          '0 LOADG g:value\_s*' ..
+          '1 COND2BOOL\_s*' ..
+          '2 JUMP_IF_FALSE -> 6\_s*' ..
+          'echo "one"\_s*' ..
+          '3 PUSHS "one"\_s*' ..
+          '4 ECHO 1\_s*' ..
+          'elseif true\_s*' ..
+          '5 JUMP -> 8\_s*' ..
+          'echo "true"\_s*' ..
+          '6 PUSHS "true"\_s*' ..
+          '7 ECHO 1\_s*' ..
+          'elseif false\_s*' ..
+          'echo "false"\_s*' ..
+          'endif\_s*' ..
+          '\d RETURN void*',
+        res)
+enddef
+
 def s:DebugElseif()
   var b = false
   if b
@@ -2357,7 +2413,7 @@ def Test_disassemble_dict_stack()
   assert_match('<SNR>\d*_UseMember\_s*' ..
           'var d = {func: Legacy}\_s*' ..
           '\d PUSHS "func"\_s*' ..
-          '\d PUSHFUNC "Legacy"\_s*' ..
+          '\d PUSHFUNC "g:Legacy"\_s*' ..
           '\d NEWDICT size 1\_s*' ..
           '\d STORE $0\_s*' ..
 
