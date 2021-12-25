@@ -1,4 +1,4 @@
-*eval.txt*	For Vim version 8.2.  Last change: 2021 Dec 15
+*eval.txt*	For Vim version 8.2.  Last change: 2021 Dec 24
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -2367,7 +2367,9 @@ v:termresponse	The escape sequence returned by the terminal for the |t_RV|
 		The response from a new xterm is: "<Esc>[> Pp ; Pv ; Pc c".  Pp
 		is the terminal type: 0 for vt100 and 1 for vt220.  Pv is the
 		patch level (since this was introduced in patch 95, it's
-		always 95 or bigger).  Pc is always zero.
+		always 95 or higher).  Pc is always zero.
+		If Pv is 141 or higher then Vim will try to request terminal
+		codes.  This only works with xterm |xterm-codes|.
 		{only when compiled with |+termresponse| feature}
 
 						*v:termblinkresp*
@@ -4893,7 +4895,8 @@ filter({expr1}, {expr2})				*filter()*
 		of the current item.  For a |Dictionary| |v:key| has the key
 		of the current item and for a |List| |v:key| has the index of
 		the current item.  For a |Blob| |v:key| has the index of the
-		current byte.
+		current byte. For a |String| |v:key| has the index of the
+		current character.
 		Examples: >
 			call filter(mylist, 'v:val !~ "OLD"')
 <		Removes the items where "OLD" appears. >
@@ -6189,8 +6192,9 @@ getreg([{regname} [, 1 [, {list}]]])			*getreg()*
 		The result is a String, which is the contents of register
 		{regname}.  Example: >
 			:let cliptext = getreg('*')
-<		When {regname} was not set the result is an empty string.
-		The {regname} argument is a string.
+<		When register {regname} was not set the result is an empty
+		string.
+		The {regname} argument must be a string.
 
 		getreg('=') returns the last evaluated value of the expression
 		register.  (For use in maps.)
@@ -7588,7 +7592,8 @@ map({expr1}, {expr2})					*map()*
 		of the current item.  For a |Dictionary| |v:key| has the key
 		of the current item and for a |List| |v:key| has the index of
 		the current item.  For a |Blob| |v:key| has the index of the
-		current byte.
+		current byte. For a |String| |v:key| has the index of the
+		current character.
 		Example: >
 			:call map(mylist, '"> " . v:val . " <"')
 <		This puts "> " before and " <" after each item in "mylist".
@@ -8959,9 +8964,9 @@ readfile({fname} [, {type} [, {max}]])
 
 reduce({object}, {func} [, {initial}])			*reduce()* *E998*
 		{func} is called for every item in {object}, which can be a
-		|String|, |List| or a |Blob|.  {func} is called with two arguments:
-		the result so far and current item.  After processing all
-		items the result is returned.
+		|String|, |List| or a |Blob|.  {func} is called with two
+		arguments: the result so far and current item.  After
+		processing all items the result is returned.
 
 		{initial} is the initial result.  When omitted, the first item
 		in {object} is used and {func} is first called for the second

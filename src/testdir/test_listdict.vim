@@ -783,6 +783,32 @@ func Test_dict_lock_map()
   call CheckScriptFailure(lines, 'E741:')
 endfunc
 
+" Lock one item in a list
+func Test_list_item_lock_map()
+  let lines =<< trim END
+      VAR l = [99, 100, 101]
+      lockvar l[1]
+      call assert_fails("echo map(l, 'v:val + 200')", 'E741:')
+      call assert_equal([299, 100, 101], l)
+  END
+  " This won't work in a :def function
+  call CheckTransLegacySuccess(lines)
+  call CheckTransVim9Success(lines)
+endfunc
+
+" Lock one item in a dict
+func Test_dict_item_lock_map()
+  let lines =<< trim END
+      VAR d = {'a': 99, 'b': 100, 'c': 101}
+      lockvar d.b
+      call assert_fails("echo map(d, 'v:val + 200')", 'E741:')
+      call assert_equal({'a': 299, 'b': 100, 'c': 101}, d)
+  END
+  " This won't work in a :def function
+  call CheckTransLegacySuccess(lines)
+  call CheckTransVim9Success(lines)
+endfunc
+
 " No extend() after lock on dict item
 func Test_dict_lock_extend()
   let d = {'a': 99, 'b': 100}
@@ -994,6 +1020,9 @@ func Test_reduce()
   call assert_fails("call reduce('', { acc, val -> acc + val }, {})", 'E1253:')
   call assert_fails("call reduce('', { acc, val -> acc + val }, 0.1)", 'E1253:')
   call assert_fails("call reduce('', { acc, val -> acc + val }, function('tr'))", 'E1253:')
+  call assert_fails("call reduce('abc', { a, v -> a10}, '')", 'E121:')
+  call assert_fails("call reduce(0z01, { a, v -> a10}, 1)", 'E121:')
+  call assert_fails("call reduce([1], { a, v -> a10}, '')", 'E121:')
 
   let g:lut = [1, 2, 3, 4]
   func EvilRemove()
@@ -1288,25 +1317,30 @@ endfunc
 
 " List and dict indexing tests
 func Test_listdict_index()
-  call assert_fails('echo function("min")[0]', 'E695:')
-  call assert_fails('echo v:true[0]', 'E909:')
-  let d = {'k' : 10}
-  call assert_fails('echo d.', 'E15:')
-  call assert_fails('echo d[1:2]', 'E719:')
+  call CheckLegacyAndVim9Failure(['echo function("min")[0]'], 'E695:')
+  call CheckLegacyAndVim9Failure(['echo v:true[0]'], 'E909:')
+  call CheckLegacyAndVim9Failure(['echo v:null[0]'], 'E909:')
+  call CheckLegacyAndVim9Failure(['VAR d = {"k": 10}', 'echo d.'], ['E15:', 'E1127:', 'E15:'])
+  call CheckLegacyAndVim9Failure(['VAR d = {"k": 10}', 'echo d[1 : 2]'], 'E719:')
+
   call assert_fails("let v = [4, 6][{-> 1}]", 'E729:')
-  call assert_fails("let v = range(5)[2:[]]", 'E730:')
+  call CheckDefAndScriptFailure(['var v = [4, 6][() => 1]'], ['E1012', 'E703:'])
+
+  call CheckLegacyAndVim9Failure(['VAR v = range(5)[2 : []]'], ['E730:', 'E1012:', 'E730:'])
+
   call assert_fails("let v = range(5)[2:{-> 2}(]", ['E15:', 'E116:'])
-  call assert_fails("let v = range(5)[2:3", 'E111:')
-  call assert_fails("let l = insert([1,2,3], 4, 10)", 'E684:')
-  call assert_fails("let l = insert([1,2,3], 4, -10)", 'E684:')
-  call assert_fails("let l = insert([1,2,3], 4, [])", 'E745:')
-  let l = [1, 2, 3]
-  call assert_fails("let l[i] = 3", 'E121:')
-  call assert_fails("let l[1.1] = 4", 'E805:')
-  call assert_fails("let l[:i] = [4, 5]", 'E121:')
-  call assert_fails("let l[:3.2] = [4, 5]", 'E805:')
-  let t = test_unknown()
-  call assert_fails("echo t[0]", 'E685:')
+  call CheckDefAndScriptFailure(['var v = range(5)[2 : () => 2(]'], 'E15:')
+
+  call CheckLegacyAndVim9Failure(['VAR v = range(5)[2 : 3'], ['E111:', 'E1097:', 'E111:'])
+  call CheckLegacyAndVim9Failure(['VAR l = insert([1, 2, 3], 4, 10)'], 'E684:')
+  call CheckLegacyAndVim9Failure(['VAR l = insert([1, 2, 3], 4, -10)'], 'E684:')
+  call CheckLegacyAndVim9Failure(['VAR l = insert([1, 2, 3], 4, [])'], ['E745:', 'E1013:', 'E1210:'])
+
+  call CheckLegacyAndVim9Failure(['VAR l = [1, 2, 3]', 'LET l[i] = 3'], ['E121:', 'E1001:', 'E121:'])
+  call CheckLegacyAndVim9Failure(['VAR l = [1, 2, 3]', 'LET l[1.1] = 4'], ['E805:', 'E1012:', 'E805:'])
+  call CheckLegacyAndVim9Failure(['VAR l = [1, 2, 3]', 'LET l[: i] = [4, 5]'], ['E121:', 'E1001:', 'E121:'])
+  call CheckLegacyAndVim9Failure(['VAR l = [1, 2, 3]', 'LET l[: 3.2] = [4, 5]'], ['E805:', 'E1012:', 'E805:'])
+  call CheckLegacyAndVim9Failure(['VAR t = test_unknown()', 'echo t[0]'], 'E685:')
 endfunc
 
 " Test for a null list

@@ -228,7 +228,9 @@ check_arg_type(
 arg_float_or_nr(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
-		  || type->tt_type == VAR_FLOAT || type->tt_type == VAR_NUMBER)
+	    || type->tt_type == VAR_UNKNOWN
+	    || type->tt_type == VAR_FLOAT
+	    || type->tt_type == VAR_NUMBER)
 	return OK;
     arg_type_mismatch(&t_number, type, context->arg_idx + 1);
     return FAIL;
@@ -313,7 +315,9 @@ arg_bool(type_T *type, argcontext_T *context)
 arg_list_or_blob(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
-		     || type->tt_type == VAR_LIST || type->tt_type == VAR_BLOB)
+	    || type->tt_type == VAR_UNKNOWN
+	    || type->tt_type == VAR_LIST
+	    || type->tt_type == VAR_BLOB)
 	return OK;
     arg_type_mismatch(&t_list_any, type, context->arg_idx + 1);
     return FAIL;
@@ -326,7 +330,9 @@ arg_list_or_blob(type_T *type, argcontext_T *context)
 arg_string_or_nr(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
-	    || type->tt_type == VAR_STRING || type->tt_type == VAR_NUMBER)
+	    || type->tt_type == VAR_UNKNOWN
+	    || type->tt_type == VAR_STRING
+	    || type->tt_type == VAR_NUMBER)
 	return OK;
     arg_type_mismatch(&t_string, type, context->arg_idx + 1);
     return FAIL;
@@ -339,7 +345,9 @@ arg_string_or_nr(type_T *type, argcontext_T *context)
 arg_buffer(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
-	    || type->tt_type == VAR_STRING || type->tt_type == VAR_NUMBER)
+	    || type->tt_type == VAR_UNKNOWN
+	    || type->tt_type == VAR_STRING
+	    || type->tt_type == VAR_NUMBER)
 	return OK;
     arg_type_mismatch(&t_string, type, context->arg_idx + 1);
     return FAIL;
@@ -352,6 +360,7 @@ arg_buffer(type_T *type, argcontext_T *context)
 arg_buffer_or_dict_any(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
+	    || type->tt_type == VAR_UNKNOWN
 	    || type->tt_type == VAR_STRING
 	    || type->tt_type == VAR_NUMBER
 	    || type->tt_type == VAR_DICT)
@@ -367,7 +376,9 @@ arg_buffer_or_dict_any(type_T *type, argcontext_T *context)
 arg_lnum(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
-	    || type->tt_type == VAR_STRING || type->tt_type == VAR_NUMBER)
+	    || type->tt_type == VAR_UNKNOWN
+	    || type->tt_type == VAR_STRING
+	    || type->tt_type == VAR_NUMBER)
 	return OK;
     arg_type_mismatch(&t_string, type, context->arg_idx + 1);
     return FAIL;
@@ -379,7 +390,9 @@ arg_lnum(type_T *type, argcontext_T *context)
     static int
 arg_string_or_list_string(type_T *type, argcontext_T *context)
 {
-    if (type->tt_type == VAR_ANY || type->tt_type == VAR_STRING)
+    if (type->tt_type == VAR_ANY
+	    || type->tt_type == VAR_UNKNOWN
+	    || type->tt_type == VAR_STRING)
 	return OK;
     if (type->tt_type != VAR_LIST)
     {
@@ -401,7 +414,9 @@ arg_string_or_list_string(type_T *type, argcontext_T *context)
 arg_string_or_list_any(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
-	    || type->tt_type == VAR_STRING || type->tt_type == VAR_LIST)
+	    || type->tt_type == VAR_UNKNOWN
+	    || type->tt_type == VAR_STRING
+	    || type->tt_type == VAR_LIST)
 	return OK;
     arg_type_mismatch(&t_string, type, context->arg_idx + 1);
     return FAIL;
@@ -414,7 +429,9 @@ arg_string_or_list_any(type_T *type, argcontext_T *context)
 arg_string_or_blob(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
-	    || type->tt_type == VAR_STRING || type->tt_type == VAR_BLOB)
+	    || type->tt_type == VAR_UNKNOWN
+	    || type->tt_type == VAR_STRING
+	    || type->tt_type == VAR_BLOB)
 	return OK;
     arg_type_mismatch(&t_string, type, context->arg_idx + 1);
     return FAIL;
@@ -427,7 +444,9 @@ arg_string_or_blob(type_T *type, argcontext_T *context)
 arg_list_or_dict(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
-		     || type->tt_type == VAR_LIST || type->tt_type == VAR_DICT)
+	    || type->tt_type == VAR_UNKNOWN
+	    || type->tt_type == VAR_LIST
+	    || type->tt_type == VAR_DICT)
 	return OK;
     arg_type_mismatch(&t_list_any, type, context->arg_idx + 1);
     return FAIL;
@@ -440,9 +459,10 @@ arg_list_or_dict(type_T *type, argcontext_T *context)
 arg_list_or_dict_or_blob(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
-		     || type->tt_type == VAR_LIST
-		     || type->tt_type == VAR_DICT
-		     || type->tt_type == VAR_BLOB)
+	    || type->tt_type == VAR_UNKNOWN
+	    || type->tt_type == VAR_LIST
+	    || type->tt_type == VAR_DICT
+	    || type->tt_type == VAR_BLOB)
 	return OK;
     arg_type_mismatch(&t_list_any, type, context->arg_idx + 1);
     return FAIL;
@@ -455,10 +475,11 @@ arg_list_or_dict_or_blob(type_T *type, argcontext_T *context)
 arg_list_or_dict_or_blob_or_string(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
-		     || type->tt_type == VAR_LIST
-		     || type->tt_type == VAR_DICT
-		     || type->tt_type == VAR_BLOB
-		     || type->tt_type == VAR_STRING)
+	    || type->tt_type == VAR_UNKNOWN
+	    || type->tt_type == VAR_LIST
+	    || type->tt_type == VAR_DICT
+	    || type->tt_type == VAR_BLOB
+	    || type->tt_type == VAR_STRING)
 	return OK;
     arg_type_mismatch(&t_list_any, type, context->arg_idx + 1);
     return FAIL;
@@ -471,9 +492,10 @@ arg_list_or_dict_or_blob_or_string(type_T *type, argcontext_T *context)
 arg_string_list_or_blob(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
-		     || type->tt_type == VAR_LIST
-		     || type->tt_type == VAR_BLOB
-		     || type->tt_type == VAR_STRING)
+	    || type->tt_type == VAR_UNKNOWN
+	    || type->tt_type == VAR_LIST
+	    || type->tt_type == VAR_BLOB
+	    || type->tt_type == VAR_STRING)
 	return OK;
     arg_type_mismatch(&t_list_any, type, context->arg_idx + 1);
     return FAIL;
@@ -495,6 +517,7 @@ arg_job(type_T *type, argcontext_T *context)
 arg_chan_or_job(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
+	    || type->tt_type == VAR_UNKNOWN
 	    || type->tt_type == VAR_CHANNEL
 	    || type->tt_type == VAR_JOB)
 	return OK;
@@ -557,9 +580,10 @@ arg_item_of_prev(type_T *type, argcontext_T *context)
 arg_str_or_nr_or_list(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
-		|| type->tt_type == VAR_STRING
-		|| type->tt_type == VAR_NUMBER
-		|| type->tt_type == VAR_LIST)
+	    || type->tt_type == VAR_UNKNOWN
+	    || type->tt_type == VAR_STRING
+	    || type->tt_type == VAR_NUMBER
+	    || type->tt_type == VAR_LIST)
 	return OK;
     arg_type_mismatch(&t_string, type, context->arg_idx + 1);
     return FAIL;
@@ -572,8 +596,9 @@ arg_str_or_nr_or_list(type_T *type, argcontext_T *context)
 arg_dict_any_or_string(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
-		|| type->tt_type == VAR_DICT
-		|| type->tt_type == VAR_STRING)
+	    || type->tt_type == VAR_UNKNOWN
+	    || type->tt_type == VAR_DICT
+	    || type->tt_type == VAR_STRING)
 	return OK;
     arg_type_mismatch(&t_string, type, context->arg_idx + 1);
     return FAIL;
@@ -603,6 +628,7 @@ arg_extend3(type_T *type, argcontext_T *context)
 arg_get1(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
+	    || type->tt_type == VAR_UNKNOWN
 	    || type->tt_type == VAR_BLOB
 	    || type->tt_type == VAR_LIST
 	    || type->tt_type == VAR_DICT
@@ -622,6 +648,7 @@ arg_get1(type_T *type, argcontext_T *context)
 arg_len1(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
+	    || type->tt_type == VAR_UNKNOWN
 	    || type->tt_type == VAR_STRING
 	    || type->tt_type == VAR_NUMBER
 	    || type->tt_type == VAR_BLOB
@@ -657,6 +684,7 @@ arg_remove2(type_T *type, argcontext_T *context)
 arg_repeat1(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
+	    || type->tt_type == VAR_UNKNOWN
 	    || type->tt_type == VAR_STRING
 	    || type->tt_type == VAR_NUMBER
 	    || type->tt_type == VAR_LIST)
@@ -674,6 +702,7 @@ arg_repeat1(type_T *type, argcontext_T *context)
 arg_slice1(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
+	    || type->tt_type == VAR_UNKNOWN
 	    || type->tt_type == VAR_LIST
 	    || type->tt_type == VAR_BLOB
 	    || type->tt_type == VAR_STRING)
@@ -691,6 +720,7 @@ arg_slice1(type_T *type, argcontext_T *context)
 arg_count1(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
+	    || type->tt_type == VAR_UNKNOWN
 	    || type->tt_type == VAR_STRING
 	    || type->tt_type == VAR_LIST
 	    || type->tt_type == VAR_DICT)
@@ -708,6 +738,7 @@ arg_count1(type_T *type, argcontext_T *context)
 arg_cursor1(type_T *type, argcontext_T *context)
 {
     if (type->tt_type == VAR_ANY
+	    || type->tt_type == VAR_UNKNOWN
 	    || type->tt_type == VAR_NUMBER
 	    || type->tt_type == VAR_STRING
 	    || type->tt_type == VAR_LIST)
@@ -957,6 +988,11 @@ ret_func_any(int argcount UNUSED, type_T **argtypes UNUSED)
     return &t_func_any;
 }
     static type_T *
+ret_func_unknown(int argcount UNUSED, type_T **argtypes UNUSED)
+{
+    return &t_func_unknown;
+}
+    static type_T *
 ret_channel(int argcount UNUSED, type_T **argtypes UNUSED)
 {
     return &t_channel;
@@ -995,6 +1031,15 @@ ret_first_cont(int argcount, type_T **argtypes)
 	if (argtypes[0]->tt_type == VAR_BLOB)
 	    return argtypes[0];
     }
+    return &t_any;
+}
+// for finddir()
+    static type_T *
+ret_finddir(int argcount, type_T **argtypes UNUSED)
+{
+    if (argcount < 3)
+	return &t_string;
+    // Depending on the count would be a string or a list of strings.
     return &t_any;
 }
 
@@ -1064,8 +1109,6 @@ ret_maparg(int argcount, type_T **argtypes UNUSED)
 	return &t_dict_any;
     return &t_string;
 }
-
-static type_T *ret_f_function(int argcount, type_T **argtypes);
 
 /*
  * Array with names and number of arguments of all internal functions
@@ -1397,7 +1440,7 @@ static funcentry_T global_functions[] =
     {"filter",		2, 2, FEARG_1,	    arg2_mapfilter,
 			ret_first_arg,	    f_filter},
     {"finddir",		1, 3, FEARG_1,	    arg3_string_string_number,
-			ret_any,	    f_finddir},
+			ret_finddir,	    f_finddir},
     {"findfile",	1, 3, FEARG_1,	    arg3_string_string_number,
 			ret_any,	    f_findfile},
     {"flatten",		1, 2, FEARG_1,	    arg2_list_any_number,
@@ -1429,9 +1472,9 @@ static funcentry_T global_functions[] =
     {"fullcommand",	1, 1, FEARG_1,	    arg1_string,
 			ret_string,	    f_fullcommand},
     {"funcref",		1, 3, FEARG_1,	    arg3_any_list_dict,
-			ret_func_any,	    f_funcref},
+			ret_func_unknown,   f_funcref},
     {"function",	1, 3, FEARG_1,	    arg3_any_list_dict,
-			ret_f_function,	    f_function},
+			ret_func_unknown,   f_function},
     {"garbagecollect",	0, 1, 0,	    arg1_bool,
 			ret_void,	    f_garbagecollect},
     {"get",		2, 3, FEARG_1,	    arg23_get,
@@ -2257,7 +2300,7 @@ static funcentry_T global_functions[] =
     {"undotree",	0, 0, 0,	    NULL,
 			ret_dict_any,	    f_undotree},
     {"uniq",		1, 3, FEARG_1,	    arg13_sortuniq,
-			ret_list_any,	    f_uniq},
+			ret_first_arg,	    f_uniq},
     {"values",		1, 1, FEARG_1,	    arg1_dict_any,
 			ret_list_any,	    f_values},
     {"virtcol",		1, 1, FEARG_1,	    arg1_string_or_list_any,
@@ -4007,22 +4050,11 @@ common_function(typval_T *argvars, typval_T *rettv, int is_funcref)
 	list_T	*list = NULL;
 
 	if (STRNCMP(s, "s:", 2) == 0 || STRNCMP(s, "<SID>", 5) == 0)
-	{
-	    char	sid_buf[25];
-	    int		off = *s == 's' ? 2 : 5;
-
 	    // Expand s: and <SID> into <SNR>nr_, so that the function can
 	    // also be called from another script. Using trans_function_name()
 	    // would also work, but some plugins depend on the name being
 	    // printable text.
-	    sprintf(sid_buf, "<SNR>%ld_", (long)current_sctx.sc_sid);
-	    name = alloc(STRLEN(sid_buf) + STRLEN(s + off) + 1);
-	    if (name != NULL)
-	    {
-		STRCPY(name, sid_buf);
-		STRCAT(name, s + off);
-	    }
-	}
+	    name = get_scriptlocal_funcname(s);
 	else
 	    name = vim_strsave(s);
 
@@ -4168,15 +4200,6 @@ theend:
 f_funcref(typval_T *argvars, typval_T *rettv)
 {
     common_function(argvars, rettv, TRUE);
-}
-
-    static type_T *
-ret_f_function(int argcount, type_T **argtypes)
-{
-    if (argcount == 1 && argtypes[0]->tt_type == VAR_STRING)
-	return &t_func_any;
-    // Need to check the type at runtime, the function may be defined later.
-    return &t_func_unknown;
 }
 
 /*
@@ -4641,16 +4664,42 @@ f_getpos(typval_T *argvars, typval_T *rettv)
 }
 
 /*
+ * Common between getreg(), getreginfo() and getregtype(): get the register
+ * name from the first argument.
+ * Returns zero on error.
+ */
+    static int
+getreg_get_regname(typval_T *argvars)
+{
+    char_u  *strregname;
+
+    if (argvars[0].v_type != VAR_UNKNOWN)
+    {
+	strregname = tv_get_string_chk(&argvars[0]);
+	if (strregname != NULL && in_vim9script() && STRLEN(strregname) > 1)
+	{
+	    semsg(_(e_register_name_must_be_one_char_str), strregname);
+	    strregname = NULL;
+	}
+	if (strregname == NULL)	    // type error; errmsg already given
+	    return 0;
+    }
+    else
+	// Default to v:register
+	strregname = get_vim_var_str(VV_REG);
+
+    return *strregname == 0 ? '"' : *strregname;
+}
+
+/*
  * "getreg()" function
  */
     static void
 f_getreg(typval_T *argvars, typval_T *rettv)
 {
-    char_u	*strregname;
     int		regname;
     int		arg2 = FALSE;
     int		return_list = FALSE;
-    int		error = FALSE;
 
     if (in_vim9script()
 	    && (check_for_opt_string_arg(argvars, 0) == FAIL
@@ -4660,32 +4709,21 @@ f_getreg(typval_T *argvars, typval_T *rettv)
 			    && check_for_opt_bool_arg(argvars, 2) == FAIL)))))
 	return;
 
-    if (argvars[0].v_type != VAR_UNKNOWN)
-    {
-	strregname = tv_get_string_chk(&argvars[0]);
-	if (strregname == NULL)
-	    error = TRUE;
-	else if (in_vim9script() && STRLEN(strregname) > 1)
-	{
-	    semsg(_(e_register_name_must_be_one_char_str), strregname);
-	    error = TRUE;
-	}
-	if (argvars[1].v_type != VAR_UNKNOWN)
-	{
-	    arg2 = (int)tv_get_bool_chk(&argvars[1], &error);
-	    if (!error && argvars[2].v_type != VAR_UNKNOWN)
-		return_list = (int)tv_get_bool_chk(&argvars[2], &error);
-	}
-    }
-    else
-	strregname = get_vim_var_str(VV_REG);
-
-    if (error)
+    regname = getreg_get_regname(argvars);
+    if (regname == 0)
 	return;
 
-    regname = (strregname == NULL ? '"' : *strregname);
-    if (regname == 0)
-	regname = '"';
+    if (argvars[0].v_type != VAR_UNKNOWN && argvars[1].v_type != VAR_UNKNOWN)
+    {
+	int		error = FALSE;
+
+	arg2 = (int)tv_get_bool_chk(&argvars[1], &error);
+
+	if (!error && argvars[2].v_type != VAR_UNKNOWN)
+	    return_list = (int)tv_get_bool_chk(&argvars[2], &error);
+	if (error)
+	    return;
+    }
 
     if (return_list)
     {
@@ -4711,36 +4749,20 @@ f_getreg(typval_T *argvars, typval_T *rettv)
     static void
 f_getregtype(typval_T *argvars, typval_T *rettv)
 {
-    char_u	*strregname;
     int		regname;
     char_u	buf[NUMBUFLEN + 2];
     long	reglen = 0;
 
+    // on error return an empty string
+    rettv->v_type = VAR_STRING;
+    rettv->vval.v_string = NULL;
+
     if (in_vim9script() && check_for_opt_string_arg(argvars, 0) == FAIL)
 	return;
 
-    if (argvars[0].v_type != VAR_UNKNOWN)
-    {
-	strregname = tv_get_string_chk(&argvars[0]);
-	if (strregname != NULL && in_vim9script() && STRLEN(strregname) > 1)
-	{
-	    semsg(_(e_register_name_must_be_one_char_str), strregname);
-	    strregname = NULL;
-	}
-	if (strregname == NULL)	    // type error; errmsg already given
-	{
-	    rettv->v_type = VAR_STRING;
-	    rettv->vval.v_string = NULL;
-	    return;
-	}
-    }
-    else
-	// Default to v:register
-	strregname = get_vim_var_str(VV_REG);
-
-    regname = (strregname == NULL ? '"' : *strregname);
+    regname = getreg_get_regname(argvars);
     if (regname == 0)
-	regname = '"';
+	return;
 
     buf[0] = NUL;
     buf[1] = NUL;
@@ -7788,7 +7810,6 @@ range_list_materialize(list_T *list)
     static void
 f_getreginfo(typval_T *argvars, typval_T *rettv)
 {
-    char_u	*strregname;
     int		regname;
     char_u	buf[NUMBUFLEN + 2];
     long	reglen = 0;
@@ -7798,22 +7819,11 @@ f_getreginfo(typval_T *argvars, typval_T *rettv)
     if (in_vim9script() && check_for_opt_string_arg(argvars, 0) == FAIL)
 	return;
 
-    if (argvars[0].v_type != VAR_UNKNOWN)
-    {
-	strregname = tv_get_string_chk(&argvars[0]);
-	if (strregname == NULL)
-	    return;
-	if (in_vim9script() && STRLEN(strregname) > 1)
-	{
-	    semsg(_(e_register_name_must_be_one_char_str), strregname);
-	    return;
-	}
-    }
-    else
-	strregname = get_vim_var_str(VV_REG);
+    regname = getreg_get_regname(argvars);
+    if (regname == 0)
+	return;
 
-    regname = (strregname == NULL ? '"' : *strregname);
-    if (regname == 0 || regname == '@')
+    if (regname == '@')
 	regname = '"';
 
     if (rettv_dict_alloc(rettv) == FAIL)
