@@ -544,7 +544,7 @@ handle_closure_in_use(ectx_T *ectx, int free_arguments)
 	    int refcount = pt->pt_refcount;
 	    int i;
 
-	    // A Reference in a local variables doesn't count, it gets
+	    // A Reference in a local variable doesn't count, it gets
 	    // unreferenced on return.
 	    for (i = 0; i < dfunc->df_varcount; ++i)
 	    {
@@ -3345,10 +3345,12 @@ exec_instructions(ectx_T *ectx)
 		else
 		{
 		    exarg_T ea;
+		    char_u  *line_to_free = NULL;
 
 		    CLEAR_FIELD(ea);
 		    ea.cmd = ea.arg = iptr->isn_arg.string;
-		    define_function(&ea, NULL);
+		    define_function(&ea, NULL, &line_to_free);
+		    vim_free(line_to_free);
 		}
 		break;
 

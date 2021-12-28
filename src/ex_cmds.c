@@ -687,7 +687,7 @@ do_move(linenr_T line1, linenr_T line2, linenr_T dest)
 
     if (dest >= line1 && dest < line2)
     {
-	emsg(_("E134: Cannot move a range of lines into itself"));
+	emsg(_(e_cannot_move_range_of_lines_into_itself));
 	return FAIL;
     }
 
@@ -1329,7 +1329,7 @@ filterend:
     if (curbuf != old_curbuf)
     {
 	--no_wait_return;
-	emsg(_("E135: *Filter* Autocommands must not change current buffer"));
+	emsg(_(e_filter_autocommands_must_not_change_current_buffer));
     }
     else if (cmdmod.cmod_flags & CMOD_LOCKMARKS)
     {
@@ -3378,7 +3378,7 @@ ex_append(exarg_T *eap)
     // "start" is set to eap->line2+1 unless that position is invalid (when
     // eap->line2 pointed to the end of the buffer and nothing was appended)
     // "end" is set to lnum when something has been appended, otherwise
-    // it is the same than "start"  -- Acevedo
+    // it is the same as "start"  -- Acevedo
     if ((cmdmod.cmod_flags & CMOD_LOCKMARKS) == 0)
     {
 	curbuf->b_op_start.lnum = (eap->line2 < curbuf->b_ml.ml_line_count) ?
