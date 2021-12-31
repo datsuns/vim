@@ -4200,7 +4200,7 @@ check_cedit(void)
     {
 	n = string_to_key(p_cedit, FALSE);
 	if (vim_isprintc(n))
-	    return e_invarg;
+	    return e_invalid_argument;
 	cedit_key = n;
     }
     return NULL;
@@ -4390,7 +4390,7 @@ open_cmdwin(void)
     if (!win_valid(old_curwin) || !bufref_valid(&old_curbuf))
     {
 	cmdwin_result = Ctrl_C;
-	emsg(_("E199: Active window or buffer deleted"));
+	emsg(_(e_active_window_or_buffer_deleted));
     }
     else
     {

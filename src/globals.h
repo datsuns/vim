@@ -1600,42 +1600,11 @@ EXTERN int netbeansSuppressNoLines INIT(= 0); // skip "No lines in buffer"
 #endif
 
 /*
- * The error messages that can be shared are included here.
- * Excluded are errors that are only used once and debugging messages.
+ * Some error messages that can be shared are included here.
+ * They should be moved to errors.h.
  */
-EXTERN char e_abort[]		INIT(= N_("E470: Command aborted"));
-EXTERN char e_argreq[]		INIT(= N_("E471: Argument required"));
-#ifdef FEAT_EVAL
-EXTERN char e_endif[]		INIT(= N_("E171: Missing :endif"));
-EXTERN char e_catch[]		INIT(= N_("E603: :catch without :try"));
-EXTERN char e_finally[]		INIT(= N_("E606: :finally without :try"));
-EXTERN char e_finally_dup[]	INIT(= N_("E607: multiple :finally"));
-EXTERN char e_endtry[]		INIT(= N_("E600: Missing :endtry"));
-EXTERN char e_no_endtry[]	INIT(= N_("E602: :endtry without :try"));
-EXTERN char e_endwhile[]	INIT(= N_("E170: Missing :endwhile"));
-EXTERN char e_endfor[]		INIT(= N_("E170: Missing :endfor"));
-EXTERN char e_while[]		INIT(= N_("E588: :endwhile without :while"));
-EXTERN char e_for[]		INIT(= N_("E588: :endfor without :for"));
-#endif
-EXTERN char e_failed[]	INIT(= N_("E472: Command failed"));
-#if defined(FEAT_GUI) && defined(FEAT_XFONTSET)
-EXTERN char e_fontset[]	INIT(= N_("E234: Unknown fontset: %s"));
-#endif
-#if defined(FEAT_GUI_X11) || defined(FEAT_GUI_GTK) \
-	|| defined(FEAT_GUI_PHOTON) || defined(FEAT_GUI_MSWIN) || defined(FEAT_GUI_HAIKU)
-EXTERN char e_font[]		INIT(= N_("E235: Unknown font: %s"));
-#endif
-#if defined(FEAT_GUI_X11) && !defined(FEAT_GUI_GTK)
-EXTERN char e_fontwidth[]	INIT(= N_("E236: Font \"%s\" is not fixed-width"));
-#endif
-EXTERN char e_internal[]	INIT(= N_("E473: Internal error"));
 EXTERN char e_intern2[]		INIT(= N_("E685: Internal error: %s"));
-EXTERN char e_interr[]		INIT(= N_("Interrupted"));
-EXTERN char e_invarg[]		INIT(= N_("E474: Invalid argument"));
-EXTERN char e_invarg2[]		INIT(= N_("E475: Invalid argument: %s"));
 EXTERN char e_duparg2[]		INIT(= N_("E983: Duplicate argument: %s"));
-EXTERN char e_invargval[]	INIT(= N_("E475: Invalid value for argument %s"));
-EXTERN char e_invargNval[]	INIT(= N_("E475: Invalid value for argument %s: %s"));
 #ifdef FEAT_SPELL
 EXTERN char e_no_spell[]	INIT(= N_("E756: Spell checking is not possible"));
 #endif
@@ -1740,7 +1709,6 @@ EXTERN char e_maxmempat[]	INIT(= N_("E363: pattern uses more memory than 'maxmem
 EXTERN char e_emptybuf[]	INIT(= N_("E749: empty buffer"));
 
 EXTERN char e_invalpat[]	INIT(= N_("E682: Invalid search pattern or delimiter"));
-EXTERN char e_bufloaded[]	INIT(= N_("E139: File is loaded in another buffer"));
 #if defined(FEAT_SYN_HL) || defined(FEAT_COMPL_FUNC)
 EXTERN char e_notset[]	INIT(= N_("E764: Option '%s' is not set"));
 #endif

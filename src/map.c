@@ -603,12 +603,11 @@ do_map(
 			    && STRNCMP(mp->m_keys, keys, (size_t)len) == 0)
 		    {
 			if (abbrev)
-			    semsg(_(
-			    "E224: global abbreviation already exists for %s"),
+			    semsg(
+			       _(e_global_abbreviation_already_exists_for_str),
 				    mp->m_keys);
 			else
-			    semsg(_(
-				 "E225: global mapping already exists for %s"),
+			    semsg(_(e_global_mapping_already_exists_for_str),
 				    mp->m_keys);
 			retval = 5;
 			goto theend;
@@ -741,12 +740,11 @@ do_map(
 			    else if (unique)
 			    {
 				if (abbrev)
-				    semsg(_(
-				   "E226: abbreviation already exists for %s"),
+				    semsg(
+				      _(e_abbreviation_already_exists_for_str),
 					    p);
 				else
-				    semsg(_(
-					"E227: mapping already exists for %s"),
+				    semsg(_(e_mapping_already_exists_for_str),
 					    p);
 				retval = 5;
 				goto theend;
@@ -918,7 +916,7 @@ map_clear(
     local = (STRCMP(arg, "<buffer>") == 0);
     if (!local && *arg != NUL)
     {
-	emsg(_(e_invarg));
+	emsg(_(e_invalid_argument));
 	return;
     }
 
@@ -1855,7 +1853,7 @@ makemap(
 			c1 = 't';
 			break;
 		    default:
-			iemsg(_("E228: makemap: Illegal mode"));
+			iemsg(_(e_makemap_illegal_mode));
 			return FAIL;
 		}
 		do	// do this twice if c2 is set, 3 times with c3
@@ -2755,7 +2753,7 @@ do_exmap(exarg_T *eap, int isabbrev)
     switch (do_map((*cmdp == 'n') ? 2 : (*cmdp == 'u'),
 						    eap->arg, mode, isabbrev))
     {
-	case 1: emsg(_(e_invarg));
+	case 1: emsg(_(e_invalid_argument));
 		break;
 	case 2: emsg((isabbrev ? _(e_no_such_abbreviation)
 						      : _(e_no_such_mapping)));

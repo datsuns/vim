@@ -677,7 +677,7 @@ do_cmdline(
 #endif
 	    )
     {
-	emsg(_("E169: Command too recursive"));
+	emsg(_(e_command_too_recursive));
 #ifdef FEAT_EVAL
 	// When converting to an exception, we do not include the command name
 	// since this is not an error of the specific command.
@@ -1212,13 +1212,13 @@ do_cmdline(
 					    && !func_has_ended(real_cookie))))
 	{
 	    if (cstack.cs_flags[cstack.cs_idx] & CSF_TRY)
-		emsg(_(e_endtry));
+		emsg(_(e_missing_endtry));
 	    else if (cstack.cs_flags[cstack.cs_idx] & CSF_WHILE)
-		emsg(_(e_endwhile));
+		emsg(_(e_missing_endwhile));
 	    else if (cstack.cs_flags[cstack.cs_idx] & CSF_FOR)
-		emsg(_(e_endfor));
+		emsg(_(e_missing_endfor));
 	    else
-		emsg(_(e_endif));
+		emsg(_(e_missing_endif));
 	}
 
 	/*
@@ -2216,7 +2216,7 @@ do_one_cmd(
 	while (ea.arg[0] == '+' && ea.arg[1] == '+')
 	    if (getargopt(&ea) == FAIL && !ni)
 	    {
-		errormsg = _(e_invarg);
+		errormsg = _(e_invalid_argument);
 		goto doend;
 	    }
 
@@ -2400,7 +2400,7 @@ do_one_cmd(
 
     if (!ni && (ea.argt & EX_NEEDARG) && *ea.arg == NUL)
     {
-	errormsg = _(e_argreq);
+	errormsg = _(e_argument_required);
 	goto doend;
     }
 
@@ -5561,8 +5561,8 @@ check_more(
 		return FAIL;
 	    }
 #endif
-	    semsg(NGETTEXT("E173: %d more file to edit",
-			"E173: %d more files to edit", n), n);
+	    semsg(NGETTEXT(e_nr_more_file_to_edit,
+			   e_nr_more_files_to_edit , n), n);
 	    quitmore = 2;	    // next try to quit is allowed
 	}
 	return FAIL;
@@ -5609,7 +5609,7 @@ ex_colorscheme(exarg_T *eap)
 #endif
     }
     else if (load_colors(eap->arg) == FAIL)
-	semsg(_("E185: Cannot find color scheme '%s'"), eap->arg);
+	semsg(_(e_cannot_find_color_scheme_str), eap->arg);
 
 #ifdef FEAT_VTP
     else if (has_vtp_working())
@@ -5939,7 +5939,7 @@ get_tabpage_arg(exarg_T *eap)
 		    tab_number = tabpage_index(lastused_tabpage);
 		else
 		{
-		    eap->errmsg = ex_errmsg(e_invargval, eap->arg);
+		    eap->errmsg = ex_errmsg(e_invalid_value_for_argument_str, eap->arg);
 		    tab_number = 0;
 		    goto theend;
 		}
@@ -5947,7 +5947,7 @@ get_tabpage_arg(exarg_T *eap)
 		    || tab_number > LAST_TAB_NR)
 	    {
 		// No numbers as argument.
-		eap->errmsg = ex_errmsg(e_invarg2, eap->arg);
+		eap->errmsg = ex_errmsg(e_invalid_argument_str, eap->arg);
 		goto theend;
 	    }
 	}
@@ -5959,7 +5959,7 @@ get_tabpage_arg(exarg_T *eap)
 		    || tab_number == 0)
 	    {
 		// No numbers as argument.
-		eap->errmsg = ex_errmsg(e_invarg2, eap->arg);
+		eap->errmsg = ex_errmsg(e_invalid_argument_str, eap->arg);
 		goto theend;
 	    }
 	    tab_number = tab_number * relative + tabpage_index(curtab);
@@ -5967,7 +5967,7 @@ get_tabpage_arg(exarg_T *eap)
 		--tab_number;
 	}
 	if (tab_number < unaccept_arg0 || tab_number > LAST_TAB_NR)
-	    eap->errmsg = ex_errmsg(e_invarg2, eap->arg);
+	    eap->errmsg = ex_errmsg(e_invalid_argument_str, eap->arg);
     }
     else if (eap->addr_count > 0)
     {
@@ -6678,7 +6678,7 @@ ex_tabnext(exarg_T *eap)
 			    || tab_number == 0)
 		{
 		    // No numbers as argument.
-		    eap->errmsg = ex_errmsg(e_invarg2, eap->arg);
+		    eap->errmsg = ex_errmsg(e_invalid_argument_str, eap->arg);
 		    return;
 		}
 	    }
@@ -7377,7 +7377,7 @@ changedir_func(
 	pdir = get_prevdir(scope);
 	if (pdir == NULL)
 	{
-	    emsg(_("E186: No previous directory"));
+	    emsg(_(e_no_previous_directory));
 	    return FALSE;
 	}
 	new_dir = pdir;
@@ -7415,7 +7415,7 @@ changedir_func(
 	|| pathcmp((char *)pdir, (char *)new_dir, -1) != 0;
     if (dir_differs && vim_chdir(new_dir))
     {
-	emsg(_(e_failed));
+	emsg(_(e_command_failed));
 	vim_free(pdir);
     }
     else
@@ -7510,7 +7510,7 @@ ex_pwd(exarg_T *eap UNUSED)
 	    msg((char *)NameBuff);
     }
     else
-	emsg(_("E187: Unknown"));
+	emsg(_(e_directory_unknown));
 }
 
 /*
@@ -7541,7 +7541,7 @@ ex_sleep(exarg_T *eap)
     {
 	case 'm': break;
 	case NUL: len *= 1000L; break;
-	default: semsg(_(e_invarg2), eap->arg); return;
+	default: semsg(_(e_invalid_argument_str), eap->arg); return;
     }
 
     // Hide the cursor if invoked with !
@@ -7635,7 +7635,7 @@ ex_winsize(exarg_T *eap)
 
     if (!isdigit(*arg))
     {
-	semsg(_(e_invarg2), arg);
+	semsg(_(e_invalid_argument_str), arg);
 	return;
     }
     w = getdigits(&arg);
@@ -7659,7 +7659,7 @@ ex_wincmd(exarg_T *eap)
 	// CTRL-W g and CTRL-W CTRL-G  have an extra command character
 	if (eap->arg[1] == NUL)
 	{
-	    emsg(_(e_invarg));
+	    emsg(_(e_invalid_argument));
 	    return;
 	}
 	xchar = eap->arg[1];
@@ -7676,7 +7676,7 @@ ex_wincmd(exarg_T *eap)
 #endif
 		'"')
 	    && eap->nextcmd == NULL)
-	emsg(_(e_invarg));
+	emsg(_(e_invalid_argument));
     else if (!eap->skip)
     {
 	// Pass flags on for ":vertical wincmd ]".
@@ -7716,7 +7716,7 @@ ex_winpos(exarg_T *eap)
 	}
 	else
 # endif
-	    emsg(_("E188: Obtaining window position not implemented for this platform"));
+	    emsg(_(e_obtaining_window_position_not_implemented_for_this_platform));
     }
     else
     {
@@ -8039,7 +8039,7 @@ ex_later(exarg_T *eap)
     }
 
     if (*p != NUL)
-	semsg(_(e_invarg2), eap->arg);
+	semsg(_(e_invalid_argument_str), eap->arg);
     else
 	undo_time(eap->cmdidx == CMD_earlier ? -count : count,
 							    sec, file, FALSE);
@@ -8135,7 +8135,7 @@ ex_redir(exarg_T *eap)
 	    if (*arg != NUL)
 	    {
 		redir_reg = 0;
-		semsg(_(e_invarg2), eap->arg);
+		semsg(_(e_invalid_argument_str), eap->arg);
 	    }
 	}
 	else if (*arg == '=' && arg[1] == '>')
@@ -8162,7 +8162,7 @@ ex_redir(exarg_T *eap)
 	// TODO: redirect to a buffer
 
 	else
-	    semsg(_(e_invarg2), eap->arg);
+	    semsg(_(e_invalid_argument_str), eap->arg);
     }
 
     // Make sure redirection is not off.  Can happen for cmdline completion
@@ -8303,12 +8303,12 @@ open_exfile(
 #endif
     if (!forceit && *mode != 'a' && vim_fexists(fname))
     {
-	semsg(_("E189: \"%s\" exists (add ! to override)"), fname);
+	semsg(_(e_str_exists_add_bang_to_override), fname);
 	return NULL;
     }
 
     if ((fd = mch_fopen((char *)fname, mode)) == NULL)
-	semsg(_("E190: Cannot open \"%s\" for writing"), fname);
+	semsg(_(e_cannot_open_str_for_writing_2), fname);
 
     return fd;
 }
@@ -8326,7 +8326,7 @@ ex_mark(exarg_T *eap)
 	return;
 #endif
     if (*eap->arg == NUL)		// No argument?
-	emsg(_(e_argreq));
+	emsg(_(e_argument_required));
     else if (eap->arg[1] != NUL)	// more than one character?
 	semsg(_(e_trailing_arg), eap->arg);
     else
@@ -8335,7 +8335,7 @@ ex_mark(exarg_T *eap)
 	curwin->w_cursor.lnum = eap->line2;
 	beginline(BL_WHITE | BL_FIX);
 	if (setmark(*eap->arg) == FAIL)	// set mark
-	    emsg(_("E191: Argument must be a letter or forward/backward quote"));
+	    emsg(_(e_argument_must_be_letter_or_forward_backward_quote));
 	curwin->w_cursor = pos;		// restore curwin->w_cursor
     }
 }
@@ -8426,7 +8426,7 @@ ex_normal(exarg_T *eap)
     }
     if (ex_normal_busy >= p_mmd)
     {
-	emsg(_("E192: Recursive use of :normal too deep"));
+	emsg(_(e_recursive_use_of_normal_too_deep));
 	return;
     }
 
@@ -9062,7 +9062,7 @@ eval_vars(
 		    buf = buflist_findnr(i);
 		    if (buf == NULL)
 		    {
-			*errormsg = _("E194: No alternate file name to substitute for '#'");
+			*errormsg = _(e_no_alternate_file_name_to_substitute_for_hash);
 			return NULL;
 		    }
 		    if (lnump != NULL)
@@ -9322,7 +9322,7 @@ ex_behave(exarg_T *eap)
 	set_option_value((char_u *)"keymodel", 0L, (char_u *)"", 0);
     }
     else
-	semsg(_(e_invarg2), eap->arg);
+	semsg(_(e_invalid_argument_str), eap->arg);
 }
 
 static int filetype_detect = FALSE;
@@ -9417,7 +9417,7 @@ ex_filetype(exarg_T *eap)
 	}
     }
     else
-	semsg(_(e_invarg2), arg);
+	semsg(_(e_invalid_argument_str), arg);
 }
 
 /*

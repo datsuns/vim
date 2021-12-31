@@ -254,7 +254,7 @@ get_function_args(
 	if (mustend && *p != endchar)
 	{
 	    if (!skip)
-		semsg(_(e_invarg2), *argp);
+		semsg(_(e_invalid_argument_str), *argp);
 	    goto err_ret;
 	}
 	if (*p == endchar)
@@ -2360,7 +2360,7 @@ copy_func(char_u *lambda, char_u *global, ectx_T *ectx)
     if (fp != NULL)
     {
 	// TODO: handle ! to overwrite
-	semsg(_(e_function_str_already_exists_add_excl_to_replace), global);
+	semsg(_(e_function_str_already_exists_add_bang_to_replace), global);
 	return FAIL;
     }
 
@@ -3692,7 +3692,7 @@ trans_function_name(
 	if (!aborting())
 	{
 	    if (end != NULL)
-		semsg(_(e_invarg2), start);
+		semsg(_(e_invalid_argument_str), start);
 	}
 	else
 	    *pp = find_name_end(start, NULL, NULL, FNE_INCL_BR);
@@ -4258,7 +4258,7 @@ define_function(exarg_T *eap, char_u *name_arg, char_u **line_to_free)
 					: eval_isnamec(name_base[i])); ++i)
 		;
 	    if (name_base[i] != NUL)
-		emsg_funcname((char *)e_invarg2, arg);
+		emsg_funcname((char *)e_invalid_argument_str, arg);
 
 	    // In Vim9 script a function cannot have the same name as a
 	    // variable.
@@ -4380,7 +4380,7 @@ define_function(exarg_T *eap, char_u *name_arg, char_u **line_to_free)
 	    if (fudi.fd_dict != NULL && fudi.fd_newkey == NULL)
 		emsg(_(e_funcdict));
 	    else if (name != NULL && find_func(name, is_global, NULL) != NULL)
-		emsg_funcname(e_function_str_already_exists_add_excl_to_replace, name);
+		emsg_funcname(e_function_str_already_exists_add_bang_to_replace, name);
 	}
 
 	if (!eap->skip && did_emsg)
@@ -4438,7 +4438,7 @@ define_function(exarg_T *eap, char_u *name_arg, char_u **line_to_free)
 		if (vim9script)
 		    emsg_funcname(e_name_already_defined_str, name);
 		else
-		    emsg_funcname(e_function_str_already_exists_add_excl_to_replace, name);
+		    emsg_funcname(e_function_str_already_exists_add_bang_to_replace, name);
 		goto erret;
 	    }
 	    if (fp->uf_calls > 0)
@@ -4909,7 +4909,7 @@ ex_delfunction(exarg_T *eap)
     if (numbered_function(name) && fudi.fd_dict == NULL)
     {
 	if (!eap->skip)
-	    semsg(_(e_invarg2), eap->arg);
+	    semsg(_(e_invalid_argument_str), eap->arg);
 	vim_free(name);
 	return;
     }
