@@ -109,7 +109,6 @@ static void	ex_pedit(exarg_T *eap);
 # define ex_pedit		ex_ni
 #endif
 static void	ex_hide(exarg_T *eap);
-static void	ex_stop(exarg_T *eap);
 static void	ex_exit(exarg_T *eap);
 static void	ex_print(exarg_T *eap);
 #ifdef FEAT_BYTEOFF
@@ -6200,7 +6199,7 @@ ex_hide(exarg_T *eap UNUSED)
 /*
  * ":stop" and ":suspend": Suspend Vim.
  */
-    static void
+    void
 ex_stop(exarg_T *eap)
 {
     /*
@@ -7359,7 +7358,6 @@ changedir_func(
 	int		forceit,
 	cdscope_T	scope)
 {
-    char_u	*tofree;
     char_u	*pdir = NULL;
     int		dir_differs;
     int		retval = FALSE;
@@ -7385,20 +7383,11 @@ changedir_func(
 	new_dir = pdir;
     }
 
-    // Free the previous directory
-    tofree = get_prevdir(scope);
-
     // Save current directory for next ":cd -"
     if (mch_dirname(NameBuff, MAXPATHL) == OK)
 	pdir = vim_strsave(NameBuff);
     else
 	pdir = NULL;
-    if (scope == CDSCOPE_WINDOW)
-	curwin->w_prevdir = pdir;
-    else if (scope == CDSCOPE_TABPAGE)
-	curtab->tp_prevdir = pdir;
-    else
-	prev_dir = pdir;
 
     // For UNIX ":cd" means: go to home directory.
     // On other systems too if 'cdhome' is set.
@@ -7422,13 +7411,26 @@ changedir_func(
 # endif
 	new_dir = NameBuff;
     }
-    dir_differs = new_dir == NULL || pdir == NULL
+    dir_differs = pdir == NULL
 	|| pathcmp((char *)pdir, (char *)new_dir, -1) != 0;
-    if (new_dir == NULL || (dir_differs && vim_chdir(new_dir)))
+    if (dir_differs && vim_chdir(new_dir))
+    {
 	emsg(_(e_failed));
+	vim_free(pdir);
+    }
     else
     {
 	char_u  *acmd_fname;
+	char_u	**pp;
+
+	if (scope == CDSCOPE_WINDOW)
+	    pp = &curwin->w_prevdir;
+	else if (scope == CDSCOPE_TABPAGE)
+	    pp = &curtab->tp_prevdir;
+	else
+	    pp = &prev_dir;
+	vim_free(*pp);
+	*pp = pdir;
 
 	post_chdir(scope);
 
@@ -7445,7 +7447,6 @@ changedir_func(
 	}
 	retval = TRUE;
     }
-    vim_free(tofree);
 
     return retval;
 }
@@ -7565,9 +7566,9 @@ do_sleep(long msec, int hide_cursor)
 # endif
 
     if (hide_cursor)
-        cursor_sleep();
+	cursor_sleep();
     else
-        cursor_on();
+	cursor_on();
 
     out_flush_cursor(FALSE, FALSE);
     while (!got_int && done < msec)
@@ -7619,7 +7620,7 @@ do_sleep(long msec, int hide_cursor)
 	(void)vpeekc();
 
     if (hide_cursor)
-        cursor_unsleep();
+	cursor_unsleep();
 }
 
 /*
