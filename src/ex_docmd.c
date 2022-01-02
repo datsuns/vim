@@ -522,7 +522,7 @@ do_exmode(
 		   || changedtick != CHANGEDTICK(curbuf)) && !ex_no_reprint)
 	{
 	    if (curbuf->b_ml.ml_flags & ML_EMPTY)
-		emsg(_(e_emptybuf));
+		emsg(_(e_empty_buffer));
 	    else
 	    {
 		if (ex_pressedreturn)
@@ -541,9 +541,9 @@ do_exmode(
 	else if (ex_pressedreturn && !ex_no_reprint)	// must be at EOF
 	{
 	    if (curbuf->b_ml.ml_flags & ML_EMPTY)
-		emsg(_(e_emptybuf));
+		emsg(_(e_empty_buffer));
 	    else
-		emsg(_("E501: At end-of-file"));
+		emsg(_(e_at_end_of_file));
 	}
     }
 
@@ -2015,7 +2015,7 @@ do_one_cmd(
     {
 	if (!ea.skip)
 	{
-	    STRCPY(IObuff, _("E492: Not an editor command"));
+	    STRCPY(IObuff, _(e_not_an_editor_command));
 	    if (!sourcing)
 	    {
 		// If the modifier was parsed OK the error must be in the
@@ -2124,15 +2124,14 @@ do_one_cmd(
 
 	if (!ni && !(ea.argt & EX_RANGE) && ea.addr_count > 0)
 	{
-	    // no range allowed
-	    errormsg = _(e_norange);
+	    errormsg = _(e_no_range_allowed);
 	    goto doend;
 	}
     }
 
-    if (!ni && !(ea.argt & EX_BANG) && ea.forceit)	// no <!> allowed
+    if (!ni && !(ea.argt & EX_BANG) && ea.forceit)
     {
-	errormsg = _(e_nobang);
+	errormsg = _(e_no_bang_allowed);
 	goto doend;
     }
 
@@ -2153,7 +2152,7 @@ do_one_cmd(
 	    {
 		if (sourcing || exmode_active)
 		{
-		    errormsg = _("E493: Backwards range given");
+		    errormsg = _(e_backwards_range_given);
 		    goto doend;
 		}
 		if (ask_yesno((char_u *)
@@ -2226,7 +2225,7 @@ do_one_cmd(
 	{
 	    if (*++ea.arg != '>')		// typed wrong
 	    {
-		errormsg = _("E494: Use w or w>>");
+		errormsg = _(e_use_w_or_w_gt_gt);
 		goto doend;
 	    }
 	    ea.arg = skipwhite(ea.arg + 1);
@@ -2327,7 +2326,7 @@ do_one_cmd(
 	// check these explicitly for a more specific error message
 	if (*ea.arg == '*' || *ea.arg == '+')
 	{
-	    errormsg = _(e_invalidreg);
+	    errormsg = _(e_invalid_register_name);
 	    goto doend;
 	}
 #endif
@@ -2363,7 +2362,7 @@ do_one_cmd(
 	ea.arg = skipwhite(ea.arg);
 	if (n <= 0 && !ni && (ea.argt & EX_ZEROR) == 0)
 	{
-	    errormsg = _(e_zerocount);
+	    errormsg = _(e_positive_count_required);
 	    goto doend;
 	}
 	if (ea.addr_type != ADDR_LINES)	// e.g. :buffer 2, :sleep 3
@@ -2394,7 +2393,7 @@ do_one_cmd(
 	    && *ea.arg != '"' && (*ea.arg != '|' || (ea.argt & EX_TRLBAR) == 0))
     {
 	// no arguments allowed but there is something
-	errormsg = ex_errmsg(e_trailing_arg, ea.arg);
+	errormsg = ex_errmsg(e_trailing_characters_str, ea.arg);
 	goto doend;
     }
 
@@ -4016,7 +4015,7 @@ skip_range(
 addr_error(cmd_addr_T addr_type)
 {
     if (addr_type == ADDR_NONE)
-	emsg(_(e_norange));
+	emsg(_(e_no_range_allowed));
     else
 	emsg(_(e_invalid_range));
 }
@@ -4541,7 +4540,7 @@ ex_ni(exarg_T *eap)
 {
     if (!eap->skip)
 	eap->errmsg =
-		_("E319: Sorry, the command is not available in this version");
+		_(e_sorry_command_is_not_available_in_this_version);
 }
 
 #ifdef HAVE_EX_SCRIPT_NI
@@ -5354,7 +5353,7 @@ ex_buffer(exarg_T *eap)
     if (ERROR_IF_ANY_POPUP_WINDOW)
 	return;
     if (*eap->arg)
-	eap->errmsg = ex_errmsg(e_trailing_arg, eap->arg);
+	eap->errmsg = ex_errmsg(e_trailing_characters_str, eap->arg);
     else
     {
 	if (eap->addr_count == 0)	// default is current buffer
@@ -5861,7 +5860,7 @@ ex_win_close(
     // Never close the autocommand window.
     if (win == aucmd_win)
     {
-	emsg(_(e_autocmd_close));
+	emsg(_(e_cannot_close_autocmd_or_popup_window));
 	return;
     }
 
@@ -6287,7 +6286,7 @@ ex_exit(exarg_T *eap)
 ex_print(exarg_T *eap)
 {
     if (curbuf->b_ml.ml_flags & ML_EMPTY)
-	emsg(_(e_emptybuf));
+	emsg(_(e_empty_buffer));
     else
     {
 	for ( ;!got_int; ui_breakcheck())
@@ -6772,7 +6771,7 @@ ex_mode(exarg_T *eap)
     if (*eap->arg == NUL)
 	shell_resized();
     else
-	emsg(_(e_screenmode));
+	emsg(_(e_screen_mode_setting_not_supported));
 }
 
 /*
@@ -6882,7 +6881,7 @@ ex_open(exarg_T *eap)
 	    if (vim_regexec(&regmatch, line, (colnr_T)0))
 		curwin->w_cursor.col = (colnr_T)(regmatch.startp[0] - line);
 	    else
-		emsg(_(e_nomatch));
+		emsg(_(e_no_match));
 	    vim_regfree(regmatch.regprog);
 	    vim_free(line);
 	}
@@ -7254,7 +7253,7 @@ ex_read(exarg_T *eap)
 #if defined(FEAT_EVAL)
 	    if (!aborting())
 #endif
-		semsg(_(e_notopen), eap->arg);
+		semsg(_(e_cant_open_file_str), eap->arg);
 	}
 	else
 	{
@@ -7645,7 +7644,7 @@ ex_winsize(exarg_T *eap)
     if (*p != NUL && *arg == NUL)
 	set_shellsize(w, h, TRUE);
     else
-	emsg(_("E465: :winsize requires two number arguments"));
+	emsg(_(e_winsize_requires_two_number_arguments));
 }
 
     static void
@@ -7726,7 +7725,7 @@ ex_winpos(exarg_T *eap)
 	y = getdigits(&arg);
 	if (*p == NUL || *arg != NUL)
 	{
-	    emsg(_("E466: :winpos requires two number arguments"));
+	    emsg(_(e_winpos_requires_two_number_arguments));
 	    return;
 	}
 # ifdef FEAT_GUI
@@ -8328,7 +8327,7 @@ ex_mark(exarg_T *eap)
     if (*eap->arg == NUL)		// No argument?
 	emsg(_(e_argument_required));
     else if (eap->arg[1] != NUL)	// more than one character?
-	semsg(_(e_trailing_arg), eap->arg);
+	semsg(_(e_trailing_characters_str), eap->arg);
     else
     {
 	pos = curwin->w_cursor;		// save curwin->w_cursor
@@ -8421,7 +8420,7 @@ ex_normal(exarg_T *eap)
 
     if (ex_normal_lock > 0)
     {
-	emsg(_(e_secure));
+	emsg(_(e_not_allowed_here));
 	return;
     }
     if (ex_normal_busy >= p_mmd)
@@ -8699,7 +8698,7 @@ ex_findpat(exarg_T *eap)
 
 	    // Check for trailing illegal characters
 	    if (!ends_excmd2(eap->arg, p))
-		eap->errmsg = ex_errmsg(e_trailing_arg, p);
+		eap->errmsg = ex_errmsg(e_trailing_characters_str, p);
 	    else
 		set_nextcmd(eap, p);
 	}
@@ -9105,7 +9104,7 @@ eval_vars(
 		}
 		if (result == NULL)
 		{
-		    *errormsg = _("E495: no autocommand file name to substitute for \"<afile>\"");
+		    *errormsg = _(e_no_autocommand_file_name_to_substitute_for_afile);
 		    return NULL;
 		}
 		result = shorten_fname1(result);
@@ -9114,7 +9113,7 @@ eval_vars(
 	case SPEC_ABUF:		// buffer number for autocommand
 		if (autocmd_bufnr <= 0)
 		{
-		    *errormsg = _("E496: no autocommand buffer number to substitute for \"<abuf>\"");
+		    *errormsg = _(e_no_autocommand_buffer_name_to_substitute_for_abuf);
 		    return NULL;
 		}
 		sprintf((char *)strbuf, "%d", autocmd_bufnr);
@@ -9125,7 +9124,7 @@ eval_vars(
 		result = autocmd_match;
 		if (result == NULL)
 		{
-		    *errormsg = _("E497: no autocommand match name to substitute for \"<amatch>\"");
+		    *errormsg = _(e_no_autocommand_match_name_to_substitute_for_amatch);
 		    return NULL;
 		}
 		break;
@@ -9137,8 +9136,8 @@ eval_vars(
 		if (result == NULL)
 		{
 		    *errormsg = spec_idx == SPEC_SFILE
-			? _("E498: no :source file name to substitute for \"<sfile>\"")
-			: _("E489: no call stack to substitute for \"<stack>\"");
+			? _(e_no_source_file_name_to_substitute_for_sfile)
+			: _(e_no_call_stack_to_substitute_for_stack);
 		    return NULL;
 		}
 		resultbuf = result;	    // remember allocated string
@@ -9213,9 +9212,9 @@ eval_vars(
     {
 	if (valid != VALID_HEAD + VALID_PATH)
 	    // xgettext:no-c-format
-	    *errormsg = _("E499: Empty file name for '%' or '#', only works with \":p:h\"");
+	    *errormsg = _(e_empty_file_name_for_percent_or_hash_only_works_with_ph);
 	else
-	    *errormsg = _("E500: Evaluates to an empty string");
+	    *errormsg = _(e_evaluates_to_an_empty_string);
 	result = NULL;
     }
     else

@@ -1137,7 +1137,7 @@ do_filter(
 	if ((do_in && (itmp = vim_tempname('i', FALSE)) == NULL)
 		|| (do_out && (otmp = vim_tempname('o', FALSE)) == NULL))
 	{
-	    emsg(_(e_notmp));
+	    emsg(_(e_cant_get_temp_file_name));
 	    goto filterend;
 	}
 
@@ -1154,7 +1154,7 @@ do_filter(
 #if defined(FEAT_EVAL)
 	if (!aborting())
 #endif
-	    (void)semsg(_(e_notcreate), itmp);	// will call wait_return
+	    (void)semsg(_(e_cant_create_file_str), itmp);	// will call wait_return
 	goto filterend;
     }
     if (curbuf != old_curbuf)
@@ -1229,7 +1229,7 @@ do_filter(
 #endif
 		{
 		    msg_putchar('\n');
-		    semsg(_(e_notread), otmp);
+		    semsg(_(e_cant_read_file_str), otmp);
 		}
 		goto error;
 	    }
@@ -1862,7 +1862,7 @@ check_writable(char_u *fname)
 {
     if (mch_nodetype(fname) == NODE_OTHER)
     {
-	semsg(_("E503: \"%s\" is not a file or writable device"), fname);
+	semsg(_(e_str_is_not_file_or_writable_device), fname);
 	return FAIL;
     }
     return OK;
@@ -2357,8 +2357,7 @@ check_readonly(int *forceit, buf_T *buf)
 	if (buf->b_p_ro)
 	    emsg(_(e_readonly_option_is_set_add_bang_to_override));
 	else
-	    semsg(_("E505: \"%s\" is read-only (add ! to override)"),
-		    buf->b_fname);
+	    semsg(_(e_str_is_read_only_add_bang_to_override), buf->b_fname);
 	return TRUE;
     }
 
@@ -3931,7 +3930,7 @@ ex_substitute(exarg_T *eap)
 	i = getdigits(&cmd);
 	if (i <= 0 && !eap->skip && subflags.do_error)
 	{
-	    emsg(_(e_zerocount));
+	    emsg(_(e_positive_count_required));
 	    return;
 	}
 	eap->line1 = eap->line2;
@@ -3949,7 +3948,7 @@ ex_substitute(exarg_T *eap)
 	set_nextcmd(eap, cmd);
 	if (eap->nextcmd == NULL)
 	{
-	    semsg(_(e_trailing_arg), cmd);
+	    semsg(_(e_trailing_characters_str), cmd);
 	    return;
 	}
     }
@@ -4780,7 +4779,7 @@ outofmem:
 	else if (got_match)	// did find something but nothing substituted
 	    msg("");
 	else if (subflags.do_error)	// nothing found
-	    semsg(_(e_patnotf2), get_search_pat());
+	    semsg(_(e_pattern_not_found_str), get_search_pat());
     }
 
 #ifdef FEAT_FOLDING

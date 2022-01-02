@@ -2451,7 +2451,7 @@ reg(
 	if (curchr == Magic(')'))
 	    EMSG2_RET_NULL(_(e_unmatched_str_close), reg_magic == MAGIC_ALL);
 	else
-	    EMSG_RET_NULL(_(e_trailing));	// "Can't happen".
+	    EMSG_RET_NULL(_(e_trailing_characters));	// "Can't happen".
 	// NOTREACHED
     }
     // Here we set the flag allowing back references to this set of
@@ -2517,7 +2517,7 @@ bt_regcomp(char_u *expr, int re_flags)
     {
 	vim_free(r);
 	if (reg_toolong)
-	    EMSG_RET_NULL(_("E339: Pattern too long"));
+	    EMSG_RET_NULL(_(e_pattern_too_long));
 	return NULL;
     }
 
@@ -3139,7 +3139,7 @@ regstack_push(regstate_T state, char_u *scan)
 
     if ((long)((unsigned)regstack.ga_len >> 10) >= p_mmp)
     {
-	emsg(_(e_maxmempat));
+	emsg(_(e_pattern_uses_more_memory_than_maxmempattern));
 	return NULL;
     }
     if (ga_grow(&regstack, sizeof(regitem_T)) == FAIL)
@@ -4213,7 +4213,7 @@ regmatch(
 		    // a regstar_T on the regstack.
 		    if ((long)((unsigned)regstack.ga_len >> 10) >= p_mmp)
 		    {
-			emsg(_(e_maxmempat));
+			emsg(_(e_pattern_uses_more_memory_than_maxmempattern));
 			status = RA_FAIL;
 		    }
 		    else if (ga_grow(&regstack, sizeof(regstar_T)) == FAIL)
@@ -4258,7 +4258,7 @@ regmatch(
 	    // Need a bit of room to store extra positions.
 	    if ((long)((unsigned)regstack.ga_len >> 10) >= p_mmp)
 	    {
-		emsg(_(e_maxmempat));
+		emsg(_(e_pattern_uses_more_memory_than_maxmempattern));
 		status = RA_FAIL;
 	    }
 	    else if (ga_grow(&regstack, sizeof(regbehind_T)) == FAIL)

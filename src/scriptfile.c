@@ -359,7 +359,7 @@ do_in_path(
 	char *basepath = path == p_rtp ? "runtimepath" : "packpath";
 
 	if (flags & DIP_ERR)
-	    semsg(_(e_dirnotf), basepath, name);
+	    semsg(_(e_directory_not_found_in_str_str), basepath, name);
 	else if (p_verbose > 0)
 	{
 	    verbose_enter();
@@ -983,7 +983,7 @@ cmd_source(char_u *fname, exarg_T *eap)
 
     // ":source" read ex commands
     else if (do_source(fname, FALSE, DOSO_NONE, NULL) == FAIL)
-	semsg(_(e_notopen), fname);
+	semsg(_(e_cant_open_file_str), fname);
 }
 
 /*

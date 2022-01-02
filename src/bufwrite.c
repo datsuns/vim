@@ -700,7 +700,7 @@ buf_write(
     {
 	// This can happen during startup when there is a stray "w" in the
 	// vimrc file.
-	emsg(_(e_emptybuf));
+	emsg(_(e_empty_buffer));
 	return FAIL;
     }
 
@@ -2178,7 +2178,7 @@ restore_backup:
 	// If the 'fsync' option is FALSE, don't fsync().  Useful for laptops.
 	if (p_fs && vim_fsync(fd) != 0 && !device)
 	{
-	    errmsg = (char_u *)_(e_fsync);
+	    errmsg = (char_u *)_(e_fsync_failed);
 	    end = 0;
 	}
 #endif

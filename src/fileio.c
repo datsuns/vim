@@ -4155,7 +4155,7 @@ buf_check_timestamp(
 	    if (n)
 	    {
 		if (!bufref_valid(&bufref))
-		    emsg(_("E246: FileChangedShell autocommand deleted buffer"));
+		    emsg(_(e_filechangedshell_autocommand_deleted_buffer));
 #ifdef FEAT_EVAL
 		s = get_vim_var_str(VV_FCS_CHOICE);
 		if (STRCMP(s, "reload") == 0 && *reason != 'd')
@@ -4385,8 +4385,7 @@ buf_reload(buf_T *buf, int orig_mode)
 	    if (savebuf == NULL || saved == FAIL || buf != curbuf
 				      || move_lines(buf, savebuf) == FAIL)
 	    {
-		semsg(_("E462: Could not prepare for reloading \"%s\""),
-							    buf->b_fname);
+		semsg(_(e_could_not_prepare_for_reloading_str), buf->b_fname);
 		saved = FAIL;
 	    }
 	}
@@ -4402,7 +4401,7 @@ buf_reload(buf_T *buf, int orig_mode)
 #if defined(FEAT_EVAL)
 		if (!aborting())
 #endif
-		    semsg(_("E321: Could not reload \"%s\""), buf->b_fname);
+		    semsg(_(e_could_not_reload_str), buf->b_fname);
 		if (savebuf != NULL && bufref_valid(&bufref) && buf == curbuf)
 		{
 		    // Put the text back from the save buffer.  First
@@ -4809,7 +4808,7 @@ readdir_core(
     if (!ok)
     {
 	failed = TRUE;
-	semsg(_(e_notopen), path);
+	semsg(_(e_cant_open_file_str), path);
     }
     else
     {
@@ -4879,7 +4878,7 @@ readdir_core(
     if (dirp == NULL)
     {
 	failed = TRUE;
-	semsg(_(e_notopen), path);
+	semsg(_(e_cant_open_file_str), path);
     }
     else
     {

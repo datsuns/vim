@@ -547,7 +547,7 @@ gui_init(void)
 	    if (STRCMP(use_gvimrc, "NONE") != 0
 		    && STRCMP(use_gvimrc, "NORC") != 0
 		    && do_source(use_gvimrc, FALSE, DOSO_NONE, NULL) != OK)
-		semsg(_("E230: Cannot read from \"%s\""), use_gvimrc);
+		semsg(_(e_cannot_read_from_str), use_gvimrc);
 	}
 	else
 	{
@@ -686,7 +686,7 @@ gui_init(void)
 	goto error2;
     }
     if (gui_get_wide_font() == FAIL)
-	emsg(_("E231: 'guifontwide' invalid"));
+	emsg(_(e_guifontwide_invalid));
 
     gui.num_cols = Columns;
     gui.num_rows = Rows;
@@ -814,7 +814,7 @@ gui_init(void)
 
 #if defined(FEAT_XIM) && defined(FEAT_GUI_GTK)
 	if (!im_xim_isvalid_imactivate())
-	    emsg(_("E599: Value of 'imactivatekey' is invalid"));
+	    emsg(_(e_value_of_imactivatekey_is_invalid));
 #endif
 	// When 'cmdheight' was set during startup it may not have taken
 	// effect yet.

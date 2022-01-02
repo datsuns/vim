@@ -1109,7 +1109,7 @@ get_var_dest(
 	*dest = dest_option;
 	if (cmdidx == CMD_final || cmdidx == CMD_const)
 	{
-	    emsg(_(e_const_option));
+	    emsg(_(e_cannot_lock_an_option));
 	    return FAIL;
 	}
 	p = name;
@@ -2639,7 +2639,7 @@ compile_def_function(
 		&& !(*line == '#' && (line == cctx.ctx_line_start
 						    || VIM_ISWHITE(line[-1]))))
 	{
-	    semsg(_(e_trailing_arg), line);
+	    semsg(_(e_trailing_characters_str), line);
 	    goto erret;
 	}
 	else if (line != NULL && vim9_bad_comment(skipwhite(line)))

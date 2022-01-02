@@ -1202,7 +1202,6 @@ typedef struct
 #define FEARG_2    2	    // base is the second argument
 #define FEARG_3    3	    // base is the third argument
 #define FEARG_4    4	    // base is the fourth argument
-#define FEARG_LAST 9	    // base is the last argument
 
 #ifdef FEAT_FLOAT
 # define FLOAT_FUNC(name) name
@@ -2718,14 +2717,7 @@ call_internal_method(
     if (argcount + 1 > global_functions[fi].f_max_argc)
 	return FCERR_TOOMANY;
 
-    if (global_functions[fi].f_argtype == FEARG_LAST)
-    {
-	// base value goes last
-	for (i = 0; i < argcount; ++i)
-	    argv[i] = argvars[i];
-	argv[argcount] = *basetv;
-    }
-    else if (global_functions[fi].f_argtype == FEARG_2)
+    if (global_functions[fi].f_argtype == FEARG_2)
     {
 	// base value goes second
 	argv[0] = argvars[0];
@@ -2935,7 +2927,7 @@ f_call(typval_T *argvars, typval_T *rettv)
 
     if (argvars[1].v_type != VAR_LIST)
     {
-	emsg(_(e_listreq));
+	emsg(_(e_list_required));
 	return;
     }
     if (argvars[1].vval.v_list == NULL)
@@ -2957,7 +2949,7 @@ f_call(typval_T *argvars, typval_T *rettv)
     {
 	if (argvars[2].v_type != VAR_DICT)
 	{
-	    emsg(_(e_dictreq));
+	    emsg(_(e_dictionary_required));
 	    return;
 	}
 	selfdict = argvars[2].vval.v_dict;
@@ -3071,7 +3063,7 @@ get_optional_window(typval_T *argvars, int idx)
 	win = find_win_by_nr_or_id(&argvars[idx]);
 	if (win == NULL)
 	{
-	    emsg(_(e_invalwindow));
+	    emsg(_(e_invalid_window_number));
 	    return NULL;
 	}
     }
@@ -3496,7 +3488,7 @@ f_eval(typval_T *argvars, typval_T *rettv)
 	rettv->vval.v_number = 0;
     }
     else if (*s != NUL)
-	semsg(_(e_trailing_arg), s);
+	semsg(_(e_trailing_characters_str), s);
 }
 
 /*
@@ -4411,7 +4403,7 @@ f_get(typval_T *argvars, typval_T *rettv)
 	}
     }
     else
-	semsg(_(e_listdictblobarg), "get()");
+	semsg(_(e_argument_of_str_must_be_list_dictionary_or_blob), "get()");
 
     if (tv == NULL)
     {
@@ -5929,6 +5921,7 @@ f_has(typval_T *argvars, typval_T *rettv)
 		0
 #endif
 		},
+	{"vim9script", 1},
 	{"vimscript-1", 1},
 	{"vimscript-2", 1},
 	{"vimscript-3", 1},
@@ -6457,7 +6450,7 @@ f_index(typval_T *argvars, typval_T *rettv)
     }
     else if (argvars[0].v_type != VAR_LIST)
     {
-	emsg(_(e_listblobreq));
+	emsg(_(e_list_or_blob_required));
 	return;
     }
 
@@ -6569,7 +6562,7 @@ f_inputlist(typval_T *argvars, typval_T *rettv)
 
     if (argvars[0].v_type != VAR_LIST || argvars[0].vval.v_list == NULL)
     {
-	semsg(_(e_listarg), "inputlist()");
+	semsg(_(e_argument_of_str_must_be_list), "inputlist()");
 	return;
     }
 
@@ -6697,7 +6690,7 @@ f_islocked(typval_T *argvars, typval_T *rettv)
 	if (*end != NUL)
 	{
 	    semsg(_(lv.ll_name == lv.ll_name_end
-					   ? e_invalid_argument_str : e_trailing_arg), end);
+					   ? e_invalid_argument_str : e_trailing_characters_str), end);
 	}
 	else
 	{
@@ -6717,7 +6710,7 @@ f_islocked(typval_T *argvars, typval_T *rettv)
 	    else if (lv.ll_range)
 		emsg(_("E786: Range not allowed"));
 	    else if (lv.ll_newkey != NULL)
-		semsg(_(e_dictkey), lv.ll_newkey);
+		semsg(_(e_key_not_present_in_dictionary), lv.ll_newkey);
 	    else if (lv.ll_list != NULL)
 		// List item.
 		rettv->vval.v_number = tv_islocked(&lv.ll_li->li_tv);
@@ -7310,7 +7303,7 @@ max_min(typval_T *argvars, typval_T *rettv, int domax)
 	}
     }
     else
-	semsg(_(e_listdictarg), domax ? "max()" : "min()");
+	semsg(_(e_argument_of_str_must_be_list_or_dictionary), domax ? "max()" : "min()");
 
     rettv->vval.v_number = n;
 }
@@ -8876,7 +8869,7 @@ f_setcharsearch(typval_T *argvars, typval_T *rettv UNUSED)
 
     if (argvars[0].v_type != VAR_DICT)
     {
-	emsg(_(e_dictreq));
+	emsg(_(e_dictionary_required));
 	return;
     }
 
@@ -9220,7 +9213,7 @@ f_settagstack(typval_T *argvars, typval_T *rettv)
     // second argument: dict with items to set in the tag stack
     if (argvars[1].v_type != VAR_DICT)
     {
-	emsg(_(e_dictreq));
+	emsg(_(e_dictionary_required));
 	return;
     }
     d = argvars[1].vval.v_dict;
@@ -9248,7 +9241,7 @@ f_settagstack(typval_T *argvars, typval_T *rettv)
     }
     else
     {
-	emsg(_(e_stringreq));
+	emsg(_(e_string_required));
 	return;
     }
 
@@ -9364,7 +9357,7 @@ f_spellbadword(typval_T *argvars UNUSED, typval_T *rettv)
 
     if (*curwin->w_s->b_p_spl == NUL)
     {
-	emsg(_(e_no_spell));
+	emsg(_(e_spell_checking_is_not_possible));
 	curwin->w_p_spell = wo_spell_save;
 	return;
     }
@@ -9454,7 +9447,7 @@ f_spellsuggest(typval_T *argvars UNUSED, typval_T *rettv)
 
     if (*curwin->w_s->b_p_spl == NUL)
     {
-	emsg(_(e_no_spell));
+	emsg(_(e_spell_checking_is_not_possible));
 	curwin->w_p_spell = wo_spell_save;
 	return;
     }

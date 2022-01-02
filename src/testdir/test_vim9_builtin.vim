@@ -78,6 +78,17 @@ enddef
 def Test_add()
   CheckDefAndScriptFailure(['add({}, 1)'], ['E1013: Argument 1: type mismatch, expected list<any> but got dict<unknown>', 'E1226: List or Blob required for argument 1'])
   CheckDefFailure(['add([1], "a")'], 'E1012: Type mismatch; expected number but got string')
+
+  var lines =<< trim END
+    vim9script
+    g:thelist = [1]
+    lockvar g:thelist
+    def TryChange()
+      g:thelist->add(2)
+    enddef
+    TryChange()
+  END
+  CheckScriptFailure(lines, 'E741:')
 enddef
 
 def Test_add_blob()
@@ -945,6 +956,8 @@ def Test_expandcmd()
 
   assert_equal("yes", expandcmd("`={a: 'yes'}['a']`"))
   expandcmd('')->assert_equal('')
+
+  CheckDefAndScriptFailure(['expandcmd([1])'], ['E1013: Argument 1: type mismatch, expected string but got list<number>', 'E1174: String required for argument 1'])
 enddef
 
 def Test_extend_arg_types()
