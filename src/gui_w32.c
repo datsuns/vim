@@ -5016,7 +5016,7 @@ gui_mch_set_parent(char *title)
     EnumWindows(FindWindowTitle, (LPARAM)title);
     if (vim_parent_hwnd == NULL)
     {
-	semsg(_("E671: Cannot find window title \"%s\""), title);
+	semsg(_(e_cannot_find_window_title_str), title);
 	mch_exit(2);
     }
 }
@@ -5354,7 +5354,7 @@ gui_mch_init(void)
 #endif
 	if (s_hwnd == NULL)
 	{
-	    emsg(_("E672: Unable to open window inside MDI application"));
+	    emsg(_(e_unable_to_open_window_inside_mdi_application));
 	    mch_exit(2);
 	}
     }
