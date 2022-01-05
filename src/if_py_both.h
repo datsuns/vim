@@ -13,8 +13,6 @@
  * Common code for if_python.c and if_python3.c.
  */
 
-static char_u e_py_systemexit[]	= "E880: Can't handle SystemExit of %s exception in vim";
-
 #if PY_VERSION_HEX < 0x02050000
 typedef int Py_ssize_t;  // Python 2.4 and earlier don't have this type.
 #endif
@@ -5697,7 +5695,7 @@ run_cmd(const char *cmd, void *arg UNUSED
     }
     else if (PyErr_Occurred() && PyErr_ExceptionMatches(PyExc_SystemExit))
     {
-	semsg(_(e_py_systemexit), "python");
+	emsg(_(e_cant_handle_systemexit_of_python_exception_in_vim));
 	PyErr_Clear();
     }
     else
@@ -5742,7 +5740,7 @@ run_do(const char *cmd, void *arg UNUSED
     else if (PyErr_Occurred() && PyErr_ExceptionMatches(PyExc_SystemExit))
     {
 	PyMem_Free(code);
-	semsg(_(e_py_systemexit), "python");
+	emsg(_(e_cant_handle_systemexit_of_python_exception_in_vim));
 	PyErr_Clear();
 	return;
     }
@@ -5843,20 +5841,20 @@ run_eval(const char *cmd, typval_T *rettv
     {
 	if (PyErr_Occurred() && PyErr_ExceptionMatches(PyExc_SystemExit))
 	{
-	    semsg(_(e_py_systemexit), "python");
+	    emsg(_(e_cant_handle_systemexit_of_python_exception_in_vim));
 	    PyErr_Clear();
 	}
 	else
 	{
 	    if (PyErr_Occurred() && !msg_silent)
 		PyErr_PrintEx(0);
-	    emsg(_("E858: Eval did not return a valid python object"));
+	    emsg(_(e_eval_did_not_return_valid_python_object));
 	}
     }
     else
     {
 	if (ConvertFromPyObject(run_ret, rettv) == -1)
-	    emsg(_("E859: Failed to convert returned python object to a Vim value"));
+	    emsg(_(e_failed_to_convert_returned_python_object_to_vim_value));
 	Py_DECREF(run_ret);
     }
     PyErr_Clear();
