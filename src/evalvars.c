@@ -2683,7 +2683,7 @@ eval_variable(
 	char_u	    *p = STRNCMP(name, "s:", 2) == 0 ? name + 2 : name;
 
 	if (sid == 0)
-	    import = find_imported(p, 0, NULL);
+	    import = find_imported(p, 0, TRUE, NULL);
 
 	// imported variable from another script
 	if (import != NULL || sid != 0)
@@ -2898,7 +2898,11 @@ find_var_also_in_script(char_u *name, hashtab_T **htp, int no_autoload)
 		dictitem_T *di = find_var_in_ht(ht, 0, p + 1, no_autoload);
 
 		if (di != NULL)
+		{
+		    if (htp != NULL)
+			*htp = ht;
 		    return di;
+		}
 	    }
 	}
     }
@@ -3011,7 +3015,7 @@ lookup_scriptitem(
     res = HASHITEM_EMPTY(hi) ? FAIL : OK;
 
     // if not script-local, then perhaps imported
-    if (res == FAIL && find_imported(p, 0, NULL) != NULL)
+    if (res == FAIL && find_imported(p, 0, FALSE, NULL) != NULL)
 	res = OK;
     if (p != buffer)
 	vim_free(p);
@@ -3384,7 +3388,7 @@ set_var_const(
 
     if (di == NULL && var_in_vim9script)
     {
-	imported_T  *import = find_imported(varname, 0, NULL);
+	imported_T  *import = find_imported(varname, 0, FALSE, NULL);
 
 	if (import != NULL)
 	{
@@ -4021,7 +4025,7 @@ clear_redir_lval(void)
     void
 init_redir_ga(void)
 {
-    ga_init2(&redir_ga, (int)sizeof(char), 500);
+    ga_init2(&redir_ga, sizeof(char), 500);
 }
 
 /*
