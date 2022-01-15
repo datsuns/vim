@@ -132,8 +132,9 @@ ex_vim9script(exarg_T *eap UNUSED)
     }
     si->sn_state = SN_STATE_HAD_COMMAND;
 
-    // Store the prefix with the script.  It isused to find exported functions.
-    si->sn_autoload_prefix = get_autoload_prefix(si);
+    // Store the prefix with the script, it is used to find exported functions.
+    if (si->sn_autoload_prefix == NULL)
+	si->sn_autoload_prefix = get_autoload_prefix(si);
 
     current_sctx.sc_version = SCRIPT_VERSION_VIM9;
     si->sn_version = SCRIPT_VERSION_VIM9;
@@ -495,6 +496,9 @@ handle_import(
 	    if (si->sn_autoload_prefix == NULL)
 		si->sn_autoload_prefix = get_autoload_prefix(si);
 	    res = OK;
+	    if (override_autoload && si->sn_state == SN_STATE_NOT_LOADED)
+		// testing override: load autoload script right away
+		(void)do_source(si->sn_name, FALSE, DOSO_NONE, NULL);
 	}
 	else
 	    res = FAIL;
@@ -711,7 +715,7 @@ find_exported(
 	    funcname[2] = (int)KE_SNR;
 	    sprintf((char *)funcname + 3, "%ld_%s", (long)sid, name);
 	}
-	*ufunc = find_func(funcname, FALSE, NULL);
+	*ufunc = find_func(funcname, FALSE);
 	if (funcname != buffer)
 	    vim_free(funcname);
 
