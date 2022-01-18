@@ -1264,6 +1264,10 @@ def Test_vim9script_autoload_call()
   var lines =<< trim END
      vim9script autoload
 
+     export def RetArg(arg: string): string
+       return arg
+     enddef
+
      export def Getother()
        g:result = 'other'
      enddef
@@ -1273,6 +1277,13 @@ def Test_vim9script_autoload_call()
   lines =<< trim END
       vim9script
       import autoload 'another.vim'
+
+      # compile this before 'another.vim' is loaded
+      def CallAnother()
+        assert_equal('foo', 'foo'->another.RetArg())
+      enddef
+      CallAnother()
+
       call another.Getother()
       assert_equal('other', g:result)
   END
@@ -1422,9 +1433,21 @@ def Test_import_autoload_fails()
 
   lines =<< trim END
       vim9script
-      import autoload 'doesNotExist.vim'
+      import autoload './doesNotExist.vim'
   END
   CheckScriptFailure(lines, 'E1264:')
+
+  lines =<< trim END
+      vim9script
+      import autoload '/dir/doesNotExist.vim'
+  END
+  CheckScriptFailure(lines, 'E1264:')
+
+  lines =<< trim END
+      vim9script
+      import autoload 'doesNotExist.vim'
+  END
+  CheckScriptFailure(lines, 'E1053: Could not import "doesNotExist.vim"')
 enddef
 
 " test disassembling an auto-loaded function starting with "debug"
