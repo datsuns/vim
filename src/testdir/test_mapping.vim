@@ -704,6 +704,11 @@ func Test_mapcomplete()
   mapclear
 endfunc
 
+func GetAbbrText()
+  unabbr hola
+  return 'hello'
+endfunc
+
 " Test for <expr> in abbreviation
 func Test_expr_abbr()
   new
@@ -719,7 +724,14 @@ func Test_expr_abbr()
   call assert_equal('', getline(1))
   unabbr <expr> hte
 
-  close!
+  " evaluating the expression deletes the abbreviation
+  abbr <expr> hola GetAbbrText()
+  call assert_equal('GetAbbrText()', maparg('hola', 'i', '1'))
+  call feedkeys("ahola \<Esc>", 'xt')
+  call assert_equal('hello ', getline('.'))
+  call assert_equal('', maparg('hola', 'i', '1'))
+
+  bwipe!
 endfunc
 
 " Test for storing mappings in different modes in a vimrc file
@@ -1425,6 +1437,23 @@ func Test_map_script_cmd_finds_func()
 
   ounmap <F3>
   unlet g:func_called
+endfunc
+
+func Test_map_script_cmd_survives_unmap()
+  let lines =<< trim END
+      vim9script
+      var n = 123
+      nnoremap <F4> <ScriptCmd><CR>
+      autocmd CmdlineEnter * silent! nunmap <F4>
+      nnoremap <F3> :<ScriptCmd>eval setbufvar(bufnr(), "result", n)<CR>
+      feedkeys("\<F3>\<CR>", 'xct')
+      assert_equal(123, b:result)
+  END
+  call CheckScriptSuccess(lines)
+
+  nunmap <F3>
+  unlet b:result
+  autocmd! CmdlineEnter
 endfunc
 
 " Test for using <script> with a map to remap characters in rhs

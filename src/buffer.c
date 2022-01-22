@@ -1744,7 +1744,11 @@ set_curbuf(buf_T *buf, int action)
 	{
 	    win_T  *previouswin = curwin;
 
-	    if (prevbuf == curbuf)
+	    // Do not sync when in Insert mode and the buffer is open in
+	    // another window, might be a timer doing something in another
+	    // window.
+	    if (prevbuf == curbuf
+			 && ((State & INSERT) == 0 || curbuf->b_nwindows <= 1))
 		u_sync(FALSE);
 	    close_buffer(prevbuf == curwin->w_buffer ? curwin : NULL, prevbuf,
 		    unload ? action : (action == DOBUF_GOTO
@@ -2269,8 +2273,9 @@ free_buf_options(
 #endif
 #ifdef FEAT_CRYPT
 # ifdef FEAT_SODIUM
-    if (buf->b_p_key != NULL && (crypt_get_method_nr(buf) == CRYPT_M_SOD))
-	sodium_munlock(buf->b_p_key, STRLEN(buf->b_p_key));
+    if ((buf->b_p_key != NULL) && (*buf->b_p_key != NUL) &&
+				(crypt_get_method_nr(buf) == CRYPT_M_SOD))
+	crypt_sodium_munlock(buf->b_p_key, STRLEN(buf->b_p_key));
 # endif
     clear_string_option(&buf->b_p_key);
 #endif

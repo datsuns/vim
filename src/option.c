@@ -2604,7 +2604,13 @@ set_option_sctx_idx(int opt_idx, int opt_flags, sctx_T script_ctx)
 	if (indir & PV_BUF)
 	    curbuf->b_p_script_ctx[indir & PV_MASK] = new_script_ctx;
 	else if (indir & PV_WIN)
+	{
 	    curwin->w_p_script_ctx[indir & PV_MASK] = new_script_ctx;
+	    if (both)
+		// also setting the "all buffers" value
+		curwin->w_allbuf_opt.wo_script_ctx[indir & PV_MASK] =
+								new_script_ctx;
+	}
     }
 }
 
@@ -7238,6 +7244,11 @@ option_set_callback_func(char_u *optval UNUSED, callback_T *optcb UNUSED)
     free_callback(optcb);
     set_callback(optcb, &cb);
     free_tv(tv);
+
+    // when using Vim9 style "import.funcname" it needs to be expanded to
+    // "import#funcname".
+    expand_autload_callback(optcb);
+
     return OK;
 #else
     return FAIL;

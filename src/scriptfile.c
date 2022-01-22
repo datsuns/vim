@@ -1648,16 +1648,22 @@ ex_scriptnames(exarg_T *eap)
     }
 
     for (i = 1; i <= script_items.ga_len && !got_int; ++i)
-	if (SCRIPT_ITEM(i)->sn_name != NULL)
+    {
+	scriptitem_T *si = SCRIPT_ITEM(i);
+
+	if (si->sn_name != NULL)
 	{
-	    home_replace(NULL, SCRIPT_ITEM(i)->sn_name,
-						    NameBuff, MAXPATHL, TRUE);
-	    vim_snprintf((char *)IObuff, IOSIZE, "%3d: %s", i, NameBuff);
+	    home_replace(NULL, si->sn_name, NameBuff, MAXPATHL, TRUE);
+	    vim_snprintf((char *)IObuff, IOSIZE, "%3d%s: %s",
+		    i,
+		    si->sn_state == SN_STATE_NOT_LOADED ? " A" : "",
+		    NameBuff);
 	    msg_putchar('\n');
 	    msg_outtrans(IObuff);
 	    out_flush();	    // output one line at a time
 	    ui_breakcheck();
 	}
+    }
 }
 
 # if defined(BACKSLASH_IN_FILENAME) || defined(PROTO)
@@ -2184,7 +2190,7 @@ get_autoload_prefix(scriptitem_T *si)
 
 /*
  * If in a Vim9 autoload script return "name" with the autoload prefix for the
- * script.  If successful "name" is freed, the returned name is allocated.
+ * script.  If successful the returned name is allocated.
  * Otherwise it returns "name" unmodified.
  */
     char_u *
@@ -2215,7 +2221,6 @@ may_prefix_autoload(char_u *name)
 	    {
 		vim_snprintf((char *)res, len, "%s%s",
 					     si->sn_autoload_prefix, basename);
-		vim_free(name);
 		return res;
 	    }
 	}
