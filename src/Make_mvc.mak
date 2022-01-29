@@ -252,7 +252,7 @@ NODEBUG = 1
 MAKEFLAGS_GVIMEXT = DEBUG=yes
 !endif
 
-link = link
+LINK = link
 
 # Check VC version.
 !if [echo MSVCVER=_MSC_VER> msvcver.c && $(CC) /EP msvcver.c > msvcver.~ 2> nul]
@@ -274,17 +274,15 @@ MSVC_MAJOR = ($(MSVCVER) / 100 - 5)
 MSVCRT_VER = ($(MSVCVER) / 100 * 10 - 50)
 !endif
 
-# Calculate MSVC_FULL for Visual C++ 8 and up.
-!if $(MSVC_MAJOR) >= 8
-! if [echo MSVC_FULL=_MSC_FULL_VER> msvcfullver.c && $(CC) /EP msvcfullver.c > msvcfullver.~ 2> nul]
-!  message *** ERROR
-!  message Cannot run Visual C to determine its version. Make sure cl.exe is in your PATH.
-!  message This can usually be done by running "vcvarsall.bat", located in the bin directory where Visual Studio was installed.
-!  error Make aborted.
-! else
-!  include msvcfullver.~
-!  if [del msvcfullver.c msvcfullver.~]
-!  endif
+# Calculate MSVC_FULL.
+!if [echo MSVC_FULL=_MSC_FULL_VER> msvcfullver.c && $(CC) /EP msvcfullver.c > msvcfullver.~ 2> nul]
+! message *** ERROR
+! message Cannot run Visual C to determine its version. Make sure cl.exe is in your PATH.
+! message This can usually be done by running "vcvarsall.bat", located in the bin directory where Visual Studio was installed.
+! error Make aborted.
+!else
+! include msvcfullver.~
+! if [del msvcfullver.c msvcfullver.~]
 ! endif
 !endif
 
@@ -305,17 +303,10 @@ MSVCRT_NAME = msvcr$(MSVCRT_VER)
 MSVCRT_NAME = vcruntime$(MSVCRT_VER)
 !endif
 
-!if $(MSVC_MAJOR) == 6
-CPU = ix86
-!endif
-
 ### Set the default $(WINVER) to make it work with VC++7.0 (VS.NET)
 !ifndef WINVER
 WINVER = 0x0501
 !endif
-
-# Flag to turn on Win64 compatibility warnings for VC7.x and VC8.
-WP64CHECK = /Wp64
 
 # Use multiprocess build
 USE_MP = yes
@@ -499,16 +490,6 @@ CHANNEL_DEFS	= $(CHANNEL_DEFS) -DHAVE_INET_NTOP
 NETBEANS_LIB	= WSock32.lib Ws2_32.lib
 !endif
 
-# Set which version of the CRT to use
-!if defined(USE_MSVCRT)
-# CVARS = $(cvarsdll)
-# !elseif defined(MULTITHREADED)
-# CVARS = $(cvarsmt)
-!else
-# CVARS = $(cvars)
-# CVARS = $(cvarsmt)
-!endif
-
 # need advapi32.lib for GetUserName()
 # need shell32.lib for ExtractIcon()
 # need netapi32.lib for NetUserEnum()
@@ -526,7 +507,7 @@ CON_LIB = $(CON_LIB) /DELAYLOAD:comdlg32.dll /DELAYLOAD:ole32.dll DelayImp.lib
 #VIMRCLOC = somewhere
 #VIMRUNTIMEDIR = somewhere
 
-CFLAGS = -c /W3 /GF /nologo $(CVARS) -I. -Iproto -DHAVE_PATHDEF -DWIN32 \
+CFLAGS = -c /W3 /GF /nologo -I. -Iproto -DHAVE_PATHDEF -DWIN32 \
 		$(CSCOPE_DEFS) $(TERM_DEFS) $(SOUND_DEFS) $(NETBEANS_DEFS) $(CHANNEL_DEFS) \
 		$(NBDEBUG_DEFS) $(XPM_DEFS) $(SOD_DEFS) $(SOD_INC) \
 		$(DEFINES) -DWINVER=$(WINVER) -D_WIN32_WINNT=$(WINVER)
@@ -560,68 +541,50 @@ CPUNR = sse2
 !endif
 
 # Convert processor ID to MVC-compatible number
-!if $(MSVC_MAJOR) < 8
-! if "$(CPUNR)" == "i586"
-CPUARG = /G5
-! elseif "$(CPUNR)" == "i686"
-CPUARG = /G6
-! elseif "$(CPUNR)" == "sse"
-CPUARG = /G6 /arch:SSE
-! elseif "$(CPUNR)" == "sse2"
-CPUARG = /G7 /arch:SSE2
-! elseif "$(CPUNR)" == "avx" || "$(CPUNR)" == "avx2"
-!  message AVX/AVX2 Instruction Sets are not supported by Visual C++ v$(MSVC_MAJOR)
-!  message Falling back to SSE2
-CPUARG = /G7 /arch:SSE2
-! elseif "$(CPUNR)" == "any"
-CPUARG =
-! endif
-!else
 # IA32/SSE/SSE2 are only supported on x86
-! if "$(ASSEMBLY_ARCHITECTURE)" == "i386" && ("$(CPUNR)" == "i586" || "$(CPUNR)" == "i686" || "$(CPUNR)" == "any")
+!if "$(ASSEMBLY_ARCHITECTURE)" == "i386" && ("$(CPUNR)" == "i586" || "$(CPUNR)" == "i686" || "$(CPUNR)" == "any")
 # VC<11 generates fp87 code by default
-!  if $(MSVC_MAJOR) < 11
+! if $(MSVC_MAJOR) < 11
 CPUARG =
 # VC>=11 needs explicit instructions to generate fp87 code
-!  else
+! else
 CPUARG = /arch:IA32
-!  endif
-! elseif "$(ASSEMBLY_ARCHITECTURE)" == "i386" && "$(CPUNR)" == "sse"
+! endif
+!elseif "$(ASSEMBLY_ARCHITECTURE)" == "i386" && "$(CPUNR)" == "sse"
 CPUARG = /arch:SSE
-! elseif "$(ASSEMBLY_ARCHITECTURE)" == "i386" && "$(CPUNR)" == "sse2"
+!elseif "$(ASSEMBLY_ARCHITECTURE)" == "i386" && "$(CPUNR)" == "sse2"
 CPUARG = /arch:SSE2
-! elseif "$(CPUNR)" == "avx"
+!elseif "$(CPUNR)" == "avx"
 # AVX is only supported by VC 10 and up
-!  if $(MSVC_MAJOR) < 10
-!   message AVX Instruction Set is not supported by Visual C++ v$(MSVC_MAJOR)
-!   if "$(ASSEMBLY_ARCHITECTURE)" == "i386"
-!    message Falling back to SSE2
+! if $(MSVC_MAJOR) < 10
+!  message AVX Instruction Set is not supported by Visual C++ v$(MSVC_MAJOR)
+!  if "$(ASSEMBLY_ARCHITECTURE)" == "i386"
+!   message Falling back to SSE2
 CPUARG = /arch:SSE2
-!   else
-CPUARG =
-!   endif
 !  else
-CPUARG = /arch:AVX
-!  endif
-! elseif "$(CPUNR)" == "avx2"
-# AVX is only supported by VC 10 and up
-!  if $(MSVC_MAJOR) < 10
-!   message AVX2 Instruction Set is not supported by Visual C++ v$(MSVC_MAJOR)
-!   if "$(ASSEMBLY_ARCHITECTURE)" == "i386"
-!    message Falling back to SSE2
-CPUARG = /arch:SSE2
-!   else
 CPUARG =
-!   endif
+!  endif
+! else
+CPUARG = /arch:AVX
+! endif
+!elseif "$(CPUNR)" == "avx2"
+# AVX is only supported by VC 10 and up
+! if $(MSVC_MAJOR) < 10
+!  message AVX2 Instruction Set is not supported by Visual C++ v$(MSVC_MAJOR)
+!  if "$(ASSEMBLY_ARCHITECTURE)" == "i386"
+!   message Falling back to SSE2
+CPUARG = /arch:SSE2
+!  else
+CPUARG =
+!  endif
 # AVX2 is only supported by VC 12U2 and up
 # 180030501 is the full version number for Visual Studio 2013/VC 12 Update 2
-!  elseif $(MSVC_FULL) < 180030501
-!   message AVX2 Instruction Set is not supported by Visual C++ v$(MSVC_MAJOR)-$(MSVC_FULL)
-!   message Falling back to AVX
+! elseif $(MSVC_FULL) < 180030501
+!  message AVX2 Instruction Set is not supported by Visual C++ v$(MSVC_MAJOR)-$(MSVC_FULL)
+!  message Falling back to AVX
 CPUARG = /arch:AVX
-!  else
+! else
 CPUARG = /arch:AVX2
-!  endif
 ! endif
 !endif
 
@@ -689,26 +652,19 @@ OPTFLAG = /O2
 OPTFLAG = /Ox
 ! endif
 
-! if $(MSVC_MAJOR) >= 8
 # Use link time code generation if not worried about size
-!  if "$(OPTIMIZE)" != "SPACE"
+! if "$(OPTIMIZE)" != "SPACE"
 OPTFLAG = $(OPTFLAG) /GL
-!  endif
-! endif
-
-# (/Wp64 is deprecated in VC9 and generates an obnoxious warning.)
-! if ($(MSVC_MAJOR) == 7) || ($(MSVC_MAJOR) == 8)
-CFLAGS = $(CFLAGS) $(WP64CHECK)
 ! endif
 
 CFLAGS = $(CFLAGS) $(OPTFLAG) -DNDEBUG $(CPUARG)
-RCFLAGS = $(rcflags) $(rcvars) -DNDEBUG
+RCFLAGS = -DNDEBUG
 ! ifdef USE_MSVCRT
 CFLAGS = $(CFLAGS) /MD
 LIBC = msvcrt.lib
 ! else
-LIBC = libcmt.lib
 CFLAGS = $(CFLAGS) /Zl /MT
+LIBC = libcmt.lib
 ! endif
 
 !else  # DEBUG
@@ -718,19 +674,15 @@ VIM = vimd
 DEBUGINFO = /ZI
 ! endif
 CFLAGS = $(CFLAGS) -D_DEBUG -DDEBUG /Od
-RCFLAGS = $(rcflags) $(rcvars) -D_DEBUG -DDEBUG
-# The /fixed:no is needed for Quantify. Assume not 4.? as unsupported in VC4.0.
-! if $(MSVC_MAJOR) == 4
-LIBC =
-! else
+RCFLAGS = -D_DEBUG -DDEBUG
+# The /fixed:no is needed for Quantify.
 LIBC = /fixed:no
-! endif
 ! ifdef USE_MSVCRT
 CFLAGS = $(CFLAGS) /MDd
 LIBC = $(LIBC) msvcrtd.lib
 ! else
-LIBC = $(LIBC) libcmtd.lib
 CFLAGS = $(CFLAGS) /Zl /MTd
+LIBC = $(LIBC) libcmtd.lib
 ! endif
 
 !endif # DEBUG
@@ -739,11 +691,9 @@ CFLAGS = $(CFLAGS) /Zl /MTd
 RCFLAGS = $(RCFLAGS) /D_USING_V110_SDK71_
 !endif
 
-!if $(MSVC_MAJOR) >= 8
 # Visual Studio 2005 has 'deprecated' many of the standard CRT functions
 CFLAGS_DEPR = /D_CRT_SECURE_NO_DEPRECATE /D_CRT_NONSTDC_NO_DEPRECATE
 CFLAGS = $(CFLAGS) $(CFLAGS_DEPR)
-!endif
 
 !include Make_all.mak
 !include testdir\Make_all.mak
@@ -799,7 +749,7 @@ OBJ = \
 	$(OUTDIR)\hashtab.obj \
 	$(OUTDIR)\help.obj \
 	$(OUTDIR)\highlight.obj \
-	$(OBJDIR)\if_cscope.obj \
+	$(OUTDIR)\if_cscope.obj \
 	$(OUTDIR)\indent.obj \
 	$(OUTDIR)\insexpand.obj \
 	$(OUTDIR)\json.obj \
@@ -1310,29 +1260,37 @@ LINK_PDB = /PDB:$(VIM).pdb -debug
 # CFLAGS with /Fo$(OUTDIR)/
 CFLAGS_OUTDIR=$(CFLAGS) /Fo$(OUTDIR)/
 
-# Add /opt:ref to remove unreferenced functions and data even when /DEBUG is
-# added.
-conflags = /nologo /opt:ref
-
 PATHDEF_SRC = $(OUTDIR)\pathdef.c
 
-!IF "$(MAP)" == "yes"
-# "/map" is for debugging
-conflags = $(conflags) /map
-!ELSEIF "$(MAP)" == "lines"
-# "/mapinfo:lines" is for debugging, only works for VC6 and later
-conflags = $(conflags) /map /mapinfo:lines
-!ENDIF
-
-LINKARGS1 = $(linkdebug) $(conflags)
+LINKARGS1 = /nologo
 LINKARGS2 = $(CON_LIB) $(GUI_LIB) $(NODEFAULTLIB) $(LIBC) $(OLE_LIB) \
 		$(LUA_LIB) $(MZSCHEME_LIB) $(PERL_LIB) $(PYTHON_LIB) $(PYTHON3_LIB) $(RUBY_LIB) \
 		$(TCL_LIB) $(SOUND_LIB) $(NETBEANS_LIB) $(XPM_LIB) $(SOD_LIB) $(LINK_PDB)
 
-# Report link time code generation progress if used.
 !ifdef NODEBUG
-! if $(MSVC_MAJOR) >= 8
-!  if "$(OPTIMIZE)" != "SPACE"
+# Add /opt:ref to remove unreferenced functions and data even when /DEBUG is
+# added.
+LINKARGS1 = $(LINKARGS1) /opt:ref
+!else
+LINKARGS1 = $(LINKARGS1) /opt:noref /opt:noicf
+!endif
+
+!if "$(MAP)" == "yes"
+# "/map" is for debugging
+LINKARGS1 = $(LINKARGS1) /map
+!elseif "$(MAP)" == "lines"
+# "/mapinfo:lines" is for debugging, only works for VC6 and later
+LINKARGS1 = $(LINKARGS1) /map /mapinfo:lines
+!endif
+
+# Enable link time code generation if needed.
+!ifdef NODEBUG
+! if "$(OPTIMIZE)" != "SPACE"
+!  if "$(CI)" == "true" || "$(CI)" == "True"
+# Enable link time code generation, but do not show the progress.
+LINKARGS1 = $(LINKARGS1) /LTCG
+!  else
+# Report link time code generation progress.
 LINKARGS1 = $(LINKARGS1) /LTCG:STATUS
 !  endif
 ! endif
@@ -1363,7 +1321,7 @@ all:	$(MAIN_TARGET) \
 	GvimExt/gvimext.dll
 
 # To get around the command line limit: Make use of nmake's response files to
-# capture the arguments for $(link) in a file  using the @<<ARGS<< syntax.
+# capture the arguments for $(LINK) in a file  using the @<<ARGS<< syntax.
 
 !if "$(VIMDLL)" == "yes"
 
@@ -1372,7 +1330,7 @@ $(VIMDLLBASE).dll: $(OUTDIR) $(OBJ) $(XDIFF_OBJ) $(GUI_OBJ) $(CUI_OBJ) $(OLE_OBJ
 		$(TERM_OBJ) $(SOUND_OBJ) $(NETBEANS_OBJ) $(CHANNEL_OBJ) $(XPM_OBJ) \
 		version.c version.h
 	$(CC) $(CFLAGS_OUTDIR) version.c
-	$(link) @<<
+	$(LINK) @<<
 $(LINKARGS1) /dll -out:$(VIMDLLBASE).dll $(OBJ) $(XDIFF_OBJ) $(GUI_OBJ) $(CUI_OBJ) $(OLE_OBJ)
 $(LUA_OBJ) $(MZSCHEME_OBJ) $(PERL_OBJ) $(PYTHON_OBJ) $(PYTHON3_OBJ) $(RUBY_OBJ)
 $(TCL_OBJ) $(TERM_OBJ) $(SOUND_OBJ) $(NETBEANS_OBJ) $(CHANNEL_OBJ)
@@ -1380,11 +1338,11 @@ $(XPM_OBJ) $(OUTDIR)\version.obj $(LINKARGS2)
 <<
 
 $(GVIM).exe: $(OUTDIR) $(EXEOBJG) $(VIMDLLBASE).dll
-	$(link) $(LINKARGS1) /subsystem:$(SUBSYSTEM) -out:$(GVIM).exe $(EXEOBJG) $(VIMDLLBASE).lib $(LIBC)
+	$(LINK) $(LINKARGS1) /subsystem:$(SUBSYSTEM) -out:$(GVIM).exe $(EXEOBJG) $(VIMDLLBASE).lib $(LIBC)
 	if exist $(GVIM).exe.manifest mt.exe -nologo -manifest $(GVIM).exe.manifest -updateresource:$(GVIM).exe;1
 
 $(VIM).exe: $(OUTDIR) $(EXEOBJC) $(VIMDLLBASE).dll
-	$(link) $(LINKARGS1) /subsystem:$(SUBSYSTEM_CON) -out:$(VIM).exe $(EXEOBJC) $(VIMDLLBASE).lib $(LIBC)
+	$(LINK) $(LINKARGS1) /subsystem:$(SUBSYSTEM_CON) -out:$(VIM).exe $(EXEOBJC) $(VIMDLLBASE).lib $(LIBC)
 	if exist $(VIM).exe.manifest mt.exe -nologo -manifest $(VIM).exe.manifest -updateresource:$(VIM).exe;1
 
 !else
@@ -1394,7 +1352,7 @@ $(VIM).exe: $(OUTDIR) $(OBJ) $(XDIFF_OBJ) $(GUI_OBJ) $(CUI_OBJ) $(OLE_OBJ) $(OLE
 		$(TERM_OBJ) $(SOUND_OBJ) $(NETBEANS_OBJ) $(CHANNEL_OBJ) $(XPM_OBJ) \
 		version.c version.h
 	$(CC) $(CFLAGS_OUTDIR) version.c
-	$(link) @<<
+	$(LINK) @<<
 $(LINKARGS1) /subsystem:$(SUBSYSTEM) -out:$(VIM).exe $(OBJ) $(XDIFF_OBJ) $(GUI_OBJ) $(CUI_OBJ) $(OLE_OBJ)
 $(LUA_OBJ) $(MZSCHEME_OBJ) $(PERL_OBJ) $(PYTHON_OBJ) $(PYTHON3_OBJ) $(RUBY_OBJ)
 $(TCL_OBJ) $(TERM_OBJ) $(SOUND_OBJ) $(NETBEANS_OBJ) $(CHANNEL_OBJ)
@@ -1459,6 +1417,7 @@ clean: testclean
 	- if exist $(GVIM).exe del $(GVIM).exe
 	- if exist $(GVIM).map del $(GVIM).map
 	- if exist $(VIMDLLBASE).dll del $(VIMDLLBASE).dll
+	- if exist $(VIMDLLBASE).ilk del $(VIMDLLBASE).ilk
 	- if exist $(VIMDLLBASE).lib del $(VIMDLLBASE).lib
 	- if exist $(VIMDLLBASE).exp del $(VIMDLLBASE).exp
 	- if exist $(VIMDLLBASE).pdb del $(VIMDLLBASE).pdb
@@ -1941,7 +1900,7 @@ $(PATHDEF_SRC): Make_mvc.mak
 	@echo char_u *default_vim_dir = (char_u *)"$(VIMRCLOC:\=\\)"; >> $(PATHDEF_SRC)
 	@echo char_u *default_vimruntime_dir = (char_u *)"$(VIMRUNTIMEDIR:\=\\)"; >> $(PATHDEF_SRC)
 	@echo char_u *all_cflags = (char_u *)"$(CC:\=\\) $(E_CFLAGS)"; >> $(PATHDEF_SRC)
-	@echo char_u *all_lflags = (char_u *)"$(link:\=\\) $(LINKARGS1:\=\\) $(E_LINKARGS2)"; >> $(PATHDEF_SRC)
+	@echo char_u *all_lflags = (char_u *)"$(LINK:\=\\) $(LINKARGS1:\=\\) $(E_LINKARGS2)"; >> $(PATHDEF_SRC)
 	@echo char_u *compiled_user = (char_u *)"$(USERNAME)"; >> $(PATHDEF_SRC)
 	@echo char_u *compiled_sys = (char_u *)"$(USERDOMAIN)"; >> $(PATHDEF_SRC)
 

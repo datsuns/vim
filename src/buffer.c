@@ -1624,7 +1624,7 @@ do_bufdel(
 	    // also be deleted, etc.
 	    if (bnr == curbuf->b_fnum)
 		do_current = bnr;
-	    else if (do_buffer_ext(command, DOBUF_FIRST, FORWARD, (int)bnr,
+	    else if (do_buffer_ext(command, DOBUF_FIRST, FORWARD, bnr,
 			  DOBUF_NOPOPUP | (forceit ? DOBUF_FORCEIT : 0)) == OK)
 		++deleted;
 
@@ -3754,7 +3754,7 @@ fileinfo(
     }
     else
     {
-	p = (char *)msg_trunc_attr(buffer, FALSE, 0);
+	p = msg_trunc_attr(buffer, FALSE, 0);
 	if (restart_edit != 0 || (msg_scrolled && !need_wait_return))
 	    // Need to repeat the message after redrawing when:
 	    // - When restart_edit is set (otherwise there will be a delay
@@ -4162,7 +4162,7 @@ build_stl_str_hl(
 	tv.vval.v_number = wp->w_id;
 	set_var((char_u *)"g:statusline_winid", &tv, FALSE);
 
-	usefmt = eval_to_string_safe(fmt + 2, use_sandbox);
+	usefmt = eval_to_string_safe(fmt + 2, use_sandbox, FALSE);
 	if (usefmt == NULL)
 	    usefmt = fmt;
 
@@ -4546,7 +4546,7 @@ build_stl_str_hl(
 	    if (curwin != save_curwin)
 		VIsual_active = FALSE;
 
-	    str = eval_to_string_safe(p, use_sandbox);
+	    str = eval_to_string_safe(p, use_sandbox, FALSE);
 
 	    curwin = save_curwin;
 	    curbuf = save_curbuf;

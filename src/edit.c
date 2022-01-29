@@ -523,7 +523,7 @@ edit(
 
 	    if (
 #ifdef FEAT_VARTABS
-		(int)curwin->w_wcol < mincol - tabstop_at(
+		curwin->w_wcol < mincol - tabstop_at(
 					  get_nolist_virtcol(), curbuf->b_p_ts,
 							 curbuf->b_p_vts_array)
 #else
@@ -1909,6 +1909,11 @@ get_literal(int noReduceKeys)
 	if ((nc == ESC || nc == CSI) && !noReduceKeys)
 	    nc = decodeModifyOtherKeys(nc);
 
+	if ((mod_mask & ~MOD_MASK_SHIFT) != 0)
+	    // A character with non-Shift modifiers should not be a valid
+	    // character for i_CTRL-V_digit.
+	    break;
+
 #ifdef FEAT_CMDL_INFO
 	if (!(State & CMDLINE) && MB_BYTE2LEN_CHECK(nc) == 1)
 	    add_to_showcmd(nc);
@@ -1986,7 +1991,11 @@ get_literal(int noReduceKeys)
 	--allow_keys;
 #endif
     if (nc)
+    {
 	vungetc(nc);
+	// A character typed with i_CTRL-V_digit cannot have modifiers.
+	mod_mask = 0;
+    }
     got_int = FALSE;	    // CTRL-C typed after CTRL-V is not an interrupt
     return cc;
 }
@@ -2125,7 +2134,7 @@ insertchar(
 	return;
 
     // Check whether this character should end a comment.
-    if (did_ai && (int)c == end_comment_pending)
+    if (did_ai && c == end_comment_pending)
     {
 	char_u  *line;
 	char_u	lead_end[COM_MAX_LEN];	    // end-comment string
@@ -2898,7 +2907,7 @@ stuff_inserted(
     // may want to stuff the command character, to start Insert mode
     if (c != NUL)
 	stuffcharReadbuff(c);
-    if ((esc_ptr = (char_u *)vim_strrchr(ptr, ESC)) != NULL)
+    if ((esc_ptr = vim_strrchr(ptr, ESC)) != NULL)
 	*esc_ptr = NUL;	    // remove the ESC
 
     // when the last char is either "0" or "^" it will be quoted if no ESC
@@ -4443,7 +4452,8 @@ bracketed_paste(paste_mode_T mode, int drop, garray_T *gap)
 		    break;
 
 		case PASTE_EX:
-		    if (gap != NULL && ga_grow(gap, idx) == OK)
+		    // add one for the NUL that is going to be appended
+		    if (gap != NULL && ga_grow(gap, idx + 1) == OK)
 		    {
 			mch_memmove((char *)gap->ga_data + gap->ga_len,
 							     buf, (size_t)idx);

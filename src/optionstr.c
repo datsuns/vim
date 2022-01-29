@@ -181,7 +181,7 @@ trigger_optionsset_string(
 	    set_vim_var_string(VV_OPTION_OLDLOCAL, oldval, -1);
 	}
 	apply_autocmds(EVENT_OPTIONSET,
-		       (char_u *)get_option_fullname(opt_idx), NULL, FALSE,
+		       get_option_fullname(opt_idx), NULL, FALSE,
 		       NULL);
 	reset_v_option_vars();
     }
@@ -2329,8 +2329,7 @@ ambw_end:
 # ifdef FEAT_POSTSCRIPT
 	    varp == &p_pexpr ||
 # endif
-	    FALSE
-	    )
+	    varp == &p_ccv)
     {
 	char_u	**p_opt = NULL;
 	char_u	*name;
@@ -2369,6 +2368,8 @@ ambw_end:
 	if (varp == &p_pexpr)	// 'printexpr'
 	    p_opt = &p_pexpr;
 # endif
+	if (varp == &p_ccv)	// 'charconvert'
+	    p_opt = &p_ccv;
 
 	if (p_opt != NULL)
 	{

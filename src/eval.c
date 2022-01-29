@@ -291,7 +291,7 @@ eval_expr_typval(typval_T *expr, typval_T *argv, int argc, typval_T *rettv)
     }
     else
     {
-	s = tv_get_string_buf_chk(expr, buf);
+	s = tv_get_string_buf_chk_strict(expr, buf, in_vim9script());
 	if (s == NULL)
 	    return FAIL;
 	s = skipwhite(s);
@@ -555,14 +555,16 @@ eval_to_string(
     char_u *
 eval_to_string_safe(
     char_u	*arg,
-    int		use_sandbox)
+    int		use_sandbox,
+    int		keep_script_version)
 {
     char_u	*retval;
     funccal_entry_T funccal_entry;
     int		save_sc_version = current_sctx.sc_version;
     int		save_garbage = may_garbage_collect;
 
-    current_sctx.sc_version = 1;
+    if (!keep_script_version)
+	current_sctx.sc_version = 1;
     save_funccal(&funccal_entry);
     if (use_sandbox)
 	++sandbox;
@@ -3524,6 +3526,7 @@ eval7(
     char_u	*start_leader, *end_leader;
     int		ret = OK;
     char_u	*alias;
+    static	int recurse = 0;
 
     /*
      * Initialise variable so that clear_tv() can't mistake this for a
@@ -3549,6 +3552,21 @@ eval7(
 	++*arg;
 	return FAIL;
     }
+
+    // Limit recursion to 1000 levels.  At least at 10000 we run out of stack
+    // and crash.  With MSVC the stack is smaller.
+    if (recurse ==
+#ifdef _MSC_VER
+		    300
+#else
+		    1000
+#endif
+		    )
+    {
+	semsg(_(e_expression_too_recursive_str), *arg);
+	return FAIL;
+    }
+    ++recurse;
 
     switch (**arg)
     {
@@ -3779,6 +3797,8 @@ eval7(
      */
     if (ret == OK && evaluate && end_leader > start_leader)
 	ret = eval7_leader(rettv, FALSE, start_leader, &end_leader);
+
+    --recurse;
     return ret;
 }
 
@@ -4069,7 +4089,7 @@ eval_method(
 	    else
 	    {
 		name = deref;
-		len = STRLEN(name);
+		len = (long)STRLEN(name);
 	    }
 	    *paren = '(';
 	}

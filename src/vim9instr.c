@@ -744,6 +744,23 @@ generate_PUSHFUNC(cctx_T *cctx, char_u *name, type_T *type)
 }
 
 /*
+ * Generate an ISN_AUTOLOAD instruction.
+ */
+    int
+generate_AUTOLOAD(cctx_T *cctx, char_u *name, type_T *type)
+{
+    isn_T	*isn;
+
+    RETURN_OK_IF_SKIP(cctx);
+    if ((isn = generate_instr_type(cctx, ISN_AUTOLOAD, type)) == NULL)
+	return FAIL;
+    isn->isn_arg.string = vim_strsave(name);
+    if (isn->isn_arg.string == NULL)
+	return FAIL;
+    return OK;
+}
+
+/*
  * Generate an ISN_GETITEM instruction with "index".
  * "with_op" is TRUE for "+=" and other operators, the stack has the current
  * value below the list with values.
@@ -1314,10 +1331,10 @@ generate_BCALL(cctx_T *cctx, int func_idx, int argcount, int method_call)
     if (push_type_stack(cctx, type) == FAIL)
 	return FAIL;
 
-    if (maptype != NULL && maptype[0].type_curr->tt_member != NULL
-				  && maptype[0].type_curr->tt_member != &t_any)
+    if (maptype != NULL && maptype[0].type_decl->tt_member != NULL
+				  && maptype[0].type_decl->tt_member != &t_any)
 	// Check that map() didn't change the item types.
-	generate_TYPECHECK(cctx, maptype[0].type_curr, -1, 1);
+	generate_TYPECHECK(cctx, maptype[0].type_decl, -1, 1);
 
     return OK;
 }
@@ -1929,6 +1946,7 @@ delete_instr(isn_T *isn)
 {
     switch (isn->isn_type)
     {
+	case ISN_AUTOLOAD:
 	case ISN_DEF:
 	case ISN_EXEC:
 	case ISN_EXECRANGE:
@@ -2050,7 +2068,7 @@ delete_instr(isn_T *isn)
 	case ISN_NEWFUNC:
 	    {
 		char_u  *lambda = isn->isn_arg.newfunc.nf_lambda;
-		ufunc_T *ufunc = find_func_even_dead(lambda, TRUE);
+		ufunc_T *ufunc = find_func_even_dead(lambda, FFED_IS_GLOBAL);
 
 		if (ufunc != NULL)
 		{

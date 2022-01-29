@@ -1716,12 +1716,6 @@ comment_start(char_u *p, int starts_with_colon UNUSED)
  *
  * This function may be called recursively!
  */
-#if (_MSC_VER == 1200)
-/*
- * Avoid optimisation bug in VC++ version 6.0
- */
- #pragma optimize( "g", off )
-#endif
     static char_u *
 do_one_cmd(
     char_u	**cmdlinep,
@@ -2648,9 +2642,6 @@ doend:
 
     return ea.nextcmd;
 }
-#if (_MSC_VER == 1200)
- #pragma optimize( "", on )
-#endif
 
 static char ex_error_buf[MSG_BUF_LEN];
 
@@ -6809,7 +6800,7 @@ ex_resize(exarg_T *eap)
 	    n += wp->w_width;
 	else if (n == 0 && eap->arg[0] == NUL)	// default is very wide
 	    n = 9999;
-	win_setwidth_win((int)n, wp);
+	win_setwidth_win(n, wp);
     }
     else
     {
@@ -6817,7 +6808,7 @@ ex_resize(exarg_T *eap)
 	    n += wp->w_height;
 	else if (n == 0 && eap->arg[0] == NUL)	// default is very high
 	    n = 9999;
-	win_setheight_win((int)n, wp);
+	win_setheight_win(n, wp);
     }
 }
 
@@ -7540,7 +7531,7 @@ ex_sleep(exarg_T *eap)
     {
 	n = W_WINROW(curwin) + curwin->w_wrow - msg_scrolled;
 	if (n >= 0)
-	    windgoto((int)n, curwin->w_wincol + curwin->w_wcol);
+	    windgoto(n, curwin->w_wincol + curwin->w_wcol);
     }
 
     len = eap->line2;

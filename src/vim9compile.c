@@ -332,7 +332,7 @@ check_defined(char_u *p, size_t len, cctx_T *cctx, int is_arg)
 		&& (lookup_local(p, len, NULL, cctx) == OK
 		    || arg_exists(p, len, NULL, NULL, NULL, cctx) == OK))
 	    || find_imported(p, len, FALSE, cctx) != NULL
-	    || (ufunc = find_func_even_dead(p, FALSE)) != NULL)
+	    || (ufunc = find_func_even_dead(p, 0)) != NULL)
     {
 	// A local or script-local function can shadow a global function.
 	if (ufunc == NULL || ((ufunc->uf_flags & FC_DEAD) == 0
@@ -621,12 +621,12 @@ find_imported(char_u *name, size_t len, int load, cctx_T *cctx)
     if (ret == NULL)
 	ret = find_imported_in_script(name, len, current_sctx.sc_sid);
 
-    if (ret != NULL && load && ret->imp_flags == IMP_FLAGS_AUTOLOAD)
+    if (ret != NULL && load && (ret->imp_flags & IMP_FLAGS_AUTOLOAD))
     {
 	scid_T dummy;
 
 	// script found before but not loaded yet
-	ret->imp_flags = 0;
+	ret->imp_flags &= ~IMP_FLAGS_AUTOLOAD;
 	(void)do_source(SCRIPT_ITEM(ret->imp_sid)->sn_name, FALSE,
 							    DOSO_NONE, &dummy);
     }

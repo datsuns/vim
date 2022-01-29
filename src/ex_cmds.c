@@ -866,6 +866,8 @@ ex_copy(linenr_T line1, linenr_T line2, linenr_T n)
     }
 
     appended_lines_mark(n, count);
+    if (VIsual_active)
+	check_pos(curbuf, &VIsual);
 
     msgmore((long)count);
 }
@@ -1183,7 +1185,7 @@ do_filter(
 
     if (do_out)
     {
-	if (u_save((linenr_T)(line2), (linenr_T)(line2 + 1)) == FAIL)
+	if (u_save(line2, (linenr_T)(line2 + 1)) == FAIL)
 	{
 	    vim_free(cmd_buf);
 	    goto error;

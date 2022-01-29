@@ -868,10 +868,11 @@ sig_tstp SIGDEFARG(sigarg)
 	signal(SIGTSTP, ignore_sigtstp ? SIG_IGN : SIG_DFL);
 	raise(sigarg);
     }
+    else
+	got_tstp = TRUE;
 
     // this is not required on all systems, but it doesn't hurt anybody
     signal(SIGTSTP, (RETSIGTYPE (*)())sig_tstp);
-    got_tstp = TRUE;
     SIGRETURN;
 }
 #endif
@@ -1377,7 +1378,14 @@ set_signals(void)
 
 #ifdef SIGTSTP
     // See mch_init() for the conditions under which we ignore SIGTSTP.
-    signal(SIGTSTP, ignore_sigtstp ? SIG_IGN : (RETSIGTYPE (*)())sig_tstp);
+    // In the GUI default TSTP processing is OK.
+    // Checking both gui.in_use and gui.starting because gui.in_use is not set
+    // at this point (set after menus are displayed), but gui.starting is set.
+    signal(SIGTSTP, ignore_sigtstp ? SIG_IGN
+# ifdef FEAT_GUI
+				: gui.in_use || gui.starting ? SIG_DFL
+# endif
+				    : (RETSIGTYPE (*)())sig_tstp);
 #endif
 #if defined(SIGCONT)
     signal(SIGCONT, sigcont_handler);
@@ -5658,7 +5666,7 @@ mch_job_start(char **argv, job_T *job, jobopt_T *options, int is_terminal)
 		{
 		    typval_T *item = &dict_lookup(hi)->di_tv;
 
-		    vim_setenv((char_u*)hi->hi_key, tv_get_string(item));
+		    vim_setenv(hi->hi_key, tv_get_string(item));
 		    --todo;
 		}
 	}
@@ -6414,6 +6422,7 @@ select_eintr:
 	    if (got_tstp && !in_mch_suspend)
 	    {
 		exarg_T ea;
+
 		ea.forceit = TRUE;
 		ex_stop(&ea);
 		got_tstp = FALSE;
@@ -7478,7 +7487,7 @@ mch_libcall(
     if (hinstLib == NULL)
     {
 	// "dlerr" must be used before dlclose()
-	dlerr = (char *)dlerror();
+	dlerr = dlerror();
 	if (dlerr != NULL)
 	    semsg(_("dlerror = \"%s\""), dlerr);
     }
@@ -7513,7 +7522,7 @@ mch_libcall(
 	    {
 # if defined(USE_DLOPEN)
 		*(void **)(&ProcAdd) = dlsym(hinstLib, (const char *)funcname);
-		dlerr = (char *)dlerror();
+		dlerr = dlerror();
 # else
 		if (shl_findsym(&hinstLib, (const char *)funcname,
 					TYPE_PROCEDURE, (void *)&ProcAdd) < 0)
@@ -7535,7 +7544,7 @@ mch_libcall(
 	    {
 # if defined(USE_DLOPEN)
 		*(void **)(&ProcAddI) = dlsym(hinstLib, (const char *)funcname);
-		dlerr = (char *)dlerror();
+		dlerr = dlerror();
 # else
 		if (shl_findsym(&hinstLib, (const char *)funcname,
 				       TYPE_PROCEDURE, (void *)&ProcAddI) < 0)

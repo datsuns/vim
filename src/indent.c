@@ -71,7 +71,7 @@ tabstop_set(char_u *var, int **array)
 	int n = atoi((char *)cp);
 
 	// Catch negative values, overflow and ridiculous big values.
-	if (n < 0 || n > 9999)
+	if (n < 0 || n > TABSTOP_MAX)
 	{
 	    semsg(_(e_invalid_argument_str), cp);
 	    vim_free(*array);
@@ -1649,7 +1649,7 @@ ex_retab(exarg_T *eap)
 	emsg(_(e_argument_must_be_positive));
 	return;
     }
-    if (new_ts < 0 || new_ts > 9999)
+    if (new_ts < 0 || new_ts > TABSTOP_MAX)
     {
 	semsg(_(e_invalid_argument_str), eap->arg);
 	return;
@@ -1829,6 +1829,7 @@ get_expr_indent(void)
     int		save_State;
     int		use_sandbox = was_set_insecurely((char_u *)"indentexpr",
 								   OPT_LOCAL);
+    sctx_T	save_sctx = current_sctx;
 
     // Save and restore cursor position and curswant, in case it was changed
     // via :normal commands
@@ -1839,6 +1840,7 @@ get_expr_indent(void)
     if (use_sandbox)
 	++sandbox;
     ++textwinlock;
+    current_sctx = curbuf->b_p_script_ctx[BV_INDE];
 
     // Need to make a copy, the 'indentexpr' option could be changed while
     // evaluating it.
@@ -1852,6 +1854,7 @@ get_expr_indent(void)
     if (use_sandbox)
 	--sandbox;
     --textwinlock;
+    current_sctx = save_sctx;
 
     // Restore the cursor position so that 'indentexpr' doesn't need to.
     // Pretend to be in Insert mode, allow cursor past end of line for "o"

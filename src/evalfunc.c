@@ -491,13 +491,26 @@ arg_list_or_dict_or_blob_or_string(type_T *type, type_T *decl_type UNUSED, argco
     static int
 arg_filter_func(type_T *type, type_T *decl_type UNUSED, argcontext_T *context)
 {
-    if (type->tt_type == VAR_FUNC
-	    && !(type->tt_member->tt_type == VAR_BOOL
+    if (type->tt_type == VAR_STRING
+	    || type->tt_type == VAR_PARTIAL
+	    || type == &t_unknown
+	    || type == &t_any)
+	return OK;
+
+    if (type->tt_type == VAR_FUNC)
+    {
+	if (!(type->tt_member->tt_type == VAR_BOOL
 		|| type->tt_member->tt_type == VAR_NUMBER
 		|| type->tt_member->tt_type == VAR_UNKNOWN
 		|| type->tt_member->tt_type == VAR_ANY))
+	{
+	    arg_type_mismatch(&t_func_bool, type, context->arg_idx + 1);
+	    return FAIL;
+	}
+    }
+    else
     {
-	arg_type_mismatch(&t_func_bool, type, context->arg_idx + 1);
+	semsg(_(e_string_or_function_required_for_argument_nr), 2);
 	return FAIL;
     }
     return OK;
@@ -509,26 +522,48 @@ arg_filter_func(type_T *type, type_T *decl_type UNUSED, argcontext_T *context)
     static int
 arg_map_func(type_T *type, type_T *decl_type UNUSED, argcontext_T *context)
 {
-    if (type->tt_type == VAR_FUNC
-	    && type->tt_member != &t_any
-	    && type->tt_member != &t_unknown)
+    if (type->tt_type == VAR_STRING
+	    || type->tt_type == VAR_PARTIAL
+	    || type == &t_unknown
+	    || type == &t_any)
+	return OK;
+
+    if (type->tt_type == VAR_FUNC)
     {
-	type_T *expected = NULL;
-
-	if (context->arg_types[0].type_curr->tt_type == VAR_LIST
-		|| context->arg_types[0].type_curr->tt_type == VAR_DICT)
-	    expected = context->arg_types[0].type_curr->tt_member;
-	else if (context->arg_types[0].type_curr->tt_type == VAR_STRING)
-	    expected = &t_string;
-	else if (context->arg_types[0].type_curr->tt_type == VAR_BLOB)
-	    expected = &t_number;
-	if (expected != NULL)
+	if (type->tt_member != &t_any && type->tt_member != &t_unknown)
 	{
-	    type_T t_func_exp = {VAR_FUNC, -1, 0, TTFLAG_STATIC, NULL, NULL};
+	    type_T *expected = NULL;
 
-	    t_func_exp.tt_member = expected;
-	    return check_arg_type(&t_func_exp, type, context);
+	    if (context->arg_types[0].type_curr->tt_type == VAR_LIST
+		    || context->arg_types[0].type_curr->tt_type == VAR_DICT)
+	    {
+		// Use the declared type, so that an error is given if a
+		// declared list changes type, but not if a constant list
+		// changes type.
+		if (context->arg_types[0].type_decl->tt_type == VAR_LIST
+			|| context->arg_types[0].type_decl->tt_type == VAR_DICT)
+		    expected = context->arg_types[0].type_decl->tt_member;
+		else
+		    expected = context->arg_types[0].type_curr->tt_member;
+	    }
+	    else if (context->arg_types[0].type_curr->tt_type == VAR_STRING)
+		expected = &t_string;
+	    else if (context->arg_types[0].type_curr->tt_type == VAR_BLOB)
+		expected = &t_number;
+	    if (expected != NULL)
+	    {
+		type_T t_func_exp = {VAR_FUNC, -1, 0, TTFLAG_STATIC,
+								   NULL, NULL};
+
+		t_func_exp.tt_member = expected;
+		return check_arg_type(&t_func_exp, type, context);
+	    }
 	}
+    }
+    else
+    {
+	semsg(_(e_string_or_function_required_for_argument_nr), 2);
+	return FAIL;
     }
     return OK;
 }
@@ -2304,6 +2339,10 @@ static funcentry_T global_functions[] =
 			ret_void,	    f_test_gui_drop_files},
     {"test_gui_mouse_event",	5, 5, 0,    arg5_number,
 			ret_void,	    f_test_gui_mouse_event},
+    {"test_gui_tabline_event",	1, 1, 0,    arg1_number,
+			ret_bool,	    f_test_gui_tabline_event},
+    {"test_gui_tabmenu_event",	2, 2, 0,    arg2_number,
+			ret_void,	    f_test_gui_tabmenu_event},
     {"test_ignore_error", 1, 1, FEARG_1,    arg1_string,
 			ret_void,	    f_test_ignore_error},
     {"test_null_blob",	0, 0, 0,	    NULL,
@@ -2929,6 +2968,8 @@ f_call(typval_T *argvars, typval_T *rettv)
     char_u	*func;
     partial_T   *partial = NULL;
     dict_T	*selfdict = NULL;
+    char_u	*dot;
+    char_u	*tofree = NULL;
 
     if (in_vim9script()
 	    && (check_for_string_or_func_arg(argvars, 0) == FAIL
@@ -2956,6 +2997,26 @@ f_call(typval_T *argvars, typval_T *rettv)
     if (func == NULL || *func == NUL)
 	return;		// type error, empty name or null function
 
+    dot = vim_strchr(func, '.');
+    if (dot != NULL)
+    {
+	imported_T *import = find_imported(func, dot - func, TRUE, NULL);
+
+	if (import != NULL && SCRIPT_ID_VALID(import->imp_sid))
+	{
+	    scriptitem_T *si = SCRIPT_ITEM(import->imp_sid);
+
+	    if (si->sn_autoload_prefix != NULL)
+	    {
+		// Turn "import.Func" into "scriptname#Func".
+		tofree = concat_str(si->sn_autoload_prefix, dot + 1);
+		if (tofree == NULL)
+		    return;
+		func = tofree;
+	    }
+	}
+    }
+
     if (argvars[2].v_type != VAR_UNKNOWN)
     {
 	if (argvars[2].v_type != VAR_DICT)
@@ -2967,6 +3028,8 @@ f_call(typval_T *argvars, typval_T *rettv)
     }
 
     (void)func_call(func, &argvars[1], partial, selfdict, rettv);
+
+    vim_free(tofree);
 }
 
 /*
@@ -5104,8 +5167,7 @@ f_has(typval_T *argvars, typval_T *rettv)
 #endif
 		},
 	{"balloon_multiline",
-#if defined(FEAT_BEVAL_GUI) && !defined(FEAT_GUI_MSWIN)
-			// MS-Windows requires runtime check, see below
+#ifdef FEAT_BEVAL_GUI
 		1
 #else
 		0
@@ -6079,10 +6141,6 @@ f_has(typval_T *argvars, typval_T *rettv)
 	{
 	    // intentionally empty
 	}
-#if defined(FEAT_BEVAL) && defined(FEAT_GUI_MSWIN)
-	else if (STRICMP(name, "balloon_multiline") == 0)
-	    n = multiline_balloon_available();
-#endif
 #ifdef VIMDLL
 	else if (STRICMP(name, "filterpipe") == 0)
 	    n = gui.in_use || gui.starting;
@@ -6261,9 +6319,6 @@ f_has(typval_T *argvars, typval_T *rettv)
 dynamic_feature(char_u *feature)
 {
     return (feature == NULL
-#if defined(FEAT_BEVAL) && defined(FEAT_GUI_MSWIN)
-	    || STRICMP(feature, "balloon_multiline") == 0
-#endif
 #if defined(FEAT_GUI) && defined(FEAT_BROWSE)
 	    || (STRICMP(feature, "browse") == 0 && !gui.in_use)
 #endif
@@ -6716,7 +6771,7 @@ f_islocked(typval_T *argvars, typval_T *rettv)
 	if (*end != NUL)
 	{
 	    semsg(_(lv.ll_name == lv.ll_name_end
-					   ? e_invalid_argument_str : e_trailing_characters_str), end);
+		   ? e_invalid_argument_str : e_trailing_characters_str), end);
 	}
 	else
 	{
@@ -7103,7 +7158,7 @@ find_some_match(typval_T *argvars, typval_T *rettv, matchtype_T type)
 		    break;
 	    }
 
-	    match = vim_regexec_nl(&regmatch, str, (colnr_T)startcol);
+	    match = vim_regexec_nl(&regmatch, str, startcol);
 
 	    if (match && --nth <= 0)
 		break;
@@ -7880,7 +7935,7 @@ range_list_materialize(list_T *list)
 {
     varnumber_T start = list->lv_u.nonmat.lv_start;
     varnumber_T end = list->lv_u.nonmat.lv_end;
-    int	    stride = list->lv_u.nonmat.lv_stride;
+    int		stride = list->lv_u.nonmat.lv_stride;
     varnumber_T i;
 
     list->lv_first = NULL;
@@ -7888,8 +7943,13 @@ range_list_materialize(list_T *list)
     list->lv_len = 0;
     list->lv_u.mat.lv_idx_item = NULL;
     for (i = start; stride > 0 ? i <= end : i >= end; i += stride)
-	if (list_append_number(list, (varnumber_T)i) == FAIL)
+    {
+	if (list_append_number(list, i) == FAIL)
 	    break;
+	if (list->lv_lock & VAR_ITEMS_LOCKED)
+	    list->lv_u.mat.lv_last->li_tv.v_lock = VAR_LOCKED;
+    }
+    list->lv_lock &= ~VAR_ITEMS_LOCKED;
 }
 
 /*
@@ -9744,7 +9804,7 @@ f_synID(typval_T *argvars UNUSED, typval_T *rettv)
 
     if (!transerr && lnum >= 1 && lnum <= curbuf->b_ml.ml_line_count
 	    && col >= 0 && col < (long)STRLEN(ml_get(lnum)))
-	id = syn_get_id(curwin, lnum, (colnr_T)col, trans, NULL, FALSE);
+	id = syn_get_id(curwin, lnum, col, trans, NULL, FALSE);
 #endif
 
     rettv->vval.v_number = id;
@@ -9964,7 +10024,7 @@ f_synstack(typval_T *argvars UNUSED, typval_T *rettv)
 	    && col >= 0 && col <= (long)STRLEN(ml_get(lnum))
 	    && rettv_list_alloc(rettv) != FAIL)
     {
-	(void)syn_get_id(curwin, lnum, (colnr_T)col, FALSE, NULL, TRUE);
+	(void)syn_get_id(curwin, lnum, col, FALSE, NULL, TRUE);
 	for (i = 0; ; ++i)
 	{
 	    id = syn_get_stack_item(i);

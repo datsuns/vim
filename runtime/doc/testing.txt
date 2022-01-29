@@ -1,4 +1,4 @@
-*testing.txt*	For Vim version 8.2.  Last change: 2022 Jan 13
+*testing.txt*	For Vim version 8.2.  Last change: 2022 Jan 20
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -121,6 +121,24 @@ test_gui_mouse_event({button}, {row}, {col}, {multiclick}, {modifiers})
 		|feedkeys()| to have them processed, e.g.: >
 			call feedkeys("y", 'Lx!')
 
+						*test_gui_tabline_event()*
+test_gui_tabline_event({tabnr})
+		Add an event that simulates a click on the tabline to select
+		tabpage {tabnr} to the input buffer.
+		Returns TRUE if the event is successfully added, FALSE if
+		already in the tabpage {tabnr} or the cmdline window is open.
+		After injecting the event you probably should call
+		|feedkeys()| to have them processed, e.g.: >
+			call feedkeys("y", 'Lx!')
+
+						*test_gui_tabmenu_event()*
+test_gui_tabmenu_event({tabnr}, {event})
+		Add an event that simulates selecting a tabline menu entry for
+		tabpage {tabnr} to the input buffer. {event} is 1 for the
+		first menu entry, 2 for the second entry and so on.
+		After injecting the event you probably should call
+		|feedkeys()| to have them processed, e.g.: >
+			call feedkeys("y", 'Lx!')
 
 test_ignore_error({expr})			 *test_ignore_error()*
 		Ignore any error containing {expr}.  A normal message is given
@@ -352,7 +370,7 @@ assert_fails({cmd} [, {error} [, {msg} [, {lnum} [, {context}]]]])
 		Run {cmd} and add an error message to |v:errors| if it does
 		NOT produce an error or when {error} is not found in the
 		error message.  Also see |assert-return|.
-
+							*E856*
 		When {error} is a string it must be found literally in the
 		first reported error. Most often this will be the error code,
 		including the colon, e.g. "E123:". >

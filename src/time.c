@@ -481,6 +481,7 @@ timer_callback(timer_T *timer)
     argv[0].vval.v_number = (varnumber_T)timer->tr_id;
     argv[1].v_type = VAR_UNKNOWN;
 
+    rettv.v_type = VAR_UNKNOWN;
     call_callback(&timer->tr_callback, -1, &rettv, 1, argv);
     clear_tv(&rettv);
 }
@@ -854,6 +855,13 @@ f_timer_start(typval_T *argvars, typval_T *rettv)
     callback = get_callback(&argvars[1]);
     if (callback.cb_name == NULL)
 	return;
+    if (in_vim9script() && *callback.cb_name == NUL)
+    {
+	// empty callback is not useful for a timer
+	emsg(_(e_invalid_callback_argument));
+	free_callback(&callback);
+	return;
+    }
 
     timer = create_timer(msec, repeat);
     if (timer == NULL)
@@ -1022,14 +1030,6 @@ get8ctime(FILE *fd)
     return n;
 }
 
-#ifdef _MSC_VER
-# if (_MSC_VER <= 1200)
-// This line is required for VC6 without the service pack.  Also see the
-// matching #pragma below.
- #  pragma optimize("", off)
-# endif
-#endif
-
 /*
  * Write time_T to file "fd" in 8 bytes.
  * Returns FAIL when the write failed.
@@ -1068,21 +1068,15 @@ time_to_bytes(time_T the_time, char_u *buf)
 	    buf[bi++] = 0;
 	else
 	{
-#if defined(SIZEOF_TIME_T) && SIZEOF_TIME_T > 4
+# if defined(SIZEOF_TIME_T) && SIZEOF_TIME_T > 4
 	    c = (int)(wtime >> (i * 8));
-#else
+# else
 	    c = (int)((long_u)wtime >> (i * 8));
-#endif
+# endif
 	    buf[bi++] = c;
 	}
     }
 }
-
-#ifdef _MSC_VER
-# if (_MSC_VER <= 1200)
- #  pragma optimize("", on)
-# endif
-#endif
 
 #endif
 
