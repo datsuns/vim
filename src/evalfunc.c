@@ -1737,6 +1737,8 @@ static funcentry_T global_functions[] =
 			ret_string,	    f_inputsecret},
     {"insert",		2, 3, FEARG_1,	    arg23_insert,
 			ret_first_arg,	    f_insert},
+    {"internal_get_nv_cmdchar",	1, 1, FEARG_1,    arg1_number,
+			ret_number,	    f_internal_get_nv_cmdchar},
     {"interrupt",	0, 0, 0,	    NULL,
 			ret_void,	    f_interrupt},
     {"invert",		1, 1, FEARG_1,	    arg1_number,
@@ -3828,14 +3830,7 @@ f_exists(typval_T *argvars, typval_T *rettv)
     }
     else if (*p == '*')			// internal or user defined function
     {
-	int save_version = current_sctx.sc_version;
-
-	// Vim9 script assumes a function is script-local, but here we want to
-	// find any matching function.
-	if (current_sctx.sc_version == SCRIPT_VERSION_VIM9)
-	    current_sctx.sc_version = SCRIPT_VERSION_MAX;
 	n = function_exists(p + 1, FALSE);
-	current_sctx.sc_version = save_version;
     }
     else if (*p == '?')			// internal function only
     {
@@ -7325,7 +7320,7 @@ max_min(typval_T *argvars, typval_T *rettv, int domax)
 		if ((l->lv_u.nonmat.lv_stride > 0) ^ domax)
 		    n = l->lv_u.nonmat.lv_start;
 		else
-		    n = l->lv_u.nonmat.lv_start + (l->lv_len - 1)
+		    n = l->lv_u.nonmat.lv_start + ((varnumber_T)l->lv_len - 1)
 						    * l->lv_u.nonmat.lv_stride;
 	    }
 	    else

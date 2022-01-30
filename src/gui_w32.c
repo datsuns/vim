@@ -5835,7 +5835,7 @@ latin9_to_ucs(char_u *text, int len, WCHAR *unicodebuf)
  * noticeably so.
  */
     static void
-RevOut( HDC s_hdc,
+RevOut( HDC hdc,
 	int col,
 	int row,
 	UINT foptions,
@@ -5847,7 +5847,7 @@ RevOut( HDC s_hdc,
     int		ix;
 
     for (ix = 0; ix < (int)len; ++ix)
-	ExtTextOut(s_hdc, col + TEXT_X(ix), row, foptions,
+	ExtTextOut(hdc, col + TEXT_X(ix), row, foptions,
 					pcliprect, text + ix, 1, padding);
 }
 #endif
@@ -5923,7 +5923,6 @@ gui_mch_draw_string(
 {
     static int	*padding = NULL;
     static int	pad_size = 0;
-    int		i;
     const RECT	*pcliprect = NULL;
     UINT	foptions = 0;
     static WCHAR *unicodebuf = NULL;
@@ -6014,6 +6013,8 @@ gui_mch_draw_string(
 
     if (pad_size != Columns || padding == NULL || padding[0] != gui.char_width)
     {
+	int	i;
+
 	vim_free(padding);
 	pad_size = Columns;
 
