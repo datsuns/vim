@@ -241,12 +241,6 @@ static char_u *exe_path = NULL;
 
 static BOOL win8_or_later = FALSE;
 
-# if defined(__GNUC__) && !defined(__MINGW32__)  && !defined(__CYGWIN__)
-#  define UChar UnicodeChar
-# else
-#  define UChar uChar.UnicodeChar
-# endif
-
 #if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
 // Dynamic loading for portability
 typedef struct _DYN_CONSOLE_SCREEN_BUFFER_INFOEX
@@ -306,7 +300,7 @@ is_ambiwidth_event(
 		&& ir->Event.KeyEvent.wRepeatCount == 1
 		&& ir->Event.KeyEvent.wVirtualKeyCode == 0x12
 		&& ir->Event.KeyEvent.wVirtualScanCode == 0x38
-		&& ir->Event.KeyEvent.UChar == 0
+		&& ir->Event.KeyEvent.uChar.UnicodeChar == 0
 		&& ir->Event.KeyEvent.dwControlKeyState == 2;
 }
 
@@ -317,7 +311,8 @@ make_ambiwidth_event(
 {
     down->Event.KeyEvent.wVirtualKeyCode = 0;
     down->Event.KeyEvent.wVirtualScanCode = 0;
-    down->Event.KeyEvent.UChar = up->Event.KeyEvent.UChar;
+    down->Event.KeyEvent.uChar.UnicodeChar
+				    = up->Event.KeyEvent.uChar.UnicodeChar;
     down->Event.KeyEvent.dwControlKeyState = 0;
 }
 
@@ -452,7 +447,7 @@ wait_for_single_object(
     HANDLE hHandle,
     DWORD dwMilliseconds)
 {
-    if (read_console_input(NULL, NULL, -2, NULL))
+    if (read_console_input(NULL, NULL, (DWORD)-2, NULL))
 	return WAIT_OBJECT_0;
     return WaitForSingleObject(hHandle, dwMilliseconds);
 }
@@ -724,7 +719,7 @@ dyn_libintl_init(void)
     for (i = 0; libintl_entry[i].name != NULL
 					 && libintl_entry[i].ptr != NULL; ++i)
     {
-	if ((*libintl_entry[i].ptr = (FARPROC)GetProcAddress(hLibintlDLL,
+	if ((*libintl_entry[i].ptr = GetProcAddress(hLibintlDLL,
 					      libintl_entry[i].name)) == NULL)
 	{
 	    dyn_libintl_end();
@@ -1005,12 +1000,12 @@ win32_kbd_patch_key(
 
     if (s_iIsDead == 2)
     {
-	pker->UChar = (WCHAR) awAnsiCode[1];
+	pker->uChar.UnicodeChar = (WCHAR) awAnsiCode[1];
 	s_iIsDead = 0;
 	return 1;
     }
 
-    if (pker->UChar != 0)
+    if (pker->uChar.UnicodeChar != 0)
 	return 1;
 
     CLEAR_FIELD(abKeystate);
@@ -1033,7 +1028,7 @@ win32_kbd_patch_key(
 			abKeystate, awAnsiCode, 2, 0);
 
     if (s_iIsDead > 0)
-	pker->UChar = (WCHAR) awAnsiCode[0];
+	pker->uChar.UnicodeChar = (WCHAR) awAnsiCode[0];
 
     return s_iIsDead;
 }
@@ -1075,7 +1070,8 @@ decode_key_event(
     }
 
     // special cases
-    if ((nModifs & CTRL) != 0 && (nModifs & ~CTRL) == 0 && pker->UChar == NUL)
+    if ((nModifs & CTRL) != 0 && (nModifs & ~CTRL) == 0
+					    && pker->uChar.UnicodeChar == NUL)
     {
 	// Ctrl-6 is Ctrl-^
 	if (pker->wVirtualKeyCode == '6')
@@ -1137,7 +1133,7 @@ decode_key_event(
 	*pch = NUL;
     else
     {
-	*pch = (i > 0) ? pker->UChar : NUL;
+	*pch = (i > 0) ? pker->uChar.UnicodeChar : NUL;
 
 	if (pmodifiers != NULL)
 	{
@@ -1683,7 +1679,7 @@ WaitForChar(long msec, int ignore_input)
 # ifdef FEAT_MBYTE_IME
 		// Windows IME sends two '\n's with only one 'ENTER'.  First:
 		// wVirtualKeyCode == 13. second: wVirtualKeyCode == 0
-		if (ir.Event.KeyEvent.UChar == 0
+		if (ir.Event.KeyEvent.uChar.UnicodeChar == 0
 			&& ir.Event.KeyEvent.wVirtualKeyCode == 13)
 		{
 		    read_console_input(g_hConIn, &ir, 1, &cRecords);
@@ -2077,13 +2073,13 @@ theend:
 	buf[len++] = typeahead[0];
 	mch_memmove(typeahead, typeahead + 1, --typeaheadlen);
     }
-#  ifdef FEAT_JOB_CHANNEL
+# ifdef FEAT_JOB_CHANNEL
     if (len > 0)
     {
 	buf[len] = NUL;
 	ch_log(NULL, "raw key input: \"%s\"", buf);
     }
-#  endif
+# endif
     return len;
 
 #else // FEAT_GUI_MSWIN
@@ -7874,12 +7870,12 @@ vtp_sgr_bulk(
     vtp_sgr_bulks(1, args);
 }
 
-#define FAST256(x) \
+# define FAST256(x) \
     if ((*p-- = "0123456789"[(n = x % 10)]) \
 	    && x >= 10 && (*p-- = "0123456789"[((m = x % 100) - n) / 10]) \
 	    && x >= 100 && (*p-- = "012"[((x & 0xff) - m) / 100]));
 
-#define FAST256CASE(x) \
+# define FAST256CASE(x) \
     case x: \
 	FAST256(newargs[x - 1]);
 
@@ -7888,8 +7884,8 @@ vtp_sgr_bulks(
     int argc,
     int *args)
 {
-#define MAXSGR 16
-#define SGRBUFSIZE 2 + 4 * MAXSGR + 1 // '\033[' + SGR + 'm'
+# define MAXSGR 16
+# define SGRBUFSIZE 2 + 4 * MAXSGR + 1 // '\033[' + SGR + 'm'
     char_u  buf[SGRBUFSIZE];
     char_u  *p;
     int	    in, out;

@@ -484,7 +484,7 @@ def Test_assign_linebreak()
           ->copy()
           ->copy()
   END
-  v9.CheckDefFailure(lines, 'E1012:', 2)
+  v9.CheckDefExecFailure(lines, 'E1012:', 4)
 
   lines =<< trim END
       var x: any
@@ -1249,6 +1249,15 @@ def Test_assignment_var_list()
   v9.CheckScriptSuccess(lines)
 enddef
 
+def Test_assignment_empty_list()
+  var lines =<< trim END
+      var l2: list<any> = []
+      var l: list<string>
+      l = l2
+  END
+  v9.CheckDefAndScriptSuccess(lines)
+enddef
+
 def Test_assignment_vim9script()
   var lines =<< trim END
     vim9script
@@ -1983,6 +1992,12 @@ def Test_unlet()
   unlet s:somevar
   assert_false(exists('s:somevar'))
   unlet! s:somevar
+
+  if 0
+    unlet g:does_not_exist
+  endif
+
+  v9.CheckDefExecFailure(['unlet v:notfound.key'], 'E1001:')
 
   v9.CheckDefExecFailure([
     'var dd = 111',

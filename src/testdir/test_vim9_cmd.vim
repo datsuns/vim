@@ -1449,7 +1449,7 @@ def Test_lockvar()
     ex = v:exception
   endtry
   assert_match('E1121:', ex)
-  unlockvar d.a
+  unlockvar d['a']
   d.a = 7
   assert_equal({a: 7, b: 5}, d)
 
@@ -1610,7 +1610,7 @@ def Test_redir_to_var()
         redir > Xfile
       redir END
   END
-  v9.CheckDefFailure(lines, 'E1185:')
+  v9.CheckDefFailure(lines, 'E1092:')
 
   lines =<< trim END
       var text: number

@@ -759,7 +759,7 @@ compile_call(
 
 	    if (STRCMP(name, "add") == 0 && argcount == 2)
 	    {
-		type_T	    *type = get_type_on_stack(cctx, 1);
+		type_T	    *type = get_decl_type_on_stack(cctx, 1);
 
 		// add() can be compiled to instructions if we know the type
 		if (type->tt_type == VAR_LIST)
@@ -2824,8 +2824,10 @@ compile_expr1(char_u **arg, cctx_T *cctx, ppconst_T *ppconst)
     // Ignore all kinds of errors when not producing code.
     if (cctx->ctx_skip == SKIP_YES)
     {
+	int		prev_did_emsg = did_emsg;
+
 	skip_expr_cctx(arg, cctx);
-	return OK;
+	return did_emsg == prev_did_emsg ? OK : FAIL;
     }
 
     // Evaluate the first expression.
