@@ -809,6 +809,8 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 #define WILD_ALL		6
 #define WILD_LONGEST		7
 #define WILD_ALL_KEEP		8
+#define WILD_CANCEL		9
+#define WILD_APPLY		10
 
 #define WILD_LIST_NOTFOUND	    0x01
 #define WILD_HOME_REPLACE	    0x02
@@ -1302,6 +1304,7 @@ enum auto_event
     EVENT_CURSORMOVEDI,		// cursor was moved in Insert mode
     EVENT_DIFFUPDATED,		// after diffs were updated
     EVENT_DIRCHANGED,		// after user changed directory
+    EVENT_DIRCHANGEDPRE,	// before directory changes
     EVENT_ENCODINGCHANGED,	// after changing the 'encoding' option
     EVENT_EXITPRE,		// before exiting
     EVENT_FILEAPPENDCMD,	// append to a file using command
