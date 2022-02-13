@@ -2513,6 +2513,7 @@ call_user_func(
 {
     sctx_T	save_current_sctx;
     int		using_sandbox = FALSE;
+    int		save_sticky_cmdmod_flags = sticky_cmdmod_flags;
     funccall_T	*fc;
     int		save_did_emsg;
     int		default_arg_err = FALSE;
@@ -2569,6 +2570,7 @@ call_user_func(
 	if (do_profiling == PROF_YES)
 	    profile_may_start_func(&profile_info, fp, caller);
 #endif
+	sticky_cmdmod_flags = 0;
 	call_def_function(fp, argcount, argvars, funcexe->fe_partial, rettv);
 	funcdepth_decrement();
 #ifdef FEAT_PROFILE
@@ -2578,6 +2580,7 @@ call_user_func(
 #endif
 	current_funccal = fc->caller;
 	free_funccal(fc);
+	sticky_cmdmod_flags = save_sticky_cmdmod_flags;
 	return;
     }
 
@@ -2797,6 +2800,9 @@ call_user_func(
 				 fc->caller == NULL ? NULL : fc->caller->func);
 #endif
 
+    // "legacy" does not apply to commands in the function
+    sticky_cmdmod_flags = 0;
+
     save_current_sctx = current_sctx;
     current_sctx = fp->uf_script_ctx;
     save_did_emsg = did_emsg;
@@ -2889,6 +2895,7 @@ call_user_func(
 #endif
     if (using_sandbox)
 	--sandbox;
+    sticky_cmdmod_flags = save_sticky_cmdmod_flags;
 
     if (p_verbose >= 12 && SOURCING_NAME != NULL)
     {
@@ -3007,6 +3014,18 @@ restore_funccal(void)
 get_current_funccal(void)
 {
     return current_funccal;
+}
+
+/*
+ * Return TRUE when currently at the script level:
+ * - not in a function
+ * - not executing an autocommand
+ * Note that when an autocommand sources a script the result is FALSE;
+ */
+    int
+at_script_level(void)
+{
+    return current_funccal == NULL && autocmd_match == NULL;
 }
 
 /*
@@ -4205,6 +4224,12 @@ define_function(exarg_T *eap, char_u *name_arg, garray_T *lines_to_free)
     }
     else
     {
+	if (vim9script && p[0] == 's' && p[1] == ':')
+	{
+	    semsg(_(e_cannot_use_s_colon_in_vim9_script_str), p);
+	    return NULL;
+	}
+
 	name = save_function_name(&p, &is_global, eap->skip,
 					TFN_NO_AUTOLOAD | TFN_NEW_FUNC, &fudi);
 	paren = (vim_strchr(p, '(') != NULL);
