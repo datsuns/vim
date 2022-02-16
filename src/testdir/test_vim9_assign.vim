@@ -350,6 +350,11 @@ def Test_assign_unpack()
     assert_equal(1, v1)
     assert_equal(2, v2)
 
+    var _x: number
+    [_x, v2] = [6, 7]
+    assert_equal(6, _x)
+    assert_equal(7, v2)
+
     var reslist = []
     for text in ['aaa {bbb} ccc', 'ddd {eee} fff']
       var before: string
@@ -1354,7 +1359,8 @@ def Test_assignment_failure()
   v9.CheckDefFailure(['var null = 1'], 'E1034:')
   v9.CheckDefFailure(['var this = 1'], 'E1034:')
 
-  v9.CheckDefFailure(['[a; b; c] = g:list'], 'E452:')
+  v9.CheckDefFailure(['[a; b; c] = g:list'], 'E1001:')
+  v9.CheckDefFailure(['var [a; b; c] = g:list'], 'E1080:')
   v9.CheckDefExecFailure(['var a: number',
                        '[a] = test_null_list()'], 'E1093:')
   v9.CheckDefExecFailure(['var a: number',
@@ -1481,6 +1487,7 @@ def Test_assign_dict()
 
   v9.CheckDefFailure(["var d: dict<number> = {a: '', b: true}"], 'E1012: Type mismatch; expected dict<number> but got dict<any>', 1)
   v9.CheckDefFailure(["var d: dict<dict<number>> = {x: {a: '', b: true}}"], 'E1012: Type mismatch; expected dict<dict<number>> but got dict<dict<any>>', 1)
+  v9.CheckDefFailure(["var d = {x: 1}", "d[1 : 2] = {y: 2}"], 'E1165: Cannot use a range with an assignment: d[1 : 2] =', 2)
 enddef
 
 def Test_assign_dict_unknown_type()
@@ -1877,6 +1884,19 @@ def Test_var_declaration_fails()
   v9.CheckDefFailure(['var foo.bar = 2'], 'E1087:')
   v9.CheckDefFailure(['var foo[3] = 2'], 'E1087:')
   v9.CheckDefFailure(['const foo: number'], 'E1021:')
+enddef
+
+def Test_var_declaration_inferred()
+  # check that type is set on the list so that extend() fails
+  var lines =<< trim END
+      vim9script
+      def GetList(): list<number>
+        var l = [1, 2, 3]
+        return l
+      enddef
+      echo GetList()->extend(['x'])
+  END
+  v9.CheckScriptFailure(lines, 'E1013:', 6)
 enddef
 
 def Test_script_local_in_legacy()
