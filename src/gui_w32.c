@@ -2948,6 +2948,8 @@ _OnKillFocus(
     HWND hwnd,
     HWND hwndNewFocus)
 {
+    if (destroying)
+	return;
     gui_focus_change(FALSE);
     s_getting_focus = FALSE;
     (void)DefWindowProcW(hwnd, WM_KILLFOCUS, (WPARAM)hwndNewFocus, 0);
