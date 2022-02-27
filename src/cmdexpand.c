@@ -1212,6 +1212,7 @@ set_cmd_index(char_u *cmd, exarg_T *eap, expand_T *xp, int *complp)
 {
     char_u	*p = NULL;
     int		len = 0;
+    int		fuzzy = cmdline_fuzzy_complete(cmd);
 
     // Isolate the command and search for it in the command table.
     // Exceptions:
@@ -1253,7 +1254,9 @@ set_cmd_index(char_u *cmd, exarg_T *eap, expand_T *xp, int *complp)
 
 	eap->cmdidx = excmd_get_cmdidx(cmd, len);
 
-	if (cmd[0] >= 'A' && cmd[0] <= 'Z')
+	// User defined commands support alphanumeric characters.
+	// Also when doing fuzzy expansion, support alphanumeric characters.
+	if ((cmd[0] >= 'A' && cmd[0] <= 'Z') || (fuzzy && *p != NUL))
 	    while (ASCII_ISALNUM(*p) || *p == '*')	// Allow * wild card
 		++p;
     }
@@ -2367,7 +2370,7 @@ get_mapclear_arg(expand_T *xp UNUSED, int idx)
     static int
 ExpandOther(
 	char_u		*pat,
-	expand_T	*xp, 
+	expand_T	*xp,
 	regmatch_T	*rmp,
 	char_u		***matches,
 	int		*numMatches)
@@ -2493,6 +2496,8 @@ ExpandFromContext(
     int		ret;
     int		flags;
     char_u	*tofree = NULL;
+    int		fuzzy = cmdline_fuzzy_complete(pat)
+				     && cmdline_fuzzy_completion_supported(xp);
 
     flags = map_wildopts_to_ewflags(options);
 
@@ -2577,12 +2582,15 @@ ExpandFromContext(
 	pat = tofree;
     }
 
-    regmatch.regprog = vim_regcomp(pat, magic_isset() ? RE_MAGIC : 0);
-    if (regmatch.regprog == NULL)
-	return FAIL;
+    if (!fuzzy)
+    {
+	regmatch.regprog = vim_regcomp(pat, magic_isset() ? RE_MAGIC : 0);
+	if (regmatch.regprog == NULL)
+	    return FAIL;
 
-    // set ignore-case according to p_ic, p_scs and pat
-    regmatch.rm_ic = ignorecase(pat);
+	// set ignore-case according to p_ic, p_scs and pat
+	regmatch.rm_ic = ignorecase(pat);
+    }
 
     if (xp->xp_context == EXPAND_SETTINGS
 	    || xp->xp_context == EXPAND_BOOL_SETTINGS)
@@ -2596,7 +2604,8 @@ ExpandFromContext(
     else
 	ret = ExpandOther(pat, xp, &regmatch, matches, numMatches);
 
-    vim_regfree(regmatch.regprog);
+    if (!fuzzy)
+	vim_regfree(regmatch.regprog);
     vim_free(tofree);
 
     return ret;
@@ -2633,6 +2642,7 @@ ExpandGeneric(
     int			score = 0;
     int		fuzzy = (fuzzystr != NULL);
     int		funcsort = FALSE;
+    int		match;
 
     // do this loop twice:
     // round == 0: count the number of matching names
@@ -2647,44 +2657,52 @@ ExpandGeneric(
 	    if (*str == NUL)	    // skip empty strings
 		continue;
 
-	    if (vim_regexec(regmatch, str, (colnr_T)0) ||
-		    (fuzzy && ((score = fuzzy_match_str(str, fuzzystr)) != 0)))
+	    if (!fuzzy)
+	       match = vim_regexec(regmatch, str, (colnr_T)0);
+	    else
 	    {
-		if (round)
-		{
-		    if (escaped)
-			str = vim_strsave_escaped(str, (char_u *)" \t\\.");
-		    else
-			str = vim_strsave(str);
-		    if (str == NULL)
-		    {
-			FreeWild(count, *matches);
-			if (fuzzy)
-			    fuzmatch_str_free(fuzmatch, count);
-			*numMatches = 0;
-			*matches = NULL;
-			return FAIL;
-		    }
-		    if (fuzzy)
-		    {
-			fuzmatch[count].idx = count;
-			fuzmatch[count].str = str;
-			fuzmatch[count].score = score;
-		    }
-		    else
-			(*matches)[count] = str;
-# ifdef FEAT_MENU
-		    if (func == get_menu_names && str != NULL)
-		    {
-			// test for separator added by get_menu_names()
-			str += STRLEN(str) - 1;
-			if (*str == '\001')
-			    *str = '.';
-		    }
-# endif
-		}
-		++count;
+		score = fuzzy_match_str(str, fuzzystr);
+		match = (score != 0);
 	    }
+
+	    if (!match)
+		continue;
+
+	    if (round)
+	    {
+		if (escaped)
+		    str = vim_strsave_escaped(str, (char_u *)" \t\\.");
+		else
+		    str = vim_strsave(str);
+		if (str == NULL)
+		{
+		    if (fuzzy)
+			fuzmatch_str_free(fuzmatch, count);
+		    else if (count > 0)
+			FreeWild(count, *matches);
+		    *numMatches = 0;
+		    *matches = NULL;
+		    return FAIL;
+		}
+		if (fuzzy)
+		{
+		    fuzmatch[count].idx = count;
+		    fuzmatch[count].str = str;
+		    fuzmatch[count].score = score;
+		}
+		else
+		    (*matches)[count] = str;
+# ifdef FEAT_MENU
+		if (func == get_menu_names && str != NULL)
+		{
+		    // test for separator added by get_menu_names()
+		    str += STRLEN(str) - 1;
+		    if (*str == '\001')
+			*str = '.';
+		}
+# endif
+	    }
+	    ++count;
 	}
 	if (round == 0)
 	{

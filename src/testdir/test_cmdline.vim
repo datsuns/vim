@@ -2659,6 +2659,10 @@ func Test_wildoptions_fuzzy()
   call assert_equal('"mapclear <buffer>', @:)
 
   " map name fuzzy completion - NOT supported
+  " test regex completion works
+  set wildoptions=fuzzy
+  call feedkeys(":cnoremap <ex\<Tab> <esc> \<Tab>\<C-B>\"\<CR>", 'tx')
+  call assert_equal("\"cnoremap <expr> <esc> \<Tab>", @:)
 
   " menu name fuzzy completion
   if has('gui_running')
@@ -2756,6 +2760,37 @@ func Test_wildoptions_fuzzy()
   set wildoptions=fuzzy
   call feedkeys(":let SVar\<Tab>\<C-B>\"\<CR>", 'tx')
   call assert_equal('"let SomeVariable', @:)
+
+  " Test for sorting the results by the best match
+  %bw!
+  command T123format :
+  command T123goformat :
+  command T123TestFOrmat :
+  command T123fendoff :
+  command T123state :
+  command T123FendingOff :
+  set wildoptions=fuzzy
+  call feedkeys(":T123fo\<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"T123format T123TestFOrmat T123FendingOff T123goformat T123fendoff', @:)
+  delcommand T123format
+  delcommand T123goformat
+  delcommand T123TestFOrmat
+  delcommand T123fendoff
+  delcommand T123state
+  delcommand T123FendingOff
+  %bw
+
+  " Test for fuzzy completion of a command with lower case letters and a
+  " number
+  command Foo2Bar :
+  set wildoptions=fuzzy
+  call feedkeys(":foo2\<Tab>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"Foo2Bar', @:)
+  call feedkeys(":foo\<Tab>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"Foo2Bar', @:)
+  call feedkeys(":bar\<Tab>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"Foo2Bar', @:)
+  delcommand Foo2Bar
 
   set wildoptions&
   %bw!
