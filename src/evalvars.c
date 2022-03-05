@@ -759,6 +759,11 @@ ex_var(exarg_T *eap)
 	semsg(_(e_str_cannot_be_used_in_legacy_vim_script), ":var");
 	return;
     }
+    if (current_sctx.sc_sid == 0)
+    {
+	emsg(_(e_cannot_declare_variable_on_command_line));
+	return;
+    }
     ex_let(eap);
 }
 
@@ -1518,8 +1523,11 @@ ex_let_option(
 	{
 	    if (opt_type != gov_string || s != NULL)
 	    {
-		set_option_value(arg, n, s, scope);
+		char *err = set_option_value(arg, n, s, scope);
+
 		arg_end = p;
+		if (err != NULL)
+		    emsg(_(err));
 	    }
 	    else
 		emsg(_(e_string_required));
@@ -2816,29 +2824,33 @@ eval_variable(
 	    }
 
 	    // If a list or dict variable wasn't initialized, do it now.
-	    if (tv->v_type == VAR_DICT && tv->vval.v_dict == NULL)
+	    // Not for global variables, they are not declared.
+	    if (ht != &globvarht)
 	    {
-		tv->vval.v_dict = dict_alloc();
-		if (tv->vval.v_dict != NULL)
+		if (tv->v_type == VAR_DICT && tv->vval.v_dict == NULL)
 		{
-		    ++tv->vval.v_dict->dv_refcount;
-		    tv->vval.v_dict->dv_type = alloc_type(type);
+		    tv->vval.v_dict = dict_alloc();
+		    if (tv->vval.v_dict != NULL)
+		    {
+			++tv->vval.v_dict->dv_refcount;
+			tv->vval.v_dict->dv_type = alloc_type(type);
+		    }
 		}
-	    }
-	    else if (tv->v_type == VAR_LIST && tv->vval.v_list == NULL)
-	    {
-		tv->vval.v_list = list_alloc();
-		if (tv->vval.v_list != NULL)
+		else if (tv->v_type == VAR_LIST && tv->vval.v_list == NULL)
 		{
-		    ++tv->vval.v_list->lv_refcount;
-		    tv->vval.v_list->lv_type = alloc_type(type);
+		    tv->vval.v_list = list_alloc();
+		    if (tv->vval.v_list != NULL)
+		    {
+			++tv->vval.v_list->lv_refcount;
+			tv->vval.v_list->lv_type = alloc_type(type);
+		    }
 		}
-	    }
-	    else if (tv->v_type == VAR_BLOB && tv->vval.v_blob == NULL)
-	    {
-		tv->vval.v_blob = blob_alloc();
-		if (tv->vval.v_blob != NULL)
-		    ++tv->vval.v_blob->bv_refcount;
+		else if (tv->v_type == VAR_BLOB && tv->vval.v_blob == NULL)
+		{
+		    tv->vval.v_blob = blob_alloc();
+		    if (tv->vval.v_blob != NULL)
+			++tv->vval.v_blob->bv_refcount;
+		}
 	    }
 	    copy_tv(tv, rettv);
 	}
@@ -3433,7 +3445,7 @@ set_var_const(
 	if (in_vim9script() && is_export
 		&& SCRIPT_ID_VALID(current_sctx.sc_sid)
 		&& (si = SCRIPT_ITEM(current_sctx.sc_sid))
-						   ->sn_autoload_prefix != NULL)
+						  ->sn_autoload_prefix != NULL)
 	{
 	    // In a vim9 autoload script an exported variable is put in the
 	    // global namespace with the autoload prefix.
