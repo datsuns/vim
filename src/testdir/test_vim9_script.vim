@@ -460,7 +460,7 @@ def Test_try_catch_throw()
     endtry
   catch /wrong/
     add(l, 'caught')
-  fina
+  finally
     add(l, 'finally')
   endtry
   assert_equal(['1', 'caught', 'finally'], l)
@@ -1004,7 +1004,7 @@ enddef
 def s:ReturnFinally(): string
   try
     return 'intry'
-  finall
+  finally
     g:in_finally = 'finally'
   endtry
   return 'end'
@@ -3365,10 +3365,71 @@ endfunc
 def Run_test_reject_declaration()
   var buf = g:RunVimInTerminal('', {'rows': 6})
   term_sendkeys(buf, ":vim9cmd var x: number\<CR>")
-  g:VerifyScreenDump(buf, 'Test_vim9_reject_declaration', {})
+  g:VerifyScreenDump(buf, 'Test_vim9_reject_declaration_1', {})
+  term_sendkeys(buf, ":\<CR>")
+  term_sendkeys(buf, ":vim9cmd g:foo = 123 | echo g:foo\<CR>")
+  g:VerifyScreenDump(buf, 'Test_vim9_reject_declaration_2', {})
 
   # clean up
   g:StopVimInTerminal(buf)
+enddef
+
+def Test_minimal_command_name_length()
+  var names = [
+       'cons',
+       'brea',
+       'cat',
+       'catc',
+       'con',
+       'cont',
+       'conti',
+       'contin',
+       'continu',
+       'el',
+       'els',
+       'elsei',
+       'endfo',
+       'en',
+       'end',
+       'endi',
+       'endw',
+       'endt',
+       'endtr',
+       'exp',
+       'expo',
+       'expor',
+       'fina',
+       'finall',
+       'fini',
+       'finis',
+       'imp',
+       'impo',
+       'impor',
+       'retu',
+       'retur',
+       'th',
+       'thr',
+       'thro',
+       'wh',
+       'whi',
+       'whil',
+      ]
+  for name in names
+    v9.CheckDefAndScriptFailure([name .. ' '], 'E1065:')
+  endfor
+
+  var lines =<< trim END
+      vim9script
+      def SomeFunc()
+      endd
+  END
+  v9.CheckScriptFailure(lines, 'E1065:')
+  lines =<< trim END
+      vim9script
+      def SomeFunc()
+      endde
+  END
+  v9.CheckScriptFailure(lines, 'E1065:')
 enddef
 
 def Test_unset_any_variable()

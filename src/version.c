@@ -590,11 +590,7 @@ static char *(features[]) =
 #if defined(USE_SYSTEM) && defined(UNIX)
 	"+system()",
 #endif
-#ifdef FEAT_TAG_BINS
 	"+tag_binary",
-#else
-	"-tag_binary",
-#endif
 	"-tag_old_static",
 	"-tag_any_white",
 #ifdef FEAT_TCL
@@ -754,6 +750,42 @@ static char *(features[]) =
 
 static int included_patches[] =
 {   /* Add new patch number below this line */
+/**/
+    4525,
+/**/
+    4524,
+/**/
+    4523,
+/**/
+    4522,
+/**/
+    4521,
+/**/
+    4520,
+/**/
+    4519,
+/**/
+    4518,
+/**/
+    4517,
+/**/
+    4516,
+/**/
+    4515,
+/**/
+    4514,
+/**/
+    4513,
+/**/
+    4512,
+/**/
+    4511,
+/**/
+    4510,
+/**/
+    4509,
+/**/
+    4508,
 /**/
     4507,
 /**/
