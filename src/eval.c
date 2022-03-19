@@ -695,6 +695,7 @@ call_vim_function(
     char_u	*arg;
     char_u	*name;
     char_u	*tofree = NULL;
+    int		ignore_errors;
 
     rettv->v_type = VAR_UNKNOWN;		// clear_tv() uses this
     CLEAR_FIELD(funcexe);
@@ -702,11 +703,17 @@ call_vim_function(
     funcexe.fe_lastline = curwin->w_cursor.lnum;
     funcexe.fe_evaluate = TRUE;
 
-    // The name might be "import.Func" or "Funcref".
+    // The name might be "import.Func" or "Funcref".  We don't know, we need to
+    // ignore errors for an undefined name.  But we do want errors when an
+    // autoload script has errors.  Guess that when there is a dot in the name
+    // showing errors is the right choice.
+    ignore_errors = vim_strchr(func, '.') == NULL;
     arg = func;
-    ++emsg_off;
+    if (ignore_errors)
+	++emsg_off;
     name = deref_function_name(&arg, &tofree, &EVALARG_EVALUATE, FALSE);
-    --emsg_off;
+    if (ignore_errors)
+	--emsg_off;
     if (name == NULL)
 	name = func;
 
@@ -922,15 +929,14 @@ get_lval(
 	if (vim9script)
 	{
 	    // "a: type" is declaring variable "a" with a type, not "a:".
-	    if (p == name + 2 && p[-1] == ':')
+	    // However, "g:[key]" is indexing a dictionary.
+	    if (p == name + 2 && p[-1] == ':' && *p != '[')
 	    {
 		--p;
 		lp->ll_name_end = p;
 	    }
 	    if (*p == ':')
 	    {
-		garray_T    tmp_type_list;
-		garray_T    *type_list;
 		char_u	    *tp = skipwhite(p + 1);
 
 		if (tp == p + 1 && !quiet)
@@ -939,27 +945,19 @@ get_lval(
 		    return NULL;
 		}
 
-		if (SCRIPT_ID_VALID(current_sctx.sc_sid))
-		    type_list = &SCRIPT_ITEM(current_sctx.sc_sid)->sn_type_list;
-		else
+		if (!SCRIPT_ID_VALID(current_sctx.sc_sid))
 		{
-		    // TODO: should we give an error here?
-		    type_list = &tmp_type_list;
-		    ga_init2(type_list, sizeof(type_T), 10);
+		    semsg(_(e_using_type_not_in_script_context_str), p);
+		    return NULL;
 		}
 
 		// parse the type after the name
-		lp->ll_type = parse_type(&tp, type_list, !quiet);
+		lp->ll_type = parse_type(&tp,
+			       &SCRIPT_ITEM(current_sctx.sc_sid)->sn_type_list,
+			       !quiet);
 		if (lp->ll_type == NULL && !quiet)
 		    return NULL;
 		lp->ll_name_end = tp;
-
-		// drop the type when not in a script
-		if (type_list == &tmp_type_list)
-		{
-		    lp->ll_type = NULL;
-		    clear_type_list(type_list);
-		}
 	    }
 	}
     }
@@ -3515,15 +3513,18 @@ handle_predefined(char_u *s, int len, typval_T *rettv)
 		    return OK;
 		}
 		break;
-#ifdef FEAT_JOB_CHANNEL
 	case 8: if (STRNCMP(s, "null_job", 8) == 0)
 		{
+#ifdef FEAT_JOB_CHANNEL
 		    rettv->v_type = VAR_JOB;
 		    rettv->vval.v_job = NULL;
+#else
+		    rettv->v_type = VAR_SPECIAL;
+		    rettv->vval.v_number = VVAL_NULL;
+#endif
 		    return OK;
 		}
 		break;
-#endif
 	case 9:
 		if (STRNCMP(s, "null_", 5) != 0)
 		    break;
@@ -3554,14 +3555,17 @@ handle_predefined(char_u *s, int len, typval_T *rettv)
 		}
 		break;
 	case 12:
-#ifdef FEAT_JOB_CHANNEL
 		if (STRNCMP(s, "null_channel", 12) == 0)
 		{
+#ifdef FEAT_JOB_CHANNEL
 		    rettv->v_type = VAR_CHANNEL;
 		    rettv->vval.v_channel = NULL;
+#else
+		    rettv->v_type = VAR_SPECIAL;
+		    rettv->vval.v_number = VVAL_NULL;
+#endif
 		    return OK;
 		}
-#endif
 		if (STRNCMP(s, "null_partial", 12) == 0)
 		{
 		    rettv->v_type = VAR_PARTIAL;
@@ -3788,8 +3792,8 @@ eval7(
 			// This is recognized in compile_return().
 			if (ufunc->uf_ret_type->tt_type == VAR_VOID)
 			    ufunc->uf_ret_type = &t_unknown;
-			if (compile_def_function(ufunc,
-				     FALSE, COMPILE_TYPE(ufunc), NULL) == FAIL)
+			if (compile_def_function(ufunc, FALSE,
+					get_compile_type(ufunc), NULL) == FAIL)
 			{
 			    clear_tv(rettv);
 			    ret = FAIL;

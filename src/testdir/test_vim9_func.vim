@@ -535,6 +535,30 @@ def Test_return_list_any()
   v9.CheckScriptSuccess(lines)
 enddef
 
+def Test_return_any_two_types()
+  var lines =<< trim END
+      vim9script
+
+      def G(Fn: func(string): any)
+        g:result = Fn("hello")
+      enddef
+
+      def F(a: number, b: string): any
+        echo b
+        if a > 0
+          return 1
+        else
+          return []
+        endif
+      enddef
+
+      G(function(F, [1]))
+  END
+  v9.CheckScriptSuccess(lines)
+  assert_equal(1, g:result)
+  unlet g:result
+enddef
+
 func s:Increment()
   let g:counter += 1
 endfunc
@@ -1455,12 +1479,12 @@ def Test_pass_legacy_lambda_to_def_func()
 
   lines =<< trim END
       vim9script
-      def g:TestFunc(f: func)
+      def g:TestFunc(F: func)
       enddef
       legacy call g:TestFunc({-> 0})
       delfunc g:TestFunc
 
-      def g:TestFunc(f: func(number))
+      def g:TestFunc(F: func(number))
       enddef
       legacy call g:TestFunc({nr -> 0})
       delfunc g:TestFunc
@@ -2975,6 +2999,24 @@ def Test_lambda_arg_shadows_func()
   assert_equal([42], g:Shadowed())
 enddef
 
+def Test_compiling_referenced_func_no_shadow()
+  var lines =<< trim END
+      vim9script
+
+      def InitializeReply(lspserver: dict<any>)
+      enddef
+
+      def ProcessReply(lspserver: dict<any>)
+        var lsp_reply_handlers: dict<func> =
+          { 'initialize': InitializeReply }
+        lsp_reply_handlers['initialize'](lspserver)
+      enddef
+
+      call ProcessReply({})
+  END
+  v9.CheckScriptSuccess(lines)
+enddef
+
 def s:Line_continuation_in_def(dir: string = ''): string
   var path: string = empty(dir)
           \ ? 'empty'
@@ -3746,8 +3788,8 @@ def Test_check_func_arg_types()
         return x + 1
       enddef
 
-      def G(g: func): dict<func>
-        return {f: g}
+      def G(Fg: func): dict<func>
+        return {f: Fg}
       enddef
 
       def H(d: dict<func>): string
@@ -3757,6 +3799,8 @@ def Test_check_func_arg_types()
 
   v9.CheckScriptSuccess(lines + ['echo H(G(F1))'])
   v9.CheckScriptFailure(lines + ['echo H(G(F2))'], 'E1013:')
+
+  v9.CheckScriptFailure(lines + ['def SomeFunc(ff: func)', 'enddef'], 'E704:')
 enddef
 
 def Test_call_func_with_null()
