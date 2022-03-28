@@ -162,7 +162,7 @@ func Test_cursorline_screenline()
   call term_sendkeys(buf, "gj")
   call VerifyScreenDump(buf, 'Test_'. filename. '_12', {})
   if exists("+foldcolumn") && exists("+signcolumn") && exists("+breakindent")
-    " test with set foldcolumn signcoloumn and breakindent
+    " test with set foldcolumn signcolumn and breakindent
     call term_sendkeys(buf, "gg0")
     call term_sendkeys(buf, ":set breakindent foldcolumn=2 signcolumn=yes\<cr>")
     call VerifyScreenDump(buf, 'Test_'. filename. '_13', {})
@@ -270,6 +270,27 @@ func Test_cursorline_callback()
 
   call StopVimInTerminal(buf)
   call delete('Xcul_timer')
+endfunc
+
+func Test_cursorline_screenline_update()
+  CheckScreendump
+
+  let lines =<< trim END
+      call setline(1, repeat('xyz ', 30))
+      set cursorline cursorlineopt=screenline
+      inoremap <F2> <Cmd>call cursor(1, 1)<CR>
+  END
+  call writefile(lines, 'Xcul_screenline')
+
+  let buf = RunVimInTerminal('-S Xcul_screenline', #{rows: 8})
+  call term_sendkeys(buf, "A")
+  call VerifyScreenDump(buf, 'Test_cursorline_screenline_1', {})
+  call term_sendkeys(buf, "\<F2>")
+  call VerifyScreenDump(buf, 'Test_cursorline_screenline_2', {})
+  call term_sendkeys(buf, "\<Esc>")
+
+  call StopVimInTerminal(buf)
+  call delete('Xcul_screenline')
 endfunc
 
 

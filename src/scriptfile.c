@@ -23,7 +23,7 @@ static garray_T		ga_loaded = {0, 0, sizeof(char_u *), 4, NULL};
 static int		last_current_SID_seq = 0;
 #endif
 
-static int do_source_ext(char_u *fname, int check_other, int is_vimrc, int *ret_sid, exarg_T *eap);
+static int do_source_ext(char_u *fname, int check_other, int is_vimrc, int *ret_sid, exarg_T *eap, int clearvars);
 
 /*
  * Initialize the execution stack.
@@ -1084,6 +1084,20 @@ ExpandPackAddDir(
     static void
 cmd_source(char_u *fname, exarg_T *eap)
 {
+    int clearvars = FALSE;
+
+    if (*fname != NUL && STRNCMP(fname, "++clear", 7) == 0)
+    {
+	// ++clear argument is supplied
+	clearvars = TRUE;
+	fname = fname + 7;
+	if (*fname != NUL)
+	{
+	    semsg(_(e_invalid_argument_str), eap->arg);
+	    return;
+	}
+    }
+
     if (*fname != NUL && eap != NULL && eap->addr_count > 0)
     {
 	// if a filename is specified to :source, then a range is not allowed
@@ -1098,7 +1112,7 @@ cmd_source(char_u *fname, exarg_T *eap)
 	    emsg(_(e_argument_required));
 	else
 	    // source ex commands from the current buffer
-	    do_source_ext(NULL, FALSE, FALSE, NULL, eap);
+	    do_source_ext(NULL, FALSE, FALSE, NULL, eap, clearvars);
     }
     else if (eap != NULL && eap->forceit)
 	// ":source!": read Normal mode commands
@@ -1292,6 +1306,10 @@ errret:
  * The 'eap' argument is used when sourcing lines from a buffer instead of a
  * file.
  *
+ * If 'clearvars' is TRUE, then for scripts which are loaded more than
+ * once, clear all the functions and variables previously defined in that
+ * script.
+ *
  * This function may be called recursively!
  *
  * Return FAIL if file could not be opened, OK otherwise.
@@ -1303,7 +1321,8 @@ do_source_ext(
     int		check_other,	    // check for .vimrc and _vimrc
     int		is_vimrc,	    // DOSO_ value
     int		*ret_sid UNUSED,
-    exarg_T	*eap)
+    exarg_T	*eap,
+    int		clearvars UNUSED)
 {
     source_cookie_T	    cookie;
     char_u		    *p;
@@ -1527,20 +1546,25 @@ do_source_ext(
 	{
 	    si->sn_state = SN_STATE_RELOAD;
 
-	    // Script-local variables remain but "const" can be set again.
-	    // In Vim9 script variables will be cleared when "vim9script" is
-	    // encountered without the "noclear" argument.
-	    ht = &SCRIPT_VARS(sid);
-	    todo = (int)ht->ht_used;
-	    for (hi = ht->ht_array; todo > 0; ++hi)
-		if (!HASHITEM_EMPTY(hi))
-		{
-		    --todo;
-		    di = HI2DI(hi);
-		    di->di_flags |= DI_FLAGS_RELOAD;
-		}
-	    // imports can be redefined once
-	    mark_imports_for_reload(sid);
+	    if (!clearvars)
+	    {
+		// Script-local variables remain but "const" can be set again.
+		// In Vim9 script variables will be cleared when "vim9script"
+		// is encountered without the "noclear" argument.
+		ht = &SCRIPT_VARS(sid);
+		todo = (int)ht->ht_used;
+		for (hi = ht->ht_array; todo > 0; ++hi)
+		    if (!HASHITEM_EMPTY(hi))
+		    {
+			--todo;
+			di = HI2DI(hi);
+			di->di_flags |= DI_FLAGS_RELOAD;
+		    }
+		// imports can be redefined once
+		mark_imports_for_reload(sid);
+	    }
+	    else
+		clear_vim9_scriptlocal_vars(sid);
 
 	    // reset version, "vim9script" may have been added or removed.
 	    si->sn_version = 1;
@@ -1731,7 +1755,7 @@ do_source(
     int		is_vimrc,	    // DOSO_ value
     int		*ret_sid UNUSED)
 {
-    return do_source_ext(fname, check_other, is_vimrc, ret_sid, NULL);
+    return do_source_ext(fname, check_other, is_vimrc, ret_sid, NULL, FALSE);
 }
 
 
@@ -1745,14 +1769,20 @@ ex_scriptnames(exarg_T *eap)
 {
     int i;
 
-    if (eap->addr_count > 0)
+    if (eap->addr_count > 0 || *eap->arg != NUL)
     {
 	// :script {scriptId}: edit the script
-	if (!SCRIPT_ID_VALID(eap->line2))
+	if (eap->addr_count > 0 && !SCRIPT_ID_VALID(eap->line2))
 	    emsg(_(e_invalid_argument));
 	else
 	{
-	    eap->arg = SCRIPT_ITEM(eap->line2)->sn_name;
+	    if (eap->addr_count > 0)
+		eap->arg = SCRIPT_ITEM(eap->line2)->sn_name;
+	    else
+	    {
+		expand_env(eap->arg, NameBuff, MAXPATHL);
+		eap->arg = NameBuff;
+	    }
 	    do_exedit(eap, NULL);
 	}
 	return;

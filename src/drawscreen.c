@@ -1468,9 +1468,6 @@ win_update(win_T *wp)
 # define DID_FOLD 3	// updated a folded line
     int		did_update = DID_NONE;
     linenr_T	syntax_last_parsed = 0;		// last parsed text line
-    // remember the current w_last_cursorline, it changes when drawing the new
-    // cursor line
-    linenr_T	last_cursorline = wp->w_last_cursorline;
 #endif
     linenr_T	mod_top = 0;
     linenr_T	mod_bot = 0;
@@ -1733,7 +1730,7 @@ win_update(win_T *wp)
 	if (mod_top != 0
 		&& wp->w_topline == mod_top
 		&& (!wp->w_lines[0].wl_valid
-		    || wp->w_topline <= wp->w_lines[0].wl_lnum))
+		    || wp->w_topline == wp->w_lines[0].wl_lnum))
 	{
 	    // w_topline is the first changed line and window is not scrolled,
 	    // the scrolling from changed lines will be done further down.
@@ -1950,9 +1947,8 @@ win_update(win_T *wp)
 
 	if (VIsual_active)
 	{
-	    if (VIsual_active
-		    && (VIsual_mode != wp->w_old_visual_mode
-			|| type == INVERTED_ALL))
+	    if (VIsual_mode != wp->w_old_visual_mode
+		|| type == INVERTED_ALL)
 	    {
 		// If the type of Visual selection changed, redraw the whole
 		// selection.  Also when the ownership of the X selection is
@@ -2246,8 +2242,8 @@ win_update(win_T *wp)
 #endif
 				))))
 #ifdef FEAT_SYN_HL
-		|| (wp->w_p_cul && (lnum == wp->w_cursor.lnum
-						   || lnum == last_cursorline))
+		|| (wp->w_p_cul && lnum == wp->w_cursor.lnum)
+		|| lnum == wp->w_last_cursorline
 #endif
 				)
 	{
@@ -2551,6 +2547,12 @@ win_update(win_T *wp)
     }
 
     // End of loop over all window lines.
+
+#ifdef FEAT_SYN_HL
+    // Now that the window has been redrawn with the old and new cursor line,
+    // update w_last_cursorline.
+    wp->w_last_cursorline = wp->w_p_cul ? wp->w_cursor.lnum : 0;
+#endif
 
 #ifdef FEAT_VTP
     // Rewrite the character at the end of the screen line.
@@ -3030,23 +3032,6 @@ redraw_asap(int type)
 }
 #endif
 
-#if defined(FEAT_SYN_HL) || defined(PROTO)
-/*
- * Check if the cursor moved and 'cursorline' is set.  Mark for a VALID redraw
- * if needed.
- */
-    void
-check_redraw_cursorline(void)
-{
-    // When 'cursorlineopt' is "screenline" need to redraw always.
-    if (curwin->w_p_cul
-	    && (curwin->w_last_cursorline != curwin->w_cursor.lnum
-		|| (curwin->w_p_culopt_flags & CULOPT_SCRLINE))
-	    && !char_avail())
-	redraw_later(VALID);
-}
-#endif
-
 /*
  * Invoked after an asynchronous callback is called.
  * If an echo command was used the cursor needs to be put back where
@@ -3091,10 +3076,9 @@ redraw_after_callback(int call_update_screen, int do_message)
     }
     else if (State & (NORMAL | INSERT | TERMINAL))
     {
-#ifdef FEAT_SYN_HL
-	// might need to update for 'cursorline'
-	check_redraw_cursorline();
-#endif
+	update_topline();
+	validate_cursor();
+
 	// keep the command line if possible
 	update_screen(VALID_NO_UPDATE);
 	setcursor();

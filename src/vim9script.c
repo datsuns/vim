@@ -59,6 +59,24 @@ current_script_is_vim9(void)
 }
 #endif
 
+#ifdef FEAT_EVAL
+/*
+ * Clear Vim9 script-local variables and functions.
+ */
+    void
+clear_vim9_scriptlocal_vars(int sid)
+{
+    hashtab_T	*ht = &SCRIPT_VARS(sid);
+
+    hashtab_free_contents(ht);
+    hash_init(ht);
+    delete_script_functions(sid);
+
+    // old imports and script variables are no longer valid
+    free_imports_and_script_vars(sid);
+}
+#endif
+
 /*
  * ":vim9script".
  */
@@ -103,18 +121,9 @@ ex_vim9script(exarg_T *eap UNUSED)
     }
 
     if (si->sn_state == SN_STATE_RELOAD && !found_noclear)
-    {
-	hashtab_T	*ht = &SCRIPT_VARS(sid);
-
 	// Reloading a script without the "noclear" argument: clear
 	// script-local variables and functions.
-	hashtab_free_contents(ht);
-	hash_init(ht);
-	delete_script_functions(sid);
-
-	// old imports and script variables are no longer valid
-	free_imports_and_script_vars(sid);
-    }
+	clear_vim9_scriptlocal_vars(sid);
     si->sn_state = SN_STATE_HAD_COMMAND;
 
     // Store the prefix with the script, it is used to find exported functions.
@@ -813,7 +822,7 @@ vim9_declare_scriptvar(exarg_T *eap, char_u *arg)
 	init_tv.v_type = VAR_NUMBER;
     else
 	init_tv.v_type = type->tt_type;
-    set_var_const(name, 0, type, &init_tv, FALSE, 0, 0);
+    set_var_const(name, 0, type, &init_tv, FALSE, ASSIGN_INIT, 0);
 
     vim_free(name);
     return p;
@@ -916,6 +925,13 @@ update_vim9_script_var(
 	if (*type == NULL)
 	    *type = typval2type(tv, get_copyID(), &si->sn_type_list,
 					       do_member ? TVTT_DO_MEMBER : 0);
+	else if ((flags & ASSIGN_INIT) == 0
+		&& (*type)->tt_type == VAR_BLOB && tv->v_type == VAR_BLOB
+						    && tv->vval.v_blob == NULL)
+	{
+	    // "var b: blob = null_blob" has a different type.
+	    *type = &t_blob_null;
+	}
 	if (sv->sv_type_allocated)
 	    free_type(sv->sv_type);
 	if (*type != NULL && ((*type)->tt_type == VAR_FUNC

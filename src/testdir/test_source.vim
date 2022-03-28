@@ -579,6 +579,13 @@ func Test_source_buffer_vim9()
   call assert_equal(#{pi: 3.12, e: 2.71828}, g:Math)
   call assert_equal(['vim', 'nano'], g:Editors)
 
+  " '<,'> range before the cmd modifier works
+  unlet g:Math
+  unlet g:Editors
+  exe "normal 6GV4j:vim9cmd source\<CR>"
+  call assert_equal(['vim', 'nano'], g:Editors)
+  unlet g:Editors
+
   " test for using try/catch
   %d _
   let lines =<< trim END
@@ -607,6 +614,34 @@ func Test_source_buffer_vim9()
   call setline(1, lines)
   source
   call assert_equal('red', g:Color)
+
+  " test for ++clear argument to clear all the functions/variables
+  %d _
+  let lines =<< trim END
+     g:ScriptVarFound = exists("color")
+     g:MyFuncFound = exists('*Myfunc')
+     if g:MyFuncFound
+       finish
+     endif
+     var color = 'blue'
+     def Myfunc()
+     enddef
+  END
+  call setline(1, lines)
+  vim9cmd source
+  call assert_false(g:MyFuncFound)
+  call assert_false(g:ScriptVarFound)
+  vim9cmd source
+  call assert_true(g:MyFuncFound)
+  call assert_true(g:ScriptVarFound)
+  vim9cmd source ++clear
+  call assert_false(g:MyFuncFound)
+  call assert_false(g:ScriptVarFound)
+  vim9cmd source ++clear
+  call assert_false(g:MyFuncFound)
+  call assert_false(g:ScriptVarFound)
+  call assert_fails('vim9cmd source ++clearx', 'E475:')
+  call assert_fails('vim9cmd source ++abcde', 'E484:')
 
   %bw!
 endfunc
