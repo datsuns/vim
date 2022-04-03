@@ -751,6 +751,30 @@ static char *(features[]) =
 static int included_patches[] =
 {   /* Add new patch number below this line */
 /**/
+    4681,
+/**/
+    4680,
+/**/
+    4679,
+/**/
+    4678,
+/**/
+    4677,
+/**/
+    4676,
+/**/
+    4675,
+/**/
+    4674,
+/**/
+    4673,
+/**/
+    4672,
+/**/
+    4671,
+/**/
+    4670,
+/**/
     4669,
 /**/
     4668,
@@ -10440,22 +10464,14 @@ list_version(void)
 #  ifdef FEAT_GUI_MOTIF
     msg_puts(_("with X11-Motif GUI."));
 #  else
-#   ifdef FEAT_GUI_ATHENA
-#    ifdef FEAT_GUI_NEXTAW
-    msg_puts(_("with X11-neXtaw GUI."));
-#    else
-    msg_puts(_("with X11-Athena GUI."));
-#    endif
-#   else
-#    ifdef FEAT_GUI_HAIKU
+#   ifdef FEAT_GUI_HAIKU
     msg_puts(_("with Haiku GUI."));
-#    else
-#     ifdef FEAT_GUI_PHOTON
+#   else
+#    ifdef FEAT_GUI_PHOTON
     msg_puts(_("with Photon GUI."));
-#     else
-#      if defined(MSWIN)
+#    else
+#     if defined(MSWIN)
     msg_puts(_("with GUI."));
-#      endif
 #     endif
 #    endif
 #   endif
