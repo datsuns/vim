@@ -3755,6 +3755,8 @@ getcmdkeycmd(
     int		c2;
     int		cmod = 0;
     int		aborted = FALSE;
+    int		first = TRUE;
+    int		got_ctrl_o = FALSE;
 
     ga_init2(&line_ga, 1, 32);
 
@@ -3781,6 +3783,15 @@ getcmdkeycmd(
 
 	// Get one character at a time.
 	c1 = vgetorpeek(TRUE);
+
+	// do not use Ctrl_O at the start, stuff it back later
+	if (first && c1 == Ctrl_O)
+	{
+	    got_ctrl_o = TRUE;
+	    first = FALSE;
+	    continue;
+	}
+	first = FALSE;
 
 	// Get two extra bytes for special keys
 	if (c1 == K_SPECIAL)
@@ -3833,6 +3844,8 @@ getcmdkeycmd(
     }
 
     no_mapping--;
+    if (got_ctrl_o)
+	stuffcharReadbuff(Ctrl_O);
 
     if (aborted)
 	ga_clear(&line_ga);
