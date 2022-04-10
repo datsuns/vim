@@ -2881,6 +2881,7 @@ struct file_buffer
     int		b_p_cin;	// 'cindent'
     char_u	*b_p_cino;	// 'cinoptions'
     char_u	*b_p_cink;	// 'cinkeys'
+    char_u	*b_p_cinsd;	// 'cinscopedecls'
 #endif
 #if defined(FEAT_CINDENT) || defined(FEAT_SMARTINDENT)
     char_u	*b_p_cinw;	// 'cinwords'
@@ -3328,6 +3329,7 @@ typedef struct
 			    // found match (may continue in next line)
     buf_T	*buf;	    // the buffer to search for a match
     linenr_T	lnum;	    // the line to search for a match
+    linenr_T	lines;	    // number of lines starting from lnum
     int		attr;	    // attributes to be used for a match
     int		attr_cur;   // attributes currently active in win_line()
     linenr_T	first_lnum; // first lnum to search for multi-line pat
@@ -3508,6 +3510,12 @@ struct window_S
     int		w_filler_rows;	    // number of filler rows at the end of the
 				    // window
 #endif
+
+    // four fields that are only used when there is a WinScrolled autocommand
+    linenr_T	w_last_topline;	    // last known value for w_topline
+    colnr_T	w_last_leftcol;	    // last known value for w_leftcol
+    int		w_last_width;	    // last known value for w_width
+    int		w_last_height;	    // last known value for w_height
 
     /*
      * Layout of the window in the screen.
@@ -4301,6 +4309,7 @@ typedef struct {
     int		save_finish_op;
     int		save_opcount;
     int		save_reg_executing;
+    int		save_pending_end_reg_executing;
     int		save_script_version;
     tasave_T	tabuf;
 } save_state_T;

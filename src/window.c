@@ -2779,9 +2779,36 @@ trigger_winclosed(win_T *win)
     if (recursive)
 	return;
     recursive = TRUE;
-    vim_snprintf((char *)winid, sizeof(winid), "%i", win->w_id);
+    vim_snprintf((char *)winid, sizeof(winid), "%d", win->w_id);
     apply_autocmds(EVENT_WINCLOSED, winid, winid, FALSE, win->w_buffer);
     recursive = FALSE;
+}
+
+    void
+may_trigger_winscrolled(win_T *wp)
+{
+    static int	    recursive = FALSE;
+    char_u	    winid[NUMBUFLEN];
+
+    if (recursive || !has_winscrolled())
+	return;
+
+    if (wp->w_last_topline != wp->w_topline
+	    || wp->w_last_leftcol != wp->w_leftcol
+	    || wp->w_last_width != wp->w_width
+	    || wp->w_last_height != wp->w_height)
+    {
+	vim_snprintf((char *)winid, sizeof(winid), "%d", wp->w_id);
+
+	recursive = TRUE;
+	apply_autocmds(EVENT_WINSCROLLED, winid, winid, FALSE, wp->w_buffer);
+	recursive = FALSE;
+
+	wp->w_last_topline = wp->w_topline;
+	wp->w_last_leftcol = wp->w_leftcol;
+	wp->w_last_width = wp->w_width;
+	wp->w_last_height = wp->w_height;
+    }
 }
 
 /*
@@ -2814,7 +2841,7 @@ win_close_othertab(win_T *win, int free_buf, tabpage_T *tp)
     if (win->w_buffer != NULL)
 	// Close the link to the buffer.
 	close_buffer(win, win->w_buffer, free_buf ? DOBUF_UNLOAD : 0,
-								 FALSE, FALSE);
+								 FALSE, TRUE);
 
     // Careful: Autocommands may have closed the tab page or made it the
     // current tab page.
