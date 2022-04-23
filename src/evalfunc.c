@@ -1660,7 +1660,7 @@ static funcentry_T global_functions[] =
     {"ch_readraw",	1, 2, FEARG_1,	    arg2_chan_or_job_dict,
 			ret_string,	    JOB_FUNC(f_ch_readraw)},
     {"ch_sendexpr",	2, 3, FEARG_1,	    arg23_chanexpr,
-			ret_void,	    JOB_FUNC(f_ch_sendexpr)},
+			ret_any,	    JOB_FUNC(f_ch_sendexpr)},
     {"ch_sendraw",	2, 3, FEARG_1,	    arg23_chanraw,
 			ret_void,	    JOB_FUNC(f_ch_sendraw)},
     {"ch_setoptions",	2, 2, FEARG_1,	    arg2_chan_or_job_dict,
@@ -3673,8 +3673,10 @@ f_environ(typval_T *argvars UNUSED, typval_T *rettv)
 #if !defined(AMIGA)
     int			i = 0;
     char_u		*entry, *value;
-# ifdef MSWIN
+# if defined (MSWIN)
+#  if !defined(_UCRT)
     extern wchar_t	**_wenviron;
+#  endif
 # else
     extern char		**environ;
 # endif

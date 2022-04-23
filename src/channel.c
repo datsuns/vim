@@ -2031,26 +2031,30 @@ channel_consume(channel_T *channel, ch_part_T part, int len)
  * Collapses the first and second buffer for "channel"/"part".
  * Returns FAIL if that is not possible.
  * When "want_nl" is TRUE collapse more buffers until a NL is found.
+ * When the channel part mode is "lsp", collapse all the buffers as the http
+ * header and the JSON content can be present in multiple buffers.
  */
     int
 channel_collapse(channel_T *channel, ch_part_T part, int want_nl)
 {
-    readq_T *head = &channel->ch_part[part].ch_head;
-    readq_T *node = head->rq_next;
-    readq_T *last_node;
-    readq_T *n;
-    char_u  *newbuf;
-    char_u  *p;
-    long_u len;
+    ch_mode_T	mode = channel->ch_part[part].ch_mode;
+    readq_T	*head = &channel->ch_part[part].ch_head;
+    readq_T	*node = head->rq_next;
+    readq_T	*last_node;
+    readq_T	*n;
+    char_u	*newbuf;
+    char_u	*p;
+    long_u	len;
 
     if (node == NULL || node->rq_next == NULL)
 	return FAIL;
 
     last_node = node->rq_next;
     len = node->rq_buflen + last_node->rq_buflen;
-    if (want_nl)
+    if (want_nl || mode == MODE_LSP)
 	while (last_node->rq_next != NULL
-		&& channel_first_nl(last_node) == NULL)
+		&& (mode == MODE_LSP
+		    || channel_first_nl(last_node) == NULL))
 	{
 	    last_node = last_node->rq_next;
 	    len += last_node->rq_buflen;
@@ -3006,6 +3010,12 @@ may_invoke_callback(channel_T *channel, ch_part_T part)
 	// Get any json message in the queue.
 	if (channel_get_json(channel, part, -1, FALSE, &listtv) == FAIL)
 	{
+	    if (ch_mode == MODE_LSP)
+		// In the "lsp" mode, the http header and the json payload may
+		// be received in multiple messages. So concatenate all the
+		// received messages.
+		(void)channel_collapse(channel, part, FALSE);
+
 	    // Parse readahead, return when there is still no message.
 	    channel_parse_json(channel, part);
 	    if (channel_get_json(channel, part, -1, FALSE, &listtv) == FAIL)
@@ -3974,6 +3984,7 @@ channel_read_json_block(
     sock_T	fd;
     int		timeout;
     chanpart_T	*chanpart = &channel->ch_part[part];
+    ch_mode_T	mode = channel->ch_part[part].ch_mode;
     int		retval = FAIL;
 
     ch_log(channel, "Blocking read JSON for id %d", id);
@@ -3984,6 +3995,12 @@ channel_read_json_block(
 
     for (;;)
     {
+	if (mode == MODE_LSP)
+	    // In the "lsp" mode, the http header and the json payload may be
+	    // received in multiple messages. So concatenate all the received
+	    // messages.
+	    (void)channel_collapse(channel, part, FALSE);
+
 	more = channel_parse_json(channel, part);
 
 	// search for message "id"
@@ -4520,6 +4537,7 @@ ch_expr_common(typval_T *argvars, typval_T *rettv, int eval)
     ch_part_T	part_read;
     jobopt_T    opt;
     int		timeout;
+    int		callback_present = FALSE;
 
     // return an empty string by default
     rettv->v_type = VAR_STRING;
@@ -4546,7 +4564,10 @@ ch_expr_common(typval_T *argvars, typval_T *rettv, int eval)
     {
 	dict_T		*d;
 	dictitem_T	*di;
-	int		callback_present = FALSE;
+
+	// return an empty dict by default
+	if (rettv_dict_alloc(rettv) == FAIL)
+	    return;
 
 	if (argvars[1].v_type != VAR_DICT)
 	{
@@ -4629,6 +4650,14 @@ ch_expr_common(typval_T *argvars, typval_T *rettv, int eval)
 	}
     }
     free_job_options(&opt);
+    if (ch_mode == MODE_LSP && !eval && callback_present)
+    {
+	// if ch_sendexpr() is used to send a LSP message and a callback
+	// function is specified, then return the generated identifier for the
+	// message.  The user can use this to cancel the request (if needed).
+	if (rettv->vval.v_dict != NULL)
+	    dict_add_number(rettv->vval.v_dict, "id", id);
+    }
 }
 
 /*
