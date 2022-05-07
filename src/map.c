@@ -189,17 +189,7 @@ showmap(
     if (*mp->m_str == NUL)
 	msg_puts_attr("<Nop>", HL_ATTR(HLF_8));
     else
-    {
-	// Remove escaping of CSI, because "m_str" is in a format to be used
-	// as typeahead.
-	char_u *s = vim_strsave(mp->m_str);
-	if (s != NULL)
-	{
-	    vim_unescape_csi(s);
-	    msg_outtrans_special(s, FALSE, 0);
-	    vim_free(s);
-	}
-    }
+	msg_outtrans_special(mp->m_str, FALSE, 0);
 #ifdef FEAT_EVAL
     if (p_verbose > 0)
 	last_set_msg(mp->m_script_ctx);
@@ -508,6 +498,7 @@ do_map(
     {
 	int	did_it = FALSE;
 	int	did_local = FALSE;
+	int	keyround1_simplified = keyround == 1 && did_simplify;
 	int	round;
 	int	hash;
 	int	new_hash;
@@ -725,6 +716,10 @@ do_map(
 				    mpp = &(mp->m_next);
 				    continue;
 				}
+				// In keyround for simplified keys, don't unmap
+				// a mapping without m_simplified flag.
+				if (keyround1_simplified && !mp->m_simplified)
+				    break;
 				// We reset the indicated mode bits. If nothing
 				// is left the entry is deleted below.
 				mp->m_mode &= ~mode;
@@ -776,8 +771,7 @@ do_map(
 				    mp->m_nowait = nowait;
 				    mp->m_silent = silent;
 				    mp->m_mode = mode;
-				    mp->m_simplified =
-						 did_simplify && keyround == 1;
+				    mp->m_simplified = keyround1_simplified;
 #ifdef FEAT_EVAL
 				    mp->m_expr = expr;
 				    mp->m_script_ctx = current_sctx;
@@ -814,7 +808,10 @@ do_map(
 	{
 	    // delete entry
 	    if (!did_it)
-		retval = 2;	// no match
+	    {
+		if (!keyround1_simplified)
+		    retval = 2;		// no match
+	    }
 	    else if (*keys == Ctrl_C)
 	    {
 		// If CTRL-C has been unmapped, reuse it for Interrupting.
@@ -848,7 +845,7 @@ do_map(
 #ifdef FEAT_EVAL
 		    expr, /* sid */ -1, /* scriptversion */ 0, /* lnum */ 0,
 #endif
-		    did_simplify && keyround == 1) == FAIL)
+		    keyround1_simplified) == FAIL)
 	{
 	    retval = 4;	    // no mem
 	    goto theend;
@@ -2268,6 +2265,44 @@ check_map(
     return NULL;
 }
 
+/*
+ * Fill in the empty dictionary with items as defined by maparg builtin.
+ */
+    static void
+mapblock2dict(
+	mapblock_T  *mp,
+	dict_T	    *dict,
+	char_u	    *lhsrawalt,	    // may be NULL
+	int	    buffer_local,   // false if not buffer local mapping
+	int	    abbr)	    // true if abbreviation
+{
+    char_u	    *lhs = str2special_save(mp->m_keys, TRUE);
+    char_u	    *mapmode = map_mode_to_chars(mp->m_mode);
+
+    dict_add_string(dict, "lhs", lhs);
+    vim_free(lhs);
+    dict_add_string(dict, "lhsraw", mp->m_keys);
+    if (lhsrawalt)
+	// Also add the value for the simplified entry.
+	dict_add_string(dict, "lhsrawalt", lhsrawalt);
+    dict_add_string(dict, "rhs", mp->m_orig_str);
+    dict_add_number(dict, "noremap", mp->m_noremap ? 1L : 0L);
+    dict_add_number(dict, "script", mp->m_noremap == REMAP_SCRIPT
+		    ? 1L : 0L);
+    dict_add_number(dict, "expr", mp->m_expr ? 1L : 0L);
+    dict_add_number(dict, "silent", mp->m_silent ? 1L : 0L);
+    dict_add_number(dict, "sid", (long)mp->m_script_ctx.sc_sid);
+    dict_add_number(dict, "scriptversion",
+		    (long)mp->m_script_ctx.sc_version);
+    dict_add_number(dict, "lnum", (long)mp->m_script_ctx.sc_lnum);
+    dict_add_number(dict, "buffer", (long)buffer_local);
+    dict_add_number(dict, "nowait", mp->m_nowait ? 1L : 0L);
+    dict_add_string(dict, "mode", mapmode);
+    dict_add_number(dict, "abbr", abbr ? 1L : 0L);
+
+    vim_free(mapmode);
+}
+
     static void
 get_maparg(typval_T *argvars, typval_T *rettv, int exact)
 {
@@ -2282,8 +2317,7 @@ get_maparg(typval_T *argvars, typval_T *rettv, int exact)
     int		mode;
     int		abbr = FALSE;
     int		get_dict = FALSE;
-    mapblock_T	*mp;
-    mapblock_T	*mp_simplified = NULL;
+    mapblock_T	*mp = NULL;
     int		buffer_local;
     int		flags = REPTERM_FROM_PART | REPTERM_DO_LT;
 
@@ -2319,8 +2353,6 @@ get_maparg(typval_T *argvars, typval_T *rettv, int exact)
     {
 	// When the lhs is being simplified the not-simplified keys are
 	// preferred for printing, like in do_map().
-	// The "rhs" and "buffer_local" values are not expected to change.
-	mp_simplified = mp;
 	(void)replace_termcodes(keys, &alt_keys_buf,
 					flags | REPTERM_NO_SIMPLIFY, NULL);
 	rhs = check_map(alt_keys_buf, mode, exact, FALSE, abbr, &mp,
@@ -2340,37 +2372,81 @@ get_maparg(typval_T *argvars, typval_T *rettv, int exact)
 
     }
     else if (rettv_dict_alloc(rettv) != FAIL && rhs != NULL)
-    {
-	// Return a dictionary.
-	char_u	    *lhs = str2special_save(mp->m_keys, TRUE);
-	char_u	    *mapmode = map_mode_to_chars(mp->m_mode);
-	dict_T	    *dict = rettv->vval.v_dict;
-
-	dict_add_string(dict, "lhs", lhs);
-	vim_free(lhs);
-	dict_add_string(dict, "lhsraw", mp->m_keys);
-	if (did_simplify)
-	    // Also add the value for the simplified entry.
-	    dict_add_string(dict, "lhsrawalt", mp_simplified->m_keys);
-	dict_add_string(dict, "rhs", mp->m_orig_str);
-	dict_add_number(dict, "noremap", mp->m_noremap ? 1L : 0L);
-	dict_add_number(dict, "script", mp->m_noremap == REMAP_SCRIPT
-								    ? 1L : 0L);
-	dict_add_number(dict, "expr", mp->m_expr ? 1L : 0L);
-	dict_add_number(dict, "silent", mp->m_silent ? 1L : 0L);
-	dict_add_number(dict, "sid", (long)mp->m_script_ctx.sc_sid);
-	dict_add_number(dict, "scriptversion",
-					    (long)mp->m_script_ctx.sc_version);
-	dict_add_number(dict, "lnum", (long)mp->m_script_ctx.sc_lnum);
-	dict_add_number(dict, "buffer", (long)buffer_local);
-	dict_add_number(dict, "nowait", mp->m_nowait ? 1L : 0L);
-	dict_add_string(dict, "mode", mapmode);
-
-	vim_free(mapmode);
-    }
+	mapblock2dict(mp, rettv->vval.v_dict,
+			  did_simplify ? keys_simplified : NULL,
+			  buffer_local, abbr);
 
     vim_free(keys_buf);
     vim_free(alt_keys_buf);
+}
+
+/*
+ * "maplist()" function
+ */
+    void
+f_maplist(typval_T *argvars UNUSED, typval_T *rettv)
+{
+    dict_T	*d;
+    mapblock_T	*mp;
+    int		buffer_local;
+    char_u	*keys_buf;
+    int		did_simplify;
+    int		hash;
+    char_u	*lhs;
+    const int	flags = REPTERM_FROM_PART | REPTERM_DO_LT;
+    int		abbr = FALSE;
+
+    if (in_vim9script() && check_for_opt_bool_arg(argvars, 0) == FAIL)
+	return;
+    if (argvars[0].v_type != VAR_UNKNOWN)
+	abbr = tv_get_bool(&argvars[0]);
+
+    if (rettv_list_alloc(rettv) != OK)
+	return;
+
+    validate_maphash();
+
+    // Do it twice: once for global maps and once for local maps.
+    for (buffer_local = 0; buffer_local <= 1; ++buffer_local)
+    {
+	for (hash = 0; hash < 256; ++hash)
+	{
+	    if (abbr)
+	    {
+		if (hash > 0)		// there is only one abbr list
+		    break;
+		if (buffer_local)
+		    mp = curbuf->b_first_abbr;
+		else
+		    mp = first_abbr;
+	    }
+	    else if (buffer_local)
+		mp = curbuf->b_maphash[hash];
+	    else
+		mp = maphash[hash];
+	    for (; mp; mp = mp->m_next)
+	    {
+		if (mp->m_simplified)
+		    continue;
+		if ((d = dict_alloc()) == NULL)
+		    return;
+		if (list_append_dict(rettv->vval.v_list, d) == FAIL)
+		    return;
+
+		keys_buf = NULL;
+		did_simplify = FALSE;
+
+		lhs = str2special_save(mp->m_keys, TRUE);
+		(void)replace_termcodes(lhs, &keys_buf, flags, &did_simplify);
+		vim_free(lhs);
+
+		mapblock2dict(mp, d,
+				 did_simplify ? keys_buf : NULL,
+				 buffer_local, abbr);
+		vim_free(keys_buf);
+	    }
+	}
+    }
 }
 
 /*
@@ -2408,6 +2484,56 @@ f_mapcheck(typval_T *argvars, typval_T *rettv)
 }
 
 /*
+ * Get the mapping mode from the mode string.
+ * It may contain multiple characters, eg "nox", or "!", or ' '
+ * Return 0 if there is an error.
+ */
+    static int
+get_map_mode_string(char_u *mode_string, int abbr)
+{
+    char_u	*p = mode_string;
+    int		mode = 0;
+    int		tmode;
+    int		modec;
+    const int	MASK_V = VISUAL + SELECTMODE;
+    const int	MASK_MAP = VISUAL + SELECTMODE + NORMAL + OP_PENDING;
+    const int	MASK_BANG = INSERT + CMDLINE;
+
+    if (*p == NUL)
+	p = (char_u *)" ";	// compatibility
+    while ((modec = *p++))
+    {
+	switch (modec)
+	{
+	    case 'i': tmode = INSERT;		break;
+	    case 'l': tmode = LANGMAP;		break;
+	    case 'c': tmode = CMDLINE;		break;
+	    case 'n': tmode = NORMAL;		break;
+	    case 'x': tmode = VISUAL;		break;
+	    case 's': tmode = SELECTMODE;	break;
+	    case 'o': tmode = OP_PENDING;	break;
+	    case 't': tmode = TERMINAL;		break;
+	    case 'v': tmode = MASK_V;		break;
+	    case '!': tmode = MASK_BANG;	break;
+	    case ' ': tmode = MASK_MAP;		break;
+	    default:
+		      return 0; // error, unknown mode character
+	}
+	mode |= tmode;
+    }
+    if ((abbr && (mode & ~MASK_BANG) != 0)
+	|| (!abbr && (mode & (mode-1)) != 0 // more than one bit set
+	    && (
+		// false if multiple bits set in mode and mode is fully
+		// contained in one mask
+		!(((mode & MASK_BANG) != 0 && (mode & ~MASK_BANG) == 0)
+		    || ((mode & MASK_MAP) != 0 && (mode & ~MASK_MAP) == 0)))))
+	return 0;
+
+    return mode;
+}
+
+/*
  * "mapset()" function
  */
     void
@@ -2436,25 +2562,51 @@ f_mapset(typval_T *argvars, typval_T *rettv UNUSED)
     mapblock_T  **abbr_table = &first_abbr;
     int		nowait;
     char_u	*arg;
+    int		dict_only;
 
+    // If first arg is a dict, then that's the only arg permitted.
+    dict_only = argvars[0].v_type == VAR_DICT;
     if (in_vim9script()
-	    && (check_for_string_arg(argvars, 0) == FAIL
-		|| check_for_bool_arg(argvars, 1) == FAIL
-		|| check_for_dict_arg(argvars, 2) == FAIL))
+	    && (check_for_string_or_dict_arg(argvars, 0) == FAIL
+		|| (dict_only && check_for_unknown_arg(argvars, 1) == FAIL)
+		|| (!dict_only
+		    && (check_for_string_arg(argvars, 0) == FAIL
+			|| check_for_bool_arg(argvars, 1) == FAIL
+			|| check_for_dict_arg(argvars, 2) == FAIL))))
 	return;
 
-    which = tv_get_string_buf_chk(&argvars[0], buf);
-    if (which == NULL)
-	return;
-    mode = get_map_mode(&which, 0);
-    is_abbr = (int)tv_get_bool(&argvars[1]);
-
-    if (argvars[2].v_type != VAR_DICT)
+    if (dict_only)
     {
-	emsg(_(e_key_not_present_in_dictionary));
+	d = argvars[0].vval.v_dict;
+	which = dict_get_string(d, (char_u *)"mode", FALSE);
+	is_abbr = dict_get_bool(d, (char_u *)"abbr", -1);
+	if (which == NULL || is_abbr < 0)
+	{
+	    emsg(_(e_entries_missing_in_mapset_dict_argument));
+	    return;
+	}
+    }
+    else
+    {
+	which = tv_get_string_buf_chk(&argvars[0], buf);
+	if (which == NULL)
+	    return;
+	is_abbr = (int)tv_get_bool(&argvars[1]);
+
+	if (argvars[2].v_type != VAR_DICT)
+	{
+	    emsg(_(e_dictionary_required));
+	    return;
+	}
+	d = argvars[2].vval.v_dict;
+    }
+    mode = get_map_mode_string(which, is_abbr);
+    if (mode == 0)
+    {
+	semsg(_(e_illegal_map_mode_string_str), which);
 	return;
     }
-    d = argvars[2].vval.v_dict;
+
 
     // Get the values in the same order as above in get_maparg().
     lhs = dict_get_string(d, (char_u *)"lhs", FALSE);

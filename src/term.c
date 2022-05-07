@@ -688,6 +688,7 @@ static struct builtin_term builtin_termcaps[] =
     {K_K8,		"\316\372"},
     {K_K9,		"\316\376"},
     {K_BS,		"\316x"},
+    {K_S_BS,            "\316y"},
 # endif
 
 # if defined(VMS) || defined(ALL_BUILTIN_TCAPS)
@@ -4505,7 +4506,9 @@ is_mouse_topline(win_T *wp)
 #endif
 
 /*
- * Put "string[new_slen]" in typebuf, or in "buf[bufsize]" if "buf" is not NULL.
+ * If "buf" is NULL put "string[new_slen]" in typebuf; "buflen" is not used.
+ * If "buf" is not NULL put "string[new_slen]" in "buf[bufsize]" and adjust
+ * "buflen".
  * Remove "slen" bytes.
  * Returns FAIL for error.
  */
@@ -4529,7 +4532,9 @@ put_string_in_typebuf(
 	    del_typebuf(-extra, offset);
 	else if (extra > 0)
 	    // insert the extra space we need
-	    ins_typebuf(string + slen, REMAP_YES, offset, FALSE, FALSE);
+	    if (ins_typebuf(string + slen, REMAP_YES, offset, FALSE, FALSE)
+								       == FAIL)
+		return FAIL;
 
 	// Careful: del_typebuf() and ins_typebuf() may have reallocated
 	// typebuf.tb_buf[]!
@@ -4691,7 +4696,7 @@ handle_version_response(int first, int *arg, int argc, char_u *tp)
     if (version > 20000)
 	version = 0;
 
-    // Figure out more if the reeponse is CSI > 99 ; 99 ; 99 c
+    // Figure out more if the response is CSI > 99 ; 99 ; 99 c
     if (first == '>' && argc == 3)
     {
 	int need_flush = FALSE;
@@ -4836,7 +4841,7 @@ handle_version_response(int first, int *arg, int argc, char_u *tp)
 	if (*T_8U != NUL && write_t_8u_state == MAYBE)
 	    // Did skip writing t_8u, a complete redraw is needed.
 	    redraw_later_clear();
-	write_t_8u_state = OK;  // can otuput t_8u now
+	write_t_8u_state = OK;  // can output t_8u now
 
 	// Only set 'ttymouse' automatically if it was not set
 	// by the user already.
@@ -6100,7 +6105,7 @@ replace_termcodes(
 #endif
 	    slen = trans_special(&src, result + dlen, FSK_KEYCODE
 			  | ((flags & REPTERM_NO_SIMPLIFY) ? 0 : FSK_SIMPLIFY),
-								 did_simplify);
+							   TRUE, did_simplify);
 	    if (slen)
 	    {
 		dlen += slen;
@@ -6600,25 +6605,31 @@ update_tcap(int attr)
 
 # ifdef FEAT_TERMGUICOLORS
 #  define KSSIZE 20
-struct ks_tbl_s
+
+typedef enum
 {
-    int  code;		// value of KS_
-    char *vtp;		// code in vtp mode
-    char *vtp2;		// code in vtp2 mode
-    char buf[KSSIZE];   // save buffer in non-vtp mode
-    char vbuf[KSSIZE];  // save buffer in vtp mode
-    char v2buf[KSSIZE]; // save buffer in vtp2 mode
-    char arr[KSSIZE];   // real buffer
+    CMODE_INDEXED = 0,	// Use cmd.exe 4bit palette.
+    CMODE_RGB,		// Use 24bit RGB colors using VTP.
+    CMODE_256COL,	// Emulate xterm's 256-color palette using VTP.
+    CMODE_LAST,
+} cmode_T;
+
+struct ks_tbl_S
+{
+    int  code;				// value of KS_
+    char *vtp;				// code in RGB mode
+    char *vtp2;				// code in 256color mode
+    char buf[CMODE_LAST][KSSIZE];	// real buffer
 };
 
-static struct ks_tbl_s ks_tbl[] =
+static struct ks_tbl_S ks_tbl[] =
 {
     {(int)KS_ME,  "\033|0m",  "\033|0m"},   // normal
     {(int)KS_MR,  "\033|7m",  "\033|7m"},   // reverse
     {(int)KS_MD,  "\033|1m",  "\033|1m"},   // bold
     {(int)KS_SO,  "\033|91m", "\033|91m"},  // standout: bright red text
     {(int)KS_SE,  "\033|39m", "\033|39m"},  // standout end: default color
-    {(int)KS_CZH, "\033|95m", "\033|95m"},  // italic: bright magenta text
+    {(int)KS_CZH, "\033|3m",  "\033|3m"},   // italic
     {(int)KS_CZR, "\033|0m",  "\033|0m"},   // italic end
     {(int)KS_US,  "\033|4m",  "\033|4m"},   // underscore
     {(int)KS_UE,  "\033|24m", "\033|24m"},  // underscore end
@@ -6659,18 +6670,11 @@ swap_tcap(void)
 {
 # ifdef FEAT_TERMGUICOLORS
     static int		init_done = FALSE;
-    static int		curr_mode;
-    struct ks_tbl_s	*ks;
+    static cmode_T	curr_mode;
+    struct ks_tbl_S	*ks;
     struct builtin_term *bt;
-    int			mode;
-    enum
-    {
-	CMODEINDEX,
-	CMODE24,
-	CMODE256
-    };
+    cmode_T		mode;
 
-    // buffer initialization
     if (!init_done)
     {
 	for (ks = ks_tbl; ks->code != (int)KS_NAME; ks++)
@@ -6678,67 +6682,36 @@ swap_tcap(void)
 	    bt = find_first_tcap(DEFAULT_TERM, ks->code);
 	    if (bt != NULL)
 	    {
-		STRNCPY(ks->buf, bt->bt_string, KSSIZE);
-		STRNCPY(ks->vbuf, ks->vtp, KSSIZE);
-		STRNCPY(ks->v2buf, ks->vtp2, KSSIZE);
+		// Preserve the original value.
+		STRNCPY(ks->buf[CMODE_INDEXED], bt->bt_string, KSSIZE);
+		STRNCPY(ks->buf[CMODE_RGB], ks->vtp, KSSIZE);
+		STRNCPY(ks->buf[CMODE_256COL], ks->vtp2, KSSIZE);
 
-		STRNCPY(ks->arr, bt->bt_string, KSSIZE);
-		bt->bt_string = &ks->arr[0];
+		bt->bt_string = ks->buf[CMODE_INDEXED];
 	    }
 	}
 	init_done = TRUE;
-	curr_mode = CMODEINDEX;
+	curr_mode = CMODE_INDEXED;
     }
 
     if (p_tgc)
-	mode = CMODE24;
+	mode = CMODE_RGB;
     else if (t_colors >= 256)
-	mode = CMODE256;
+	mode = CMODE_256COL;
     else
-	mode = CMODEINDEX;
+	mode = CMODE_INDEXED;
+
+    if (mode == curr_mode)
+	return;
 
     for (ks = ks_tbl; ks->code != (int)KS_NAME; ks++)
     {
 	bt = find_first_tcap(DEFAULT_TERM, ks->code);
 	if (bt != NULL)
-	{
-	    switch (curr_mode)
-	    {
-	    case CMODEINDEX:
-		STRNCPY(&ks->buf[0], bt->bt_string, KSSIZE);
-		break;
-	    case CMODE24:
-		STRNCPY(&ks->vbuf[0], bt->bt_string, KSSIZE);
-		break;
-	    default:
-		STRNCPY(&ks->v2buf[0], bt->bt_string, KSSIZE);
-	    }
-	}
+	    bt->bt_string = ks->buf[mode];
     }
 
-    if (mode != curr_mode)
-    {
-	for (ks = ks_tbl; ks->code != (int)KS_NAME; ks++)
-	{
-	    bt = find_first_tcap(DEFAULT_TERM, ks->code);
-	    if (bt != NULL)
-	    {
-		switch (mode)
-		{
-		case CMODEINDEX:
-		    STRNCPY(bt->bt_string, &ks->buf[0], KSSIZE);
-		    break;
-		case CMODE24:
-		    STRNCPY(bt->bt_string, &ks->vbuf[0], KSSIZE);
-		    break;
-		default:
-		    STRNCPY(bt->bt_string, &ks->v2buf[0], KSSIZE);
-		}
-	    }
-	}
-
-	curr_mode = mode;
-    }
+    curr_mode = mode;
 # endif
 }
 
@@ -6756,26 +6729,33 @@ static int grey_ramp[] = {
     0x80, 0x8A, 0x94, 0x9E, 0xA8, 0xB2, 0xBC, 0xC6, 0xD0, 0xDA, 0xE4, 0xEE
 };
 
-static char_u ansi_table[16][4] = {
-//   R    G    B   idx
-  {  0,   0,   0,  1}, // black
-  {224,   0,   0,  2}, // dark red
-  {  0, 224,   0,  3}, // dark green
-  {224, 224,   0,  4}, // dark yellow / brown
-  {  0,   0, 224,  5}, // dark blue
-  {224,   0, 224,  6}, // dark magenta
-  {  0, 224, 224,  7}, // dark cyan
-  {224, 224, 224,  8}, // light grey
+static char_u ansi_table[16][3] = {
+//   R    G    B
+  {  0,   0,   0}, // black
+  {224,   0,   0}, // dark red
+  {  0, 224,   0}, // dark green
+  {224, 224,   0}, // dark yellow / brown
+  {  0,   0, 224}, // dark blue
+  {224,   0, 224}, // dark magenta
+  {  0, 224, 224}, // dark cyan
+  {224, 224, 224}, // light grey
 
-  {128, 128, 128,  9}, // dark grey
-  {255,  64,  64, 10}, // light red
-  { 64, 255,  64, 11}, // light green
-  {255, 255,  64, 12}, // yellow
-  { 64,  64, 255, 13}, // light blue
-  {255,  64, 255, 14}, // light magenta
-  { 64, 255, 255, 15}, // light cyan
-  {255, 255, 255, 16}, // white
+  {128, 128, 128}, // dark grey
+  {255,  64,  64}, // light red
+  { 64, 255,  64}, // light green
+  {255, 255,  64}, // yellow
+  { 64,  64, 255}, // light blue
+  {255,  64, 255}, // light magenta
+  { 64, 255, 255}, // light cyan
+  {255, 255, 255}, // white
 };
+
+#if defined(MSWIN)
+// Mapping between cterm indices < 16 and their counterpart in the ANSI palette.
+static const char_u cterm_ansi_idx[] = {
+    0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 13, 11, 15
+};
+#endif
 
 #define ANSI_INDEX_NONE 0
 
@@ -6786,10 +6766,15 @@ cterm_color2rgb(int nr, char_u *r, char_u *g, char_u *b, char_u *ansi_idx)
 
     if (nr < 16)
     {
-	*r = ansi_table[nr][0];
-	*g = ansi_table[nr][1];
-	*b = ansi_table[nr][2];
-	*ansi_idx = ansi_table[nr][3];
+#if defined(MSWIN)
+	idx = cterm_ansi_idx[nr];
+#else
+	idx = nr;
+#endif
+	*r = ansi_table[idx][0];
+	*g = ansi_table[idx][1];
+	*b = ansi_table[idx][2];
+	*ansi_idx = idx + 1;
     }
     else if (nr < 232)
     {

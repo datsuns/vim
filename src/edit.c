@@ -448,7 +448,7 @@ edit(
 	if (update_Insstart_orig)
 	    Insstart_orig = Insstart;
 
-	if (stop_insert_mode && !pum_visible())
+	if (stop_insert_mode && !ins_compl_active())
 	{
 	    // ":stopinsert" used or 'insertmode' reset
 	    count = 0;
@@ -963,6 +963,7 @@ doESCkey:
 	    break;
 
 	case K_BS:	// delete character before the cursor
+	case K_S_BS:
 	case Ctrl_H:
 	    did_backspace = ins_bs(c, BACKSPACE_CHAR, &inserted_space);
 	    auto_format(FALSE, TRUE);
@@ -1899,7 +1900,11 @@ get_literal(int noReduceKeys)
      * vi-compatible (maybe there should be an option for it?) -- webb
      */
     if (gui.in_use)
+    {
 	++allow_keys;
+	if (noReduceKeys)
+	    ++no_reduce_keys;
+    }
 #endif
 #ifdef USE_ON_FLY_SCROLL
     dont_scroll = TRUE;		// disallow scrolling here
@@ -1992,7 +1997,11 @@ get_literal(int noReduceKeys)
     --no_mapping;
 #ifdef FEAT_GUI
     if (gui.in_use)
+    {
 	--allow_keys;
+	if (noReduceKeys)
+	    --no_reduce_keys;
+    }
 #endif
     if (nc)
     {

@@ -1637,7 +1637,11 @@ merge_modifyOtherKeys(int c_arg, int *modifiers)
     if (*modifiers & MOD_MASK_CTRL)
     {
 	if ((c >= '`' && c <= 0x7f) || (c >= '@' && c <= '_'))
+	{
 	    c &= 0x1f;
+	    if (c == NUL)
+		c = K_ZERO;
+	}
 	else if (c == '6')
 	    // CTRL-6 is equivalent to CTRL-^
 	    c = 0x1e;
@@ -2338,10 +2342,10 @@ typedef enum {
 
 /*
  * Check if the bytes at the start of the typeahead buffer are a character used
- * in CTRL-X mode.  This includes the form with a CTRL modifier.
+ * in Insert mode completion.  This includes the form with a CTRL modifier.
  */
     static int
-at_ctrl_x_key(void)
+at_ins_compl_key(void)
 {
     char_u  *p = typebuf.tb_buf + typebuf.tb_off;
     int	    c = *p;
@@ -2351,7 +2355,8 @@ at_ctrl_x_key(void)
 	    && p[1] == KS_MODIFIER
 	    && (p[2] & MOD_MASK_CTRL))
 	c = p[3] & 0x1f;
-    return vim_is_ctrl_x_key(c);
+    return (ctrl_x_mode_not_default() && vim_is_ctrl_x_key(c))
+		|| (compl_status_local() && (c == Ctrl_N || c == Ctrl_P));
 }
 
 /*
@@ -2359,7 +2364,7 @@ at_ctrl_x_key(void)
  * into just a key, apply that.
  * Check from typebuf.tb_buf[typebuf.tb_off] to typebuf.tb_buf[typebuf.tb_off
  * + "max_offset"].
- * Return the length of the replaced bytes, zero if nothing changed.
+ * Return the length of the replaced bytes, 0 if nothing changed, -1 for error.
  */
     static int
 check_simplify_modifier(int max_offset)
@@ -2393,18 +2398,26 @@ check_simplify_modifier(int max_offset)
 		    vgetc_char = c;
 		    vgetc_mod_mask = tp[2];
 		}
-		len = mb_char2bytes(new_c, new_string);
+		if (IS_SPECIAL(new_c))
+		{
+		    new_string[0] = K_SPECIAL;
+		    new_string[1] = K_SECOND(new_c);
+		    new_string[2] = K_THIRD(new_c);
+		    len = 3;
+		}
+		else
+		    len = mb_char2bytes(new_c, new_string);
 		if (modifier == 0)
 		{
 		    if (put_string_in_typebuf(offset, 4, new_string, len,
-							   NULL, 0, 0) == FAIL)
+							NULL, 0, NULL) == FAIL)
 		    return -1;
 		}
 		else
 		{
 		    tp[2] = modifier;
 		    if (put_string_in_typebuf(offset + 3, 1, new_string, len,
-							   NULL, 0, 0) == FAIL)
+							NULL, 0, NULL) == FAIL)
 		    return -1;
 		}
 		return len;
@@ -2420,6 +2433,7 @@ check_simplify_modifier(int max_offset)
  * - When nothing mapped and typeahead has a character: return map_result_get.
  * - When there is no match yet, return map_result_nomatch, need to get more
  *   typeahead.
+ * - On failure (out of memory) return map_result_fail.
  */
     static int
 handle_mapping(
@@ -2473,9 +2487,7 @@ handle_mapping(
 	    && !(State == HITRETURN && (tb_c1 == CAR || tb_c1 == ' '))
 	    && State != ASKMORE
 	    && State != CONFIRM
-	    && !((ctrl_x_mode_not_default() && at_ctrl_x_key())
-		    || (compl_status_local()
-			&& (tb_c1 == Ctrl_N || tb_c1 == Ctrl_P))))
+	    && !at_ins_compl_key())
     {
 #ifdef FEAT_GUI
 	if (gui.in_use && tb_c1 == CSI && typebuf.tb_len >= 2
@@ -2686,23 +2698,30 @@ handle_mapping(
 	 * - and not an ESC sequence, not in insert mode or p_ek is on,
 	 * - and when not timed out,
 	 */
-	if ((no_mapping == 0 || allow_keys != 0)
-		&& (typebuf.tb_maplen == 0
+	if (no_mapping == 0 || allow_keys != 0)
+	{
+	    if ((typebuf.tb_maplen == 0
 		    || (p_remap && typebuf.tb_noremap[
 						    typebuf.tb_off] == RM_YES))
 		&& !*timedout)
-	{
-	    keylen = check_termcode(max_mlen + 1, NULL, 0, NULL);
+		keylen = check_termcode(max_mlen + 1, NULL, 0, NULL);
+	    else
+		keylen = 0;
 
 	    // If no termcode matched but 'pastetoggle' matched partially
 	    // it's like an incomplete key sequence.
-	    if (keylen == 0 && save_keylen == KEYLEN_PART_KEY)
+	    if (keylen == 0 && save_keylen == KEYLEN_PART_KEY && !*timedout)
 		keylen = KEYLEN_PART_KEY;
 
 	    // If no termcode matched, try to include the modifier into the
 	    // key.  This is for when modifyOtherKeys is working.
 	    if (keylen == 0 && !no_reduce_keys)
+	    {
 		keylen = check_simplify_modifier(max_mlen + 1);
+		if (keylen < 0)
+		    // ins_typebuf() failed
+		    return map_result_fail;
+	    }
 
 	    // When getting a partial match, but the last characters were not
 	    // typed, don't wait for a typed character to complete the
@@ -3661,7 +3680,7 @@ inchar(
 	    for (;;)
 	    {
 		len = ui_inchar(dum, DUM_LEN, 0L, 0);
-		if (len == 0 || (len == 1 && dum[0] == 3))
+		if (len == 0 || (len == 1 && dum[0] == Ctrl_C))
 		    break;
 	    }
 	    return retesc;

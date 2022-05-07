@@ -969,78 +969,102 @@ theend:
 }
 
 /*
- * Compile a heredoc string "str" (either containing a literal string or a mix
- * of literal strings and Vim expressions of the form `=<expr>`).  This is used
- * when compiling a heredoc assignment to a variable in a Vim9 def function.
- * Vim9 instructions are generated to push strings, evaluate expressions,
- * concatenate them and create a list of lines.  When "evalstr" is TRUE, Vim
- * expressions in "str" are evaluated.
+ * Compile a string "str" (either containing a literal string or a mix of
+ * literal strings and Vim expressions of the form `{expr}`).  This is used
+ * when compiling a heredoc assignment to a variable or an interpolated string
+ * in a Vim9 def function.  Vim9 instructions are generated to push strings,
+ * evaluate expressions, concatenate them and create a list of lines.  When
+ * "evalstr" is TRUE, Vim expressions in "str" are evaluated.
  */
     int
-compile_heredoc_string(char_u *str, int evalstr, cctx_T *cctx)
+compile_all_expr_in_str(char_u *str, int evalstr, cctx_T *cctx)
 {
-    char_u	*p;
+    char_u	*p = str;
     char_u	*val;
+    char_u	save_c;
+    int		count = 0;
 
     if (cctx->ctx_skip == SKIP_YES)
 	return OK;
 
-    if (evalstr && (p = (char_u *)strstr((char *)str, "`=")) != NULL)
+    if (!evalstr || *str == NUL)
     {
-	char_u	*start = str;
+	// Literal string, possibly empty.
+	val = *str != NUL ? vim_strsave(str) : NULL;
+	return generate_PUSHS(cctx, &val);
+    }
 
-	// Need to evaluate expressions of the form `=<expr>` in the string.
-	// Split the string into literal strings and Vim expressions and
-	// generate instructions to concatenate the literal strings and the
-	// result of evaluating the Vim expressions.
-	val = vim_strsave((char_u *)"");
-	generate_PUSHS(cctx, &val);
+    // Push all the string pieces to the stack, followed by a ISN_CONCAT.
+    while (*p != NUL)
+    {
+	char_u	*lit_start;
+	char_u	*block_start;
+	char_u	*block_end;
+	int	escaped_brace = FALSE;
 
-	for (;;)
+	// Look for a block start.
+	lit_start = p;
+	while (*p != '{' && *p != '}' && *p != NUL)
+	    ++p;
+
+	if (*p != NUL && *p == p[1])
 	{
-	    if (p > start)
-	    {
-		// literal string before the expression
-		val = vim_strnsave(start, p - start);
-		generate_PUSHS(cctx, &val);
-		generate_instr_drop(cctx, ISN_CONCAT, 1);
-	    }
-	    p += 2;
-
-	    // evaluate the Vim expression and convert the result to string.
-	    if (compile_expr0(&p, cctx) == FAIL)
-		return FAIL;
-	    may_generate_2STRING(-1, TRUE, cctx);
-	    generate_instr_drop(cctx, ISN_CONCAT, 1);
-
-	    p = skipwhite(p);
-	    if (*p != '`')
-	    {
-		emsg(_(e_missing_backtick));
-		return FAIL;
-	    }
-	    start = p + 1;
-
-	    p = (char_u *)strstr((char *)start, "`=");
-	    if (p == NULL)
-	    {
-		// no more Vim expressions left to process
-		if (*skipwhite(start) != NUL)
-		{
-		    val = vim_strsave(start);
-		    generate_PUSHS(cctx, &val);
-		    generate_instr_drop(cctx, ISN_CONCAT, 1);
-		}
-		break;
-	    }
+	    // Escaped brace, unescape and continue.
+	    // Include the brace in the literal string.
+	    ++p;
+	    escaped_brace = TRUE;
 	}
+	else if (*p == '}')
+	{
+	    semsg(_(e_stray_closing_curly_str), str);
+	    return FAIL;
+	}
+
+	// Append the literal part.
+	if (p != lit_start)
+	{
+	    val = vim_strnsave(lit_start, (size_t)(p - lit_start));
+	    if (generate_PUSHS(cctx, &val) == FAIL)
+		return FAIL;
+	    ++count;
+	}
+
+	if (*p == NUL)
+	    break;
+
+	if (escaped_brace)
+	{
+	    // Skip the second brace.
+	    ++p;
+	    continue;
+	}
+
+	// Skip the opening {.
+	block_start = skipwhite(p + 1);
+	block_end = block_start;
+	if (*block_start != NUL &&skip_expr(&block_end, NULL) == FAIL)
+	    return FAIL;
+	block_end = skipwhite(block_end);
+	// The block must be closed by a }.
+	if (*block_end != '}')
+	{
+	    semsg(_(e_missing_close_curly_str), str);
+	    return FAIL;
+	}
+	save_c = *block_end;
+	*block_end = NUL;
+	if (compile_expr0(&block_start, cctx) == FAIL)
+	    return FAIL;
+	*block_end = save_c;
+	may_generate_2STRING(-1, TRUE, cctx);
+	++count;
+
+	p = block_end + 1;
     }
-    else
-    {
-	// literal string
-	val = vim_strsave(str);
-	generate_PUSHS(cctx, &val);
-    }
+
+    // Small optimization, if there's only a single piece skip the ISN_CONCAT.
+    if (count != 1)
+	return generate_CONCAT(cctx, count);
 
     return OK;
 }
@@ -2292,39 +2316,41 @@ compile_assignment(char_u *arg, exarg_T *eap, cmdidx_T cmdidx, cctx_T *cctx)
 	    }
 	    else
 	    {
+		int r = OK;
+
 		// variables are always initialized
 		if (GA_GROW_FAILS(instr, 1))
 		    goto theend;
 		switch (lhs.lhs_member_type->tt_type)
 		{
 		    case VAR_BOOL:
-			generate_PUSHBOOL(cctx, VVAL_FALSE);
+			r = generate_PUSHBOOL(cctx, VVAL_FALSE);
 			break;
 		    case VAR_FLOAT:
 #ifdef FEAT_FLOAT
-			generate_PUSHF(cctx, 0.0);
+			r = generate_PUSHF(cctx, 0.0);
 #endif
 			break;
 		    case VAR_STRING:
-			generate_PUSHS(cctx, NULL);
+			r = generate_PUSHS(cctx, NULL);
 			break;
 		    case VAR_BLOB:
-			generate_PUSHBLOB(cctx, blob_alloc());
+			r = generate_PUSHBLOB(cctx, blob_alloc());
 			break;
 		    case VAR_FUNC:
-			generate_PUSHFUNC(cctx, NULL, &t_func_void);
+			r = generate_PUSHFUNC(cctx, NULL, &t_func_void);
 			break;
 		    case VAR_LIST:
-			generate_NEWLIST(cctx, 0, FALSE);
+			r = generate_NEWLIST(cctx, 0, FALSE);
 			break;
 		    case VAR_DICT:
-			generate_NEWDICT(cctx, 0, FALSE);
+			r = generate_NEWDICT(cctx, 0, FALSE);
 			break;
 		    case VAR_JOB:
-			generate_PUSHJOB(cctx);
+			r = generate_PUSHJOB(cctx);
 			break;
 		    case VAR_CHANNEL:
-			generate_PUSHCHANNEL(cctx);
+			r = generate_PUSHCHANNEL(cctx);
 			break;
 		    case VAR_NUMBER:
 		    case VAR_UNKNOWN:
@@ -2342,10 +2368,12 @@ compile_assignment(char_u *arg, exarg_T *eap, cmdidx_T cmdidx, cctx_T *cctx)
 			else
 			{
 			    instr_count = instr->ga_len;
-			    generate_PUSHNR(cctx, 0);
+			    r = generate_PUSHNR(cctx, 0);
 			}
 			break;
 		}
+		if (r == FAIL)
+		    goto theend;
 	    }
 	    if (var_count == 0)
 		end = p;
@@ -2382,7 +2410,7 @@ compile_assignment(char_u *arg, exarg_T *eap, cmdidx_T cmdidx, cctx_T *cctx)
 
 	    if (*op == '.')
 	    {
-		if (generate_instr_drop(cctx, ISN_CONCAT, 1) == NULL)
+		if (generate_CONCAT(cctx, 2) == FAIL)
 		    goto theend;
 	    }
 	    else if (*op == '+')
@@ -3074,6 +3102,11 @@ compile_def_function(
 	    {
 		ea.forceit = TRUE;
 		p = skipwhite(p + 1);
+	    }
+	    if ((ea.argt & EX_RANGE) == 0 && ea.addr_count > 0)
+	    {
+		emsg(_(e_no_range_allowed));
+		goto erret;
 	    }
 	}
 

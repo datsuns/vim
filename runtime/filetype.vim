@@ -1,7 +1,7 @@
 " Vim support file to detect file types
 "
 " Maintainer:	Bram Moolenaar <Bram@vim.org>
-" Last Change:	2022 Apr 13
+" Last Change:	2022 Apr 25
 
 " Listen very carefully, I will say this only once
 if exists("did_load_filetypes")
@@ -719,6 +719,9 @@ au BufNewFile,BufRead *.git/*
 " Gkrellmrc
 au BufNewFile,BufRead gkrellmrc,gkrellmrc_?	setf gkrellmrc
 
+" Gleam
+au BufNewFile,BufRead *.gleam			setf gleam
+
 " GLSL
 au BufNewFile,BufRead *.glsl			setf glsl
 
@@ -821,6 +824,7 @@ au BufNewFile,BufRead *.t.html			setf tilde
 
 " HTML (.shtml and .stm for server side)
 au BufNewFile,BufRead *.html,*.htm,*.shtml,*.stm  call dist#ft#FThtml()
+au BufNewFile,BufRead *.cshtml			setf html
 
 " HTML with Ruby - eRuby
 au BufNewFile,BufRead *.erb,*.rhtml		setf eruby
@@ -1588,6 +1592,9 @@ au BufNewFile,BufRead *.rng			setf rng
 " RPL/2
 au BufNewFile,BufRead *.rpl			setf rpl
 
+" Robot Framework
+au BufNewFile,BufRead *.robot,*.resource	setf robot
+
 " Robots.txt
 au BufNewFile,BufRead robots.txt		setf robots
 
@@ -2118,6 +2125,9 @@ au BufNewFile,BufRead *.wm			setf webmacro
 
 " Wget config
 au BufNewFile,BufRead .wgetrc,wgetrc		setf wget
+
+" Wget2 config
+au BufNewFile,BufRead .wget2rc,wget2rc		setf wget2
 
 " Website MetaLanguage
 au BufNewFile,BufRead *.wml			setf wml

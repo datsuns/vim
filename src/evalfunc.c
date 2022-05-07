@@ -422,6 +422,21 @@ arg_string_or_list_any(type_T *type, type_T *decl_type UNUSED, argcontext_T *con
 }
 
 /*
+ * Check "type" is a string or a dict of 'any'
+ */
+    static int
+arg_string_or_dict_any(type_T *type, type_T *decl_type UNUSED, argcontext_T *context)
+{
+    if (type->tt_type == VAR_ANY
+	    || type->tt_type == VAR_UNKNOWN
+	    || type->tt_type == VAR_STRING
+	    || type->tt_type == VAR_DICT)
+	return OK;
+    arg_type_mismatch(&t_string, type, context->arg_idx + 1);
+    return FAIL;
+}
+
+/*
  * Check "type" is a string or a blob
  */
     static int
@@ -998,8 +1013,8 @@ static argcheck_T arg3_string[] = {arg_string, arg_string, arg_string};
 static argcheck_T arg3_string_any_dict[] = {arg_string, NULL, arg_dict_any};
 static argcheck_T arg3_string_any_string[] = {arg_string, NULL, arg_string};
 static argcheck_T arg3_string_bool_bool[] = {arg_string, arg_bool, arg_bool};
-static argcheck_T arg3_string_bool_dict[] = {arg_string, arg_bool, arg_dict_any};
 static argcheck_T arg3_string_number_bool[] = {arg_string, arg_number, arg_bool};
+static argcheck_T arg3_string_or_dict_bool_dict[] = {arg_string_or_dict_any, arg_bool, arg_dict_any};
 static argcheck_T arg3_string_string_bool[] = {arg_string, arg_string, arg_bool};
 static argcheck_T arg3_string_string_dict[] = {arg_string, arg_string, arg_dict_any};
 static argcheck_T arg3_string_string_number[] = {arg_string, arg_string, arg_number};
@@ -1969,6 +1984,8 @@ static funcentry_T global_functions[] =
 			ret_void,	    f_interrupt},
     {"invert",		1, 1, FEARG_1,	    arg1_number,
 			ret_number,	    f_invert},
+    {"isabsolutepath",	1, 1, FEARG_1,	    arg1_string,
+			ret_number_bool,    f_isabsolutepath},
     {"isdirectory",	1, 1, FEARG_1,	    arg1_string,
 			ret_number_bool,    f_isdirectory},
     {"isinf",		1, 1, FEARG_1,	    arg1_float_or_nr,
@@ -2047,9 +2064,11 @@ static funcentry_T global_functions[] =
 			ret_maparg,	    f_maparg},
     {"mapcheck",	1, 3, FEARG_1,	    arg3_string_string_bool,
 			ret_string,	    f_mapcheck},
+    {"maplist",		0, 1, 0,	    arg1_bool,
+			ret_list_dict_any,  f_maplist},
     {"mapnew",		2, 2, FEARG_1,	    arg2_mapnew,
 			ret_first_cont,	    f_mapnew},
-    {"mapset",		3, 3, FEARG_1,	    arg3_string_bool_dict,
+    {"mapset",		1, 3, FEARG_1,	    arg3_string_or_dict_bool_dict,
 			ret_void,	    f_mapset},
     {"match",		2, 4, FEARG_1,	    arg24_match_func,
 			ret_any,	    f_match},
@@ -4101,7 +4120,7 @@ f_expand(typval_T *argvars, typval_T *rettv)
 
 	if (p_verbose == 0)
 	    ++emsg_off;
-	result = eval_vars(s, s, &len, NULL, &errormsg, NULL);
+	result = eval_vars(s, s, &len, NULL, &errormsg, NULL, FALSE);
 	if (p_verbose == 0)
 	    --emsg_off;
 	else if (errormsg != NULL)
@@ -9947,7 +9966,9 @@ f_substitute(typval_T *argvars, typval_T *rettv)
     pat = tv_get_string_buf_chk(&argvars[1], patbuf);
     flg = tv_get_string_buf_chk(&argvars[3], flagsbuf);
 
-    if (argvars[2].v_type == VAR_FUNC || argvars[2].v_type == VAR_PARTIAL)
+    if (argvars[2].v_type == VAR_FUNC
+	    || argvars[2].v_type == VAR_PARTIAL
+	    || argvars[2].v_type == VAR_INSTR)
 	expr = &argvars[2];
     else
 	sub = tv_get_string_buf_chk(&argvars[2], subbuf);
