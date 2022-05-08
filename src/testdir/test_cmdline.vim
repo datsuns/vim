@@ -773,6 +773,9 @@ func Test_cmdline_remove_char()
 
     call feedkeys(":abc def\<S-Left>\<C-U>\<C-B>\"\<CR>", 'tx')
     call assert_equal('"def', @:, e)
+
+    " This was going before the start in latin1.
+    call feedkeys(": \<C-W>\<CR>", 'tx')
   endfor
 
   let &encoding = encoding_save
@@ -3375,6 +3378,18 @@ func Test_cmdline_complete_substitute_short()
     call feedkeys(':' .. cmd .. " \<Tab>\<C-B>\"\<CR>", 'tx')
     call assert_equal('"' .. cmd .. " \<Tab>", @:)
   endfor
+endfunc
+
+func Check_completion()
+  call assert_equal('let a', getcmdline())
+  call assert_equal(6, getcmdpos())
+  call assert_equal(7, getcmdscreenpos())
+  call assert_equal('var', getcmdcompltype())
+  return ''
+endfunc
+
+func Test_screenpos_and_completion()
+  call feedkeys(":let a\<C-R>=Check_completion()\<CR>\<Esc>", "xt")
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

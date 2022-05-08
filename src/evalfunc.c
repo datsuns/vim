@@ -1850,10 +1850,14 @@ static funcentry_T global_functions[] =
 			ret_dict_any,	    f_getcharsearch},
     {"getcharstr",	0, 1, 0,	    arg1_bool,
 			ret_string,	    f_getcharstr},
+    {"getcmdcompltype",	0, 0, 0,	    NULL,
+			ret_string,	    f_getcmdcompltype},
     {"getcmdline",	0, 0, 0,	    NULL,
 			ret_string,	    f_getcmdline},
     {"getcmdpos",	0, 0, 0,	    NULL,
 			ret_number,	    f_getcmdpos},
+    {"getcmdscreenpos",	0, 0, 0,	    NULL,
+			ret_number,	    f_getcmdscreenpos},
     {"getcmdtype",	0, 0, 0,	    NULL,
 			ret_string,	    f_getcmdtype},
     {"getcmdwintype",	0, 0, 0,	    NULL,
@@ -3864,7 +3868,7 @@ execute_cmds_from_string(char_u *str)
  * Called by do_cmdline() to get the next line.
  * Returns allocated string, or NULL for end of function.
  */
-    static char_u *
+    char_u *
 get_list_line(
     int	    c UNUSED,
     void    *cookie,
@@ -10448,7 +10452,7 @@ f_visualmode(typval_T *argvars, typval_T *rettv)
 f_wildmenumode(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
 {
 #ifdef FEAT_WILDMENU
-    if (wild_menu_showing || ((State & CMDLINE) && cmdline_pum_active()))
+    if (wild_menu_showing || ((State & MODE_CMDLINE) && cmdline_pum_active()))
 	rettv->vval.v_number = 1;
 #endif
 }
