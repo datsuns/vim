@@ -2143,6 +2143,26 @@ def Test_expr8_string()
   v9.CheckDefAndScriptFailure(['var x = "abc'], 'E114:', 1)
   v9.CheckDefAndScriptFailure(["var x = 'abc"], 'E115:', 1)
   v9.CheckDefFailure(["if 0", "echo 'xx", "endif"], 'E115', 2)
+
+  # interpolated string
+  var val = 'val'
+  var vv = $"some {val}"
+  assert_equal('some val', vv)
+  vv = $'other {val}'
+  assert_equal('other val', vv)
+
+  var x = 'x'
+  var vl = 'foo xxx bar xxx baz'
+              ->split($'x{x}x')
+              ->map((_, v: string) => v =~ 'bar')
+  assert_equal([false, true, false], vl)
+
+  # interpolated string in a lambda
+  lines =<< trim END
+      assert_equal(['gnome-256color', 'xterm-256color'], ['gnome', 'xterm']
+              ->map((_, term: string) => $'{term}-256color'))
+  END
+  v9.CheckDefAndScriptSuccess(lines)
 enddef
 
 def Test_expr8_vimvar()
