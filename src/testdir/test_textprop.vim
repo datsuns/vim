@@ -635,6 +635,18 @@ func Test_prop_open_line()
   call assert_equal(expected, prop_list(2))
   call DeletePropTypes()
 
+  " split at the space character with 'ai' active, the leading space is removed
+  " in the second line and the prop is shifted accordingly.
+  let expected = SetupOneLine() " 'xonex xtwoxx'
+  set ai
+  exe "normal 6|i\<CR>\<Esc>"
+  call assert_equal('xonex', getline(1))
+  call assert_equal('xtwoxx', getline(2))
+  let expected[1].col -= 6
+  call assert_equal(expected, prop_list(1) + prop_list(2))
+  set ai&
+  call DeletePropTypes()
+
   bwipe!
   set bs&
 endfunc
@@ -1953,6 +1965,39 @@ func Test_prop_shift_block()
       \ 'length': 11, 'start' : 1}
       \ ]
   call assert_equal(expected, prop_list(1, #{end_lnum: 2}))
+
+  call DeletePropTypes()
+  bwipe!
+endfunc
+
+func Test_prop_insert_multiline()
+  new
+  call AddPropTypes()
+
+  call setline(1, ['foobar', 'barbaz'])
+  call prop_add(1, 4, #{end_lnum: 2, end_col: 4, type: 'one'})
+
+  call feedkeys("1Goquxqux\<Esc>", 'nxt')
+  call feedkeys("2GOquxqux\<Esc>", 'nxt')
+
+  let lines =<< trim END
+      foobar
+      quxqux
+      quxqux
+      barbaz
+  END
+  call assert_equal(lines, getline(1, '$'))
+  let expected = [
+      \ {'lnum': 1, 'id': 0, 'col': 4, 'type_bufnr': 0, 'end': 0, 'type': 'one',
+      \ 'length': 4 ,'start': 1},
+      \ {'lnum': 2, 'id': 0, 'col': 1, 'type_bufnr': 0, 'end': 0, 'type': 'one',
+      \ 'length': 7, 'start': 0},
+      \ {'lnum': 3, 'id': 0, 'col': 1, 'type_bufnr': 0, 'end': 0, 'type': 'one',
+      \ 'length': 7, 'start': 0},
+      \ {'lnum': 4, 'id': 0, 'col': 1, 'type_bufnr': 0, 'end': 1, 'type': 'one',
+      \ 'length': 3, 'start': 0}
+      \ ]
+  call assert_equal(expected, prop_list(1, #{end_lnum: 10}))
 
   call DeletePropTypes()
   bwipe!
