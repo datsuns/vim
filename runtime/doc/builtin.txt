@@ -689,7 +689,10 @@ undotree()			List	undo file tree
 uniq({list} [, {func} [, {dict}]])
 				List	remove adjacent duplicates from a list
 values({dict})			List	values in {dict}
-virtcol({expr})			Number	screen column of cursor or mark
+virtcol({expr} [, {list}])	Number or List
+					screen column of cursor or mark
+virtcol2col({winid}, {lnum}, {col})
+				Number  byte index of a character on screen
 visualmode([expr])		String	last visual mode used
 wildmenumode()			Number	whether 'wildmenu' mode is active
 win_execute({id}, {command} [, {silent}])
@@ -780,6 +783,7 @@ add({object}, {expr})					*add()*
 and({expr}, {expr})					*and()*
 		Bitwise AND on the two arguments.  The arguments are converted
 		to a number.  A List, Dict or Float argument causes an error.
+		Also see `or()` and `xor()`.
 		Example: >
 			:let flag = and(bits, 0x80)
 <		Can also be used as a |method|: >
@@ -936,23 +940,27 @@ autocmd_add({acmds})					*autocmd_add()*
 				item is ignored.
 		    cmd		Ex command to execute for this autocmd event
 		    event	autocmd event name. Refer to |autocmd-events|.
+				This can be either a String with a single
+				event name or a List of event names.
 		    group	autocmd group name. Refer to |autocmd-groups|.
 				If this group doesn't exist then it is
 				created.  If not specified or empty, then the
 				default group is used.
 		    nested	boolean flag, set to v:true to add a nested
 				autocmd.  Refer to |autocmd-nested|.
-		    once	boolean flag, set to v:true to add a autocmd
+		    once	boolean flag, set to v:true to add an autocmd
 				which executes only once. Refer to
 				|autocmd-once|.
 		    pattern	autocmd pattern string. Refer to
 				|autocmd-patterns|.  If "bufnr" item is
-				present, then this item is ignored.
+				present, then this item is ignored.  This can
+				be a String with a single pattern or a List of
+				patterns.
 		    replace	boolean flag, set to v:true to remove all the
 				commands associated with the specified autocmd
 				event and group and add the {cmd}.  This is
 				useful to avoid adding the same command
-				multiple times for a autocmd event in a group.
+				multiple times for an autocmd event in a group.
 
 		Returns v:true on success and v:false on failure.
 		Examples: >
@@ -6205,10 +6213,16 @@ nr2char({expr} [, {utf8}])				*nr2char()*
 or({expr}, {expr})					*or()*
 		Bitwise OR on the two arguments.  The arguments are converted
 		to a number.  A List, Dict or Float argument causes an error.
+		Also see `and()` and `xor()`.
 		Example: >
 			:let bits = or(bits, 0x80)
 <		Can also be used as a |method|: >
 			:let bits = bits->or(0x80)
+
+<		Rationale: The reason this is a function and not using the "|"
+		character like many languages, is that Vi has always used "|"
+		to separate commands.  In many places it would not be clear if
+		"|" is an operator or a command separator.
 
 
 pathshorten({path} [, {len}])				*pathshorten()*
@@ -9727,7 +9741,7 @@ values({dict})						*values()*
 		Can also be used as a |method|: >
 			mydict->values()
 
-virtcol({expr})						*virtcol()*
+virtcol({expr} [, {list}])				*virtcol()*
 		The result is a Number, which is the screen column of the file
 		position given with {expr}.  That is, the last screen position
 		occupied by the character at that position, when the screen
@@ -9736,13 +9750,17 @@ virtcol({expr})						*virtcol()*
 		the <Tab>.  For example, for a <Tab> in column 1, with 'ts'
 		set to 8, it returns 8. |conceal| is ignored.
 		For the byte position use |col()|.
+
 		For the use of {expr} see |col()|.
-		When 'virtualedit' is used {expr} can be [lnum, col, off], where
-		"off" is the offset in screen columns from the start of the
-		character.  E.g., a position within a <Tab> or after the last
-		character.  When "off" is omitted zero is used.
-		When Virtual editing is active in the current mode, a position
-		beyond the end of the line can be returned. |'virtualedit'|
+
+		When 'virtualedit' is used {expr} can be [lnum, col, off],
+		where "off" is the offset in screen columns from the start of
+		the character.  E.g., a position within a <Tab> or after the
+		last character.  When "off" is omitted zero is used.  When
+		Virtual editing is active in the current mode, a position
+		beyond the end of the line can be returned.  Also see
+		|'virtualedit'|
+
 		The accepted positions are:
 		    .	    the cursor position
 		    $	    the end of the cursor line (the result is the
@@ -9754,11 +9772,22 @@ virtcol({expr})						*virtcol()*
 			    cursor is the end).  When not in Visual mode
 			    returns the cursor position.  Differs from |'<| in
 			    that it's updated right away.
+
+		If {list} is present and non-zero then virtcol() returns a List
+		with the first and last screen position occupied by the
+		character.
+
 		Note that only marks in the current file can be used.
 		Examples: >
-  virtcol(".")	   with text "foo^Lbar", with cursor on the "^L", returns 5
-  virtcol("$")	   with text "foo^Lbar", returns 9
-  virtcol("'t")    with text "	  there", with 't at 'h', returns 6
+			" With text "foo^Lbar" and cursor on the "^L":
+
+			virtcol(".")	" returns 5
+			virtcol(".", 1)	" returns [4, 5]
+			virtcol("$")	" returns 9
+
+			" With text "	  there", with 't at 'h':
+
+			virtcol("'t")	" returns 6
 <		The first column is 1.  0 is returned for an error.
 		A more advanced example that echoes the maximum length of
 		all lines: >
@@ -9767,6 +9796,25 @@ virtcol({expr})						*virtcol()*
 <		Can also be used as a |method|: >
 			GetPos()->virtcol()
 
+virtcol2col({winid}, {lnum}, {col})			*virtcol2col()*
+		The result is a Number, which is the byte index of the
+		character in window {winid} at buffer line {lnum} and virtual
+		column {col}.
+
+		If {col} is greater than the last virtual column in line
+		{lnum}, then the byte index of the character at the last
+		virtual column is returned.
+
+		The {winid} argument can be the window number or the
+		|window-ID|. If this is zero, then the current window is used.
+
+		Returns -1 if the window {winid} doesn't exist or the buffer
+		line {lnum} or virtual column {col} is invalid.
+
+		See also |screenpos()|, |virtcol()| and |col()|.
+
+		Can also be used as a |method|: >
+			GetWinid()->virtcol2col(lnum, col)
 
 visualmode([{expr}])						*visualmode()*
 		The result is a String, which describes the last Visual mode
@@ -10199,6 +10247,7 @@ writefile({object}, {fname} [, {flags}])
 xor({expr}, {expr})					*xor()*
 		Bitwise XOR on the two arguments.  The arguments are converted
 		to a number.  A List, Dict or Float argument causes an error.
+		Also see `and()` and `or()`.
 		Example: >
 			:let bits = xor(bits, 0x80)
 <
