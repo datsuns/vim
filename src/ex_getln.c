@@ -256,7 +256,6 @@ do_incsearch_highlighting(
     ea.cmd = ccline.cmdbuff;
     ea.addr_type = ADDR_LINES;
 
-    CLEAR_FIELD(dummy_cmdmod);
     parse_command_modifiers(&ea, &dummy, &dummy_cmdmod, TRUE);
 
     cmd = skip_range(ea.cmd, TRUE, NULL);
@@ -4464,8 +4463,8 @@ open_cmdwin(void)
     {
 	if (p_wc == TAB)
 	{
-	    add_map((char_u *)"<buffer> <Tab> <C-X><C-V>", MODE_INSERT);
-	    add_map((char_u *)"<buffer> <Tab> a<C-X><C-V>", MODE_NORMAL);
+	    add_map((char_u *)"<buffer> <Tab> <C-X><C-V>", MODE_INSERT, TRUE);
+	    add_map((char_u *)"<buffer> <Tab> a<C-X><C-V>", MODE_NORMAL, TRUE);
 	}
 	set_option_value_give_err((char_u *)"ft",
 					       0L, (char_u *)"vim", OPT_LOCAL);
