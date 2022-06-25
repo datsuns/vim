@@ -353,6 +353,7 @@ func Test_searchpair_timeout()
   let elapsed = reltime(starttime)->reltimefloat()
   call assert_inrange(0.09, 0.300, elapsed)
 
+  delfunc Waitabit
   bwipe!
 endfunc
 
@@ -377,6 +378,10 @@ func Test_searchpair_timeout_with_skip()
     let max_time = min_time * 10.0
     if RunningWithValgrind()
       let max_time += 0.04  " this can be slow with valgrind
+    endif
+    if has('bsd')
+      " test often fails with FreeBSD
+      let max_time = max_time * 2.0
     endif
   endif
   let start = reltime()
