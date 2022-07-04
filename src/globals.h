@@ -1380,17 +1380,6 @@ EXTERN char_u	*homedir INIT(= NULL);
 // directory is not a local directory, globaldir is NULL.
 EXTERN char_u	*globaldir INIT(= NULL);
 
-// Characters from 'fillchars' option
-EXTERN int	fill_stl INIT(= ' ');
-EXTERN int	fill_stlnc INIT(= ' ');
-EXTERN int	fill_vert INIT(= ' ');
-EXTERN int	fill_fold INIT(= '-');
-EXTERN int	fill_foldopen INIT(= '-');
-EXTERN int	fill_foldclosed INIT(= '+');
-EXTERN int	fill_foldsep INIT(= '|');
-EXTERN int	fill_diff INIT(= '-');
-EXTERN int	fill_eob INIT(= '~');
-
 #ifdef FEAT_FOLDING
 EXTERN int	disable_fold_update INIT(= 0);
 #endif
@@ -1654,6 +1643,7 @@ EXTERN int  reset_term_props_on_termresponse INIT(= FALSE);
 EXTERN int  disable_vterm_title_for_testing INIT(= FALSE);
 EXTERN long override_sysinfo_uptime INIT(= -1);
 EXTERN int  override_autoload INIT(= FALSE);
+EXTERN int  ml_get_alloc_lines INIT(= FALSE);
 
 EXTERN int  in_free_unref_items INIT(= FALSE);
 #endif
