@@ -43,7 +43,9 @@ func Test_other_type()
 endfunc
 
 " Filetypes detected just from matching the file name.
+" First one is checking that these files have no filetype.
 let s:filename_checks = {
+    \ 'none': ['bsd', 'some-bsd'],
     \ '8th': ['file.8th'],
     \ 'a2ps': ['/etc/a2ps.cfg', '/etc/a2ps/file.cfg', 'a2psrc', '.a2psrc', 'any/etc/a2ps.cfg', 'any/etc/a2ps/file.cfg'],
     \ 'a65': ['file.a65'],
@@ -83,8 +85,9 @@ let s:filename_checks = {
     \ 'bib': ['file.bib'],
     \ 'bicep': ['file.bicep'],
     \ 'bindzone': ['named.root', '/bind/db.file', '/named/db.file', 'any/bind/db.file', 'any/named/db.file'],
+    \ 'bitbake': ['file.bb', 'file.bbappend', 'file.bbclass', 'build/conf/local.conf', 'meta/conf/layer.conf', 'build/conf/bbappend.conf', 'meta-layer/conf/distro/foo.conf'],
     \ 'blank': ['file.bl'],
-    \ 'bsdl': ['file.bsd', 'file.bsdl', 'bsd', 'some-bsd'],
+    \ 'bsdl': ['file.bsd', 'file.bsdl'],
     \ 'bst': ['file.bst'],
     \ 'bzl': ['file.bazel', 'file.bzl', 'WORKSPACE'],
     \ 'bzr': ['bzr_log.any', 'bzr_log.file'],
@@ -647,7 +650,8 @@ func CheckItems(checks)
       if &filetype == '' && &readonly
 	" File exists but not able to edit it (permission denied)
       else
-	call assert_equal(ft, &filetype, 'with file name: ' . names[i])
+        let expected = ft == 'none' ? '' : ft
+	call assert_equal(expected, &filetype, 'with file name: ' . names[i])
       endif
       bwipe!
     endfor
@@ -1816,5 +1820,58 @@ func Test_sig_file()
   filetype off
 endfunc
 
+func Test_inc_file()
+  filetype on
+
+  call writefile(['this is the fallback'], 'Xfile.inc')
+  split Xfile.inc
+  call assert_equal('pov', &filetype)
+  bwipe!
+
+  let g:filetype_inc = 'foo'
+  split Xfile.inc
+  call assert_equal('foo', &filetype)
+  bwipe!
+  unlet g:filetype_inc
+
+  " aspperl
+  call writefile(['perlscript'], 'Xfile.inc')
+  split Xfile.inc
+  call assert_equal('aspperl', &filetype)
+  bwipe!
+
+  " aspvbs
+  call writefile(['<% something'], 'Xfile.inc')
+  split Xfile.inc
+  call assert_equal('aspvbs', &filetype)
+  bwipe!
+
+  " php
+  call writefile(['<?php'], 'Xfile.inc')
+  split Xfile.inc
+  call assert_equal('php', &filetype)
+  bwipe!
+
+  " pascal
+  call writefile(['program'], 'Xfile.inc')
+  split Xfile.inc
+  call assert_equal('pascal', &filetype)
+  bwipe!
+
+  " bitbake
+  call writefile(['require foo'], 'Xfile.inc')
+  split Xfile.inc
+  call assert_equal('bitbake', &filetype)
+  bwipe!
+
+  " asm
+  call writefile(['asmsyntax=foo'], 'Xfile.inc')
+  split Xfile.inc
+  call assert_equal('foo', &filetype)
+  bwipe!
+
+  call delete('Xfile.inc')
+  filetype off
+endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab
