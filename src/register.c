@@ -371,6 +371,7 @@ do_record(int c)
 {
     char_u	    *p;
     static int	    regname;
+    static int	    changed_cmdheight = FALSE;
     yankreg_T	    *old_y_previous, *old_y_current;
     int		    retval;
 
@@ -385,6 +386,15 @@ do_record(int c)
 	    showmode();
 	    regname = c;
 	    retval = OK;
+
+	    if (p_ch < 1)
+	    {
+		// Enable macro indicator temporary
+		set_option_value((char_u *)"ch", 1L, NULL, 0);
+		update_screen(VALID);
+
+		changed_cmdheight = TRUE;
+	    }
 	}
     }
     else			    // stop recording
@@ -411,6 +421,13 @@ do_record(int c)
 
 	    y_previous = old_y_previous;
 	    y_current = old_y_current;
+	}
+
+	if (changed_cmdheight)
+	{
+	    // Restore cmdheight
+	    set_option_value((char_u *)"ch", 0L, NULL, 0);
+	    redraw_all_later(CLEAR);
 	}
     }
     return retval;
@@ -1409,7 +1426,8 @@ op_yank(oparg_T *oap, int deleting, int mess)
 # ifdef FEAT_X11
     // If we were yanking to the '+' register, send result to selection.
     // Also copy to the '*' register, in case auto-select is off.  But not when
-    // 'clipboard' has "unnamedplus" and not "unnamed".
+    // 'clipboard' has "unnamedplus" and not "unnamed"; and not when
+    // deleting and both "unnamedplus" and "unnamed".
     if (clip_plus.available
 	    && (curr == &(y_regs[PLUS_REGISTER])
 		|| (!deleting && oap->regname == 0
@@ -1425,6 +1443,8 @@ op_yank(oparg_T *oap, int deleting, int mess)
 	if (!clip_isautosel_star()
 		&& !clip_isautosel_plus()
 		&& !((clip_unnamed | clip_unnamed_saved) == CLIP_UNNAMED_PLUS)
+		&& !(deleting && (clip_unnamed | clip_unnamed_saved)
+					 == (CLIP_UNNAMED | CLIP_UNNAMED_PLUS))
 		&& !did_star
 		&& curr == &(y_regs[PLUS_REGISTER]))
 	{
