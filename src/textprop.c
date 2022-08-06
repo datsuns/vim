@@ -12,7 +12,6 @@
  *
  * TODO:
  * - Adjust text property column and length when text is inserted/deleted.
- *   -> a :substitute with a multi-line match
  *   -> search for changed_bytes() from misc1.c
  *   -> search for mark_col_adjust()
  * - Perhaps we only need TP_FLAG_CONT_NEXT and can drop TP_FLAG_CONT_PREV?
@@ -163,11 +162,6 @@ f_prop_add(typval_T *argvars, typval_T *rettv)
 
     start_lnum = tv_get_number(&argvars[0]);
     start_col = tv_get_number(&argvars[1]);
-    if (start_col < 1)
-    {
-	semsg(_(e_invalid_column_number_nr), (long)start_col);
-	return;
-    }
     if (argvars[2].v_type != VAR_DICT)
     {
 	emsg(_(e_dictionary_required));
@@ -190,6 +184,7 @@ prop_add_one(
 	char_u		*type_name,
 	int		id,
 	char_u		*text_arg,
+	int		text_flags,
 	linenr_T	start_lnum,
 	linenr_T	end_lnum,
 	colnr_T		start_col,
@@ -230,7 +225,8 @@ prop_add_one(
 
     if (text != NULL)
     {
-	garray_T *gap = &buf->b_textprop_text;
+	garray_T    *gap = &buf->b_textprop_text;
+	char_u	    *p;
 
 	// double check we got the right ID
 	if (-id - 1 != gap->ga_len)
@@ -240,6 +236,12 @@ prop_add_one(
 	if (ga_grow(gap, 1) == FAIL)
 	    goto theend;
 	((char_u **)gap->ga_data)[gap->ga_len++] = text;
+
+	// change any control character (Tab, Newline, etc.) to a Space to make
+	// it simpler to compute the size
+	for (p = text; *p != NUL; MB_PTR_ADV(p))
+	    if (*p < ' ')
+		*p = ' ';
 	text = NULL;
     }
 
@@ -256,7 +258,7 @@ prop_add_one(
 	    col = start_col;
 	else
 	    col = 1;
-	if (col - 1 > (colnr_T)textlen)
+	if (col - 1 > (colnr_T)textlen && !(col == 0 && text_arg != NULL))
 	{
 	    semsg(_(e_invalid_column_number_nr), (long)start_col);
 	    goto theend;
@@ -270,6 +272,13 @@ prop_add_one(
 	    length = (int)textlen;	// can include the end-of-line
 	if (length < 0)
 	    length = 0;		// zero-width property
+
+	if (text_arg != NULL)
+	{
+	    length = 1;		// text is placed on one character
+	    if (col == 0)
+		col = MAXCOL;	// after the line
+	}
 
 	// Allocate the new line with space for the new property.
 	newtext = alloc(buf->b_ml.ml_line_len + sizeof(textprop_T));
@@ -296,8 +305,9 @@ prop_add_one(
 	tmp_prop.tp_len = length;
 	tmp_prop.tp_id = id;
 	tmp_prop.tp_type = type->pt_id;
-	tmp_prop.tp_flags = (lnum > start_lnum ? TP_FLAG_CONT_PREV : 0)
-			  | (lnum < end_lnum ? TP_FLAG_CONT_NEXT : 0);
+	tmp_prop.tp_flags = text_flags
+			    | (lnum > start_lnum ? TP_FLAG_CONT_PREV : 0)
+			    | (lnum < end_lnum ? TP_FLAG_CONT_NEXT : 0);
 	mch_memmove(newprops + i * sizeof(textprop_T), &tmp_prop,
 							   sizeof(textprop_T));
 
@@ -390,7 +400,7 @@ f_prop_add_list(typval_T *argvars, typval_T *rettv UNUSED)
 	    emsg(_(e_invalid_argument));
 	    return;
 	}
-	if (prop_add_one(buf, type_name, id, NULL, start_lnum, end_lnum,
+	if (prop_add_one(buf, type_name, id, NULL, 0, start_lnum, end_lnum,
 						start_col, end_col) == FAIL)
 	    return;
     }
@@ -428,6 +438,7 @@ prop_add_common(
     buf_T	*buf = default_buf;
     int		id = 0;
     char_u	*text = NULL;
+    int		flags = 0;
 
     if (dict == NULL || !dict_has_key(dict, "type"))
     {
@@ -483,6 +494,45 @@ prop_add_common(
 	    goto theend;
 	// use a default length of 1 to make multiple props show up
 	end_col = start_col + 1;
+
+	if (dict_has_key(dict, "text_align"))
+	{
+	    char_u *p = dict_get_string(dict, "text_align", FALSE);
+
+	    if (p == NULL)
+		goto theend;
+	    if (STRCMP(p, "right") == 0)
+		flags |= TP_FLAG_ALIGN_RIGHT;
+	    else if (STRCMP(p, "below") == 0)
+		flags |= TP_FLAG_ALIGN_BELOW;
+	    else if (STRCMP(p, "after") != 0)
+	    {
+		semsg(_(e_invalid_value_for_argument_str_str), "text_align", p);
+		goto theend;
+	    }
+	}
+
+	if (dict_has_key(dict, "text_wrap"))
+	{
+	    char_u *p = dict_get_string(dict, "text_wrap", FALSE);
+	    if (p == NULL)
+		goto theend;
+	    if (STRCMP(p, "wrap") == 0)
+		flags |= TP_FLAG_WRAP;
+	    else if (STRCMP(p, "truncate") != 0)
+	    {
+		semsg(_(e_invalid_value_for_argument_str_str), "text_wrap", p);
+		goto theend;
+	    }
+	}
+    }
+
+    // Column must be 1 or more for a normal text property; when "text" is
+    // present zero means it goes after the line.
+    if (start_col < (text == NULL ? 1 : 0))
+    {
+	semsg(_(e_invalid_column_number_nr), (long)start_col);
+	goto theend;
     }
 
     if (dict_arg != NULL && get_bufnr_from_arg(dict_arg, &buf) == FAIL)
@@ -501,7 +551,7 @@ prop_add_common(
     // correctly set.
     buf->b_has_textprop = TRUE;  // this is never reset
 
-    prop_add_one(buf, type_name, id, text,
+    prop_add_one(buf, type_name, id, text, flags,
 				    start_lnum, end_lnum, start_col, end_col);
     text = NULL;
 
@@ -550,7 +600,7 @@ get_text_props(buf_T *buf, linenr_T lnum, char_u **props, int will_change)
  * be considered.
  */
     int
-count_props(linenr_T lnum, int only_starting)
+count_props(linenr_T lnum, int only_starting, int last_line)
 {
     char_u	*props;
     int		proplen = get_text_props(curbuf, lnum, &props, 0);
@@ -558,13 +608,16 @@ count_props(linenr_T lnum, int only_starting)
     int		i;
     textprop_T	prop;
 
-    if (only_starting)
-	for (i = 0; i < proplen; ++i)
-	{
-	    mch_memmove(&prop, props + i * sizeof(prop), sizeof(prop));
-	    if (prop.tp_flags & TP_FLAG_CONT_PREV)
-		--result;
-	}
+    for (i = 0; i < proplen; ++i)
+    {
+	mch_memmove(&prop, props + i * sizeof(prop), sizeof(prop));
+	// A prop is droppend when in the first line and it continues from the
+	// previous line, or when not in the last line and it is virtual text
+	// after the line.
+	if ((only_starting && (prop.tp_flags & TP_FLAG_CONT_PREV))
+		|| (!last_line && prop.tp_col == MAXCOL))
+	    --result;
+    }
     return result;
 }
 
@@ -626,6 +679,29 @@ set_text_props(linenr_T lnum, char_u *props, int len)
 	vim_free(curbuf->b_ml.ml_line_ptr);
     curbuf->b_ml.ml_line_ptr = newtext;
     curbuf->b_ml.ml_line_len = textlen + len;
+    curbuf->b_ml.ml_flags |= ML_LINE_DIRTY;
+}
+
+/*
+ * Add "text_props" with "text_prop_count" text propertis to line "lnum".
+ */
+    void
+add_text_props(linenr_T lnum, textprop_T *text_props, int text_prop_count)
+{
+    char_u  *text;
+    char_u  *newtext;
+    int	    proplen = text_prop_count * (int)sizeof(textprop_T);
+
+    text = ml_get(lnum);
+    newtext = alloc(curbuf->b_ml.ml_line_len + proplen);
+    if (newtext == NULL)
+	return;
+    mch_memmove(newtext, text, curbuf->b_ml.ml_line_len);
+    mch_memmove(newtext + curbuf->b_ml.ml_line_len, text_props, proplen);
+    if (curbuf->b_ml.ml_flags & (ML_LINE_DIRTY | ML_ALLOCATED))
+	vim_free(curbuf->b_ml.ml_line_ptr);
+    curbuf->b_ml.ml_line_ptr = newtext;
+    curbuf->b_ml.ml_line_len += proplen;
     curbuf->b_ml.ml_flags |= ML_LINE_DIRTY;
 }
 
@@ -1489,6 +1565,15 @@ prop_type_set(typval_T *argvars, int add)
 		prop->pt_flags &= ~PT_FLAG_COMBINE;
 	}
 
+	di = dict_find(dict, (char_u *)"override", -1);
+	if (di != NULL)
+	{
+	    if (tv_get_bool(&di->di_tv))
+		prop->pt_flags |= PT_FLAG_OVERRIDE;
+	    else
+		prop->pt_flags &= ~PT_FLAG_OVERRIDE;
+	}
+
 	di = dict_find(dict, (char_u *)"priority", -1);
 	if (di != NULL)
 	    prop->pt_priority = tv_get_number(&di->di_tv);
@@ -1738,22 +1823,32 @@ typedef struct
  */
     static adjustres_T
 adjust_prop(
-	textprop_T *prop,
-	colnr_T col,
-	int added,
-	int flags)
+	textprop_T  *prop,
+	colnr_T	    col,
+	int	    added,
+	int	    flags)
 {
-    proptype_T	*pt = text_prop_type_by_id(curbuf, prop->tp_type);
-    int		start_incl = (pt != NULL
-				    && (pt->pt_flags & PT_FLAG_INS_START_INCL))
+    proptype_T	*pt;
+    int		start_incl;
+    int		end_incl;
+    int		droppable;
+    adjustres_T res = {TRUE, FALSE};
+
+    // prop after end of the line doesn't move
+    if (prop->tp_col == MAXCOL)
+    {
+	res.dirty = FALSE;
+	return res;
+    }
+
+    pt = text_prop_type_by_id(curbuf, prop->tp_type);
+    start_incl = (pt != NULL && (pt->pt_flags & PT_FLAG_INS_START_INCL))
 				|| (flags & APC_SUBSTITUTE)
 				|| (prop->tp_flags & TP_FLAG_CONT_PREV);
-    int		end_incl = (pt != NULL
-				      && (pt->pt_flags & PT_FLAG_INS_END_INCL))
+    end_incl = (pt != NULL && (pt->pt_flags & PT_FLAG_INS_END_INCL))
 				|| (prop->tp_flags & TP_FLAG_CONT_NEXT);
-    // Do not drop zero-width props if they later can increase in size.
-    int		droppable = !(start_incl || end_incl);
-    adjustres_T res = {TRUE, FALSE};
+    // do not drop zero-width props if they later can increase in size
+    droppable = !(start_incl || end_incl);
 
     if (added > 0)
     {
@@ -1964,7 +2059,7 @@ prepend_joined_props(
 	int	    propcount,
 	int	    *props_remaining,
 	linenr_T    lnum,
-	int	    add_all,
+	int	    last_line,
 	long	    col,
 	int	    removed)
 {
@@ -1978,12 +2073,14 @@ prepend_joined_props(
 	int	    end;
 
 	mch_memmove(&prop, props + i * sizeof(prop), sizeof(prop));
+	if (prop.tp_col == MAXCOL && !last_line)
+	    continue;  // drop property with text after the line
 	end = !(prop.tp_flags & TP_FLAG_CONT_NEXT);
 
 	adjust_prop(&prop, 0, -removed, 0); // Remove leading spaces
 	adjust_prop(&prop, -1, col, 0); // Make line start at its final column
 
-	if (add_all || end)
+	if (last_line || end)
 	    mch_memmove(new_props + --(*props_remaining) * sizeof(prop),
 							  &prop, sizeof(prop));
 	else
