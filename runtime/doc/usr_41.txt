@@ -268,14 +268,15 @@ when it doesn't, append !: >
 You cannot `unlet` script-local variables in |Vim9| script, only in legacy
 script.
 
-When a script finishes, the local variables declared there will not be
-deleted.  Functions defined in the script can use them.  Example:
+When a script has been processed to the end, the local variables declared
+there will not be deleted.  Functions defined in the script can use them.
+Example:
 >
 	vim9script
 	var counter = 0
 	def g:GetCount(): number
-	  s:counter += 1
-	  return s:counter
+	  counter += 1
+	  return counter
 	enddef
 
 Every time you call the function it will return the next count: >
@@ -791,14 +792,16 @@ List manipulation:					*list-functions*
 	reduce()		reduce a List to a value
 	slice()			take a slice of a List
 	sort()			sort a List
-	reverse()		reverse the order of a List
+	reverse()		reverse the order of a List or Blob
 	uniq()			remove copies of repeated adjacent items
 	split()			split a String into a List
 	join()			join List items into a String
 	range()			return a List with a sequence of numbers
 	string()		String representation of a List
 	call()			call a function with List as arguments
-	index()			index of a value in a List
+	index()			index of a value in a List or Blob
+	indexof()		index in a List or Blob where an expression
+				evaluates to true 
 	max()			maximum value in a List
 	min()			minimum value in a List
 	count()			count number of times a value appears in a List

@@ -391,7 +391,7 @@ do_record(int c)
 	    {
 		// Enable macro indicator temporarily
 		set_option_value((char_u *)"ch", 1L, NULL, 0);
-		update_screen(VALID);
+		update_screen(UPD_VALID);
 
 		changed_cmdheight = TRUE;
 	    }
@@ -427,7 +427,7 @@ do_record(int c)
 	{
 	    // Restore cmdheight
 	    set_option_value((char_u *)"ch", 0L, NULL, 0);
-	    redraw_all_later(CLEAR);
+	    redraw_all_later(UPD_CLEAR);
 	}
     }
     return retval;
@@ -2099,10 +2099,14 @@ do_put(
 			ptr += yanklen;
 		    }
 		    STRMOVE(ptr, oldp + col);
-		    ml_replace(lnum, newp, FALSE);
 
 		    // compute the byte offset for the last character
 		    first_byte_off = mb_head_off(newp, ptr - 1);
+
+		    // Note: this may free "newp"
+		    ml_replace(lnum, newp, FALSE);
+
+		    inserted_bytes(lnum, col, totlen);
 
 		    // Place cursor on last putted char.
 		    if (lnum == curwin->w_cursor.lnum)
@@ -2128,7 +2132,6 @@ do_put(
 		++curwin->w_cursor.col;
 	    else
 		curwin->w_cursor.col -= first_byte_off;
-	    changed_bytes(lnum, col);
 	}
 	else
 	{

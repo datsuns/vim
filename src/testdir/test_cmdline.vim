@@ -215,6 +215,40 @@ func Test_redraw_in_autocmd()
   call delete('XTest_redraw')
 endfunc
 
+func Test_changing_cmdheight()
+  CheckScreendump
+
+  let lines =<< trim END
+      set cmdheight=1 laststatus=2
+  END
+  call writefile(lines, 'XTest_cmdheight')
+
+  let buf = RunVimInTerminal('-S XTest_cmdheight', {'rows': 8})
+  call term_sendkeys(buf, ":resize -3\<CR>")
+  call VerifyScreenDump(buf, 'Test_changing_cmdheight_1', {})
+
+  " using the space available doesn't change the status line
+  call term_sendkeys(buf, ":set cmdheight+=3\<CR>")
+  call VerifyScreenDump(buf, 'Test_changing_cmdheight_2', {})
+
+  " using more space moves the status line up
+  call term_sendkeys(buf, ":set cmdheight+=1\<CR>")
+  call VerifyScreenDump(buf, 'Test_changing_cmdheight_3', {})
+
+  " reducing cmdheight moves status line down
+  call term_sendkeys(buf, ":set cmdheight-=2\<CR>")
+  call VerifyScreenDump(buf, 'Test_changing_cmdheight_4', {})
+
+  " reducing window size and then setting cmdheight 
+  call term_sendkeys(buf, ":resize -1\<CR>")
+  call term_sendkeys(buf, ":set cmdheight=1\<CR>")
+  call VerifyScreenDump(buf, 'Test_changing_cmdheight_5', {})
+
+  " clean up
+  call StopVimInTerminal(buf)
+  call delete('XTest_cmdheight')
+endfunc
+
 func Test_map_completion()
   call feedkeys(":map <unique> <si\<Tab>\<Home>\"\<CR>", 'xt')
   call assert_equal('"map <unique> <silent>', getreg(':'))
@@ -2423,17 +2457,18 @@ endfunc
 " buffer name fuzzy completion
 func Test_fuzzy_completion_bufname()
   set wildoptions&
-  edit SomeFile.txt
+  " Use a long name to reduce the risk of matching a random directory name
+  edit SomeRandomFileWithLetters.txt
   enew
-  call feedkeys(":b SF\<Tab>\<C-B>\"\<CR>", 'tx')
-  call assert_equal('"b SF', @:)
-  call feedkeys(":b S*File.txt\<Tab>\<C-B>\"\<CR>", 'tx')
-  call assert_equal('"b SomeFile.txt', @:)
+  call feedkeys(":b SRFWL\<Tab>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"b SRFWL', @:)
+  call feedkeys(":b S*FileWithLetters.txt\<Tab>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"b SomeRandomFileWithLetters.txt', @:)
   set wildoptions=fuzzy
-  call feedkeys(":b SF\<Tab>\<C-B>\"\<CR>", 'tx')
-  call assert_equal('"b SomeFile.txt', @:)
-  call feedkeys(":b S*File.txt\<Tab>\<C-B>\"\<CR>", 'tx')
-  call assert_equal('"b S*File.txt', @:)
+  call feedkeys(":b SRFWL\<Tab>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"b SomeRandomFileWithLetters.txt', @:)
+  call feedkeys(":b S*FileWithLetters.txt\<Tab>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"b S*FileWithLetters.txt', @:)
   %bw!
   set wildoptions&
 endfunc

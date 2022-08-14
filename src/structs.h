@@ -815,6 +815,8 @@ typedef struct textprop_S
 
 #define TP_FLAG_WRAP		0x40	// virtual text wraps - when missing
 					// text is truncated
+#define TP_FLAG_START_INCL	0x80	// "start_incl" copied from proptype
+
 #define PROP_TEXT_MIN_CELLS	4	// minimun number of cells to use for
 					// the text, even when truncating
 
@@ -3084,6 +3086,7 @@ struct file_buffer
 #ifdef FEAT_PROP_POPUP
     int		b_has_textprop;	// TRUE when text props were added
     hashtab_T	*b_proptypes;	// text property types local to buffer
+    proptype_T	**b_proparray;	// entries of b_proptypes sorted on tp_id
     garray_T	b_textprop_text; // stores text for props, index by (-id - 1)
 #endif
 
@@ -3695,7 +3698,7 @@ struct window_S
 
     int		w_redr_type;	    // type of redraw to be performed on win
     int		w_upd_rows;	    // number of window lines to update when
-				    // w_redr_type is REDRAW_TOP
+				    // w_redr_type is UPD_REDRAW_TOP
     linenr_T	w_redraw_top;	    // when != 0: first line needing redraw
     linenr_T	w_redraw_bot;	    // when != 0: last line needing redraw
     int		w_redr_status;	    // if TRUE status line must be redrawn
@@ -4586,6 +4589,7 @@ typedef struct {
     int         cts_cur_text_width;     // width of current inserted text
     int		cts_with_trailing;	// include size of trailing props with
 					// last character
+    int		cts_start_incl;		// prop has true "start_incl" arg
 #endif
     int		cts_vcol;	    // virtual column at current position
 } chartabsize_T;
