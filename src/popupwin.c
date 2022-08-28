@@ -28,6 +28,11 @@ static poppos_entry_T poppos_entries[] = {
     {"center", POPPOS_CENTER}
 };
 
+#ifdef HAS_MESSAGE_WINDOW
+// Window used for messages when 'winheight' is zero.
+static win_T *message_win = NULL;
+#endif
+
 static void popup_adjust_position(win_T *wp);
 
 /*
@@ -2770,6 +2775,11 @@ popup_free(win_T *wp)
 	clear_cmdline = TRUE;
     win_free_popup(wp);
 
+#ifdef HAS_MESSAGE_WINDOW
+    if (wp == message_win)
+	message_win = NULL;
+#endif
+
     redraw_all_later(UPD_NOT_VALID);
     popup_mask_refresh = TRUE;
 }
@@ -4440,9 +4450,6 @@ popup_close_info(void)
 
 #if defined(HAS_MESSAGE_WINDOW) || defined(PROTO)
 
-// Window used for messages when 'winheight' is zero.
-static win_T *message_win = NULL;
-
 /*
  * Get the message window.
  * Returns NULL if something failed.
@@ -4494,7 +4501,7 @@ popup_show_message_win(void)
 	    popup_update_color(message_win, TYPE_MESSAGE_WIN);
 	    popup_show(message_win);
 	}
-	else if (message_win->w_popup_timer != NULL)
+	if (message_win->w_popup_timer != NULL)
 	    timer_start(message_win->w_popup_timer);
     }
 }
@@ -4514,6 +4521,16 @@ popup_hide_message_win(void)
 {
     if (message_win != NULL)
 	popup_hide(message_win);
+}
+
+/*
+ * If the message window exists: close it.
+ */
+    void
+popup_close_message_win(void)
+{
+    if (message_win != NULL)
+	popup_close(message_win->w_id, TRUE);
 }
 
 #endif

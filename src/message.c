@@ -206,7 +206,11 @@ msg_strtrunc(
 			       && !exmode_active && msg_silent == 0) || force)
     {
 	len = vim_strsize(s);
-	if (msg_scrolled != 0)
+	if (msg_scrolled != 0
+#ifdef HAS_MESSAGE_WINDOW
+		|| use_message_window()
+#endif
+		)
 	    // Use all the columns.
 	    room = (int)(Rows - msg_row) * Columns - 1;
 	else
@@ -746,8 +750,12 @@ emsg_core(char_u *s)
 #endif
     }
 
-    emsg_on_display = TRUE;	// remember there is an error message
-    attr = HL_ATTR(HLF_E);	// set highlight mode for error messages
+#ifdef HAS_MESSAGE_WINDOW
+    if (!use_message_window())
+#endif
+	emsg_on_display = TRUE;	    // remember there is an error message
+
+    attr = HL_ATTR(HLF_E);	    // set highlight mode for error messages
     if (msg_scrolled != 0)
 	need_wait_return = TRUE;    // needed in case emsg() is called after
 				    // wait_return has reset need_wait_return
@@ -1069,6 +1077,7 @@ ex_messages(exarg_T *eap)
     }
 
     msg_hist_off = TRUE;
+    dont_use_message_window();
 
     p = first_msg_hist;
     if (eap->addr_count != 0)
@@ -1436,6 +1445,19 @@ use_message_window(void)
 }
 
 /*
+ * Do not use the message window for the next message(s).
+ * Used when giving a prompt.
+ */
+    void
+dont_use_message_window(void)
+{
+#ifdef HAS_MESSAGE_WINDOW
+    popup_hide_message_win();
+    cmdline_row = Rows - 1;
+#endif
+}
+
+/*
  * Prepare for outputting characters in the command line.
  */
     void
@@ -1462,10 +1484,12 @@ msg_start(void)
 #ifdef HAS_MESSAGE_WINDOW
     if (use_message_window())
     {
-	if (popup_message_win_visible() && msg_col > 0)
+	if (popup_message_win_visible() && msg_col > 0
+					       && (msg_scroll || !full_screen))
 	{
 	    win_T *wp = popup_get_message_win();
 
+	    // start a new line
 	    curbuf = wp->w_buffer;
 	    ml_append(wp->w_buffer->b_ml.ml_line_count,
 					      (char_u *)"", (colnr_T)0, FALSE);
@@ -2281,7 +2305,7 @@ put_msg_win(win_T *wp, int where, char_u *t_s, char_u *end, linenr_T lnum)
     redraw_win_later(wp, UPD_NOT_VALID);
 
     // set msg_col so that a newline is written if needed
-    msg_col = STRLEN(t_s);
+    msg_col = (int)STRLEN(t_s);
 }
 #endif
 
@@ -3719,7 +3743,11 @@ msg_end(void)
     void
 msg_check(void)
 {
-    if (msg_row == Rows - 1 && msg_col >= sc_col)
+    if (msg_row == Rows - 1 && msg_col >= sc_col
+#ifdef HAS_MESSAGE_WINDOW
+		&& !use_message_window()
+#endif
+	    )
     {
 	need_wait_return = TRUE;
 	redraw_cmdline = TRUE;
@@ -4059,6 +4087,7 @@ do_dialog(
     }
 #endif
 
+    dont_use_message_window();
     oldState = State;
     State = MODE_CONFIRM;
     setmouse();

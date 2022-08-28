@@ -1603,6 +1603,9 @@ getcmdline_int(
 	made_cmdheight_nonzero = TRUE;
 	lastwin->w_p_so = 0;
 	set_option_value((char_u *)"ch", 1L, NULL, 0);
+#ifdef HAS_MESSAGE_WINDOW
+	popup_hide_message_win();
+#endif
 	update_screen(UPD_VALID);                 // redraw the screen NOW
 	made_cmdheight_nonzero = FALSE;
 	lastwin->w_p_so = save_so;
@@ -4269,11 +4272,9 @@ f_setcmdline(typval_T *argvars, typval_T *rettv)
 {
     int pos = -1;
 
-    if (argvars[0].v_type != VAR_STRING || argvars[0].vval.v_string == NULL)
-    {
-	emsg(_(e_string_required));
+    if (check_for_string_arg(argvars, 0) == FAIL
+	    || check_for_opt_number_arg(argvars, 1) == FAIL)
 	return;
-    }
 
     if (argvars[1].v_type != VAR_UNKNOWN)
     {
