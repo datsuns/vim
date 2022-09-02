@@ -673,14 +673,14 @@ func Test_complete_func_error()
   func ListColors()
     call complete(col('.'), "blue")
   endfunc
-  call assert_fails('exe "normal i\<C-R>=ListColors()\<CR>"', 'E474:')
+  call assert_fails('exe "normal i\<C-R>=ListColors()\<CR>"', 'E1211:')
   func ListMonths()
     call complete(col('.'), test_null_list())
   endfunc
-  call assert_fails('exe "normal i\<C-R>=ListMonths()\<CR>"', 'E474:')
+  call assert_fails('exe "normal i\<C-R>=ListMonths()\<CR>"', 'E1298:')
   delfunc ListColors
   delfunc ListMonths
-  call assert_fails('call complete_info({})', 'E714:')
+  call assert_fails('call complete_info({})', 'E1211:')
   call assert_equal([], complete_info(['items']).items)
 endfunc
 
@@ -1226,14 +1226,14 @@ func Test_complete_unreadable_thesaurus_file()
   CheckUnix
   CheckNotRoot
 
-  call writefile(['about', 'above'], 'Xfile')
-  call setfperm('Xfile', '---r--r--')
+  call writefile(['about', 'above'], 'Xunrfile')
+  call setfperm('Xunrfile', '---r--r--')
   new
   set complete=sXfile
   exe "normal! ia\<C-P>"
   call assert_equal('a', getline(1))
   bw!
-  call delete('Xfile')
+  call delete('Xunrfile')
   set complete&
 endfunc
 

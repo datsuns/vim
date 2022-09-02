@@ -1076,8 +1076,12 @@ list2items(typval_T *argvars, typval_T *rettv)
 
 	if (l2 == NULL)
 	    break;
-	if (list_append_list(rettv->vval.v_list, l2) == FAIL
-		|| list_append_number(l2, idx) == FAIL
+	if (list_append_list(rettv->vval.v_list, l2) == FAIL)
+	{
+	    vim_free(l2);
+	    break;
+	}
+	if (list_append_number(l2, idx) == FAIL
 		|| list_append_tv(l2, &li->li_tv) == FAIL)
 	    break;
     }
@@ -1108,8 +1112,12 @@ string2items(typval_T *argvars, typval_T *rettv)
 	l2 = list_alloc();
 	if (l2 == NULL)
 	    break;
-	if (list_append_list(rettv->vval.v_list, l2) == FAIL
-		|| list_append_number(l2, idx) == FAIL
+	if (list_append_list(rettv->vval.v_list, l2) == FAIL)
+	{
+	    vim_free(l2);
+	    break;
+	}
+	if (list_append_number(l2, idx) == FAIL
 		|| list_append_string(l2, p, len) == FAIL)
 	    break;
 	p += len;
@@ -1511,11 +1519,8 @@ f_join(typval_T *argvars, typval_T *rettv)
 		|| check_for_opt_string_arg(argvars, 1) == FAIL))
 	return;
 
-    if (argvars[0].v_type != VAR_LIST)
-    {
-	emsg(_(e_list_required));
+    if (check_for_list_arg(argvars, 0) == FAIL)
 	return;
-    }
 
     if (argvars[0].vval.v_list == NULL)
 	return;
@@ -1720,11 +1725,8 @@ f_list2str(typval_T *argvars, typval_T *rettv)
 		|| check_for_opt_bool_arg(argvars, 1) == FAIL))
 	return;
 
-    if (argvars[0].v_type != VAR_LIST)
-    {
-	emsg(_(e_invalid_argument));
+    if (check_for_list_arg(argvars, 0) == FAIL)
 	return;
-    }
 
     l = argvars[0].vval.v_list;
     if (l == NULL)

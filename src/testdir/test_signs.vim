@@ -686,7 +686,7 @@ func Test_sign_group()
   call assert_equal([], sign_getplaced(bnum, {'group' : '*'})[0].signs)
 
   " Error case
-  call assert_fails("call sign_unplace({})", 'E474:')
+  call assert_fails("call sign_unplace({})", 'E1174:')
 
   " Place a sign in the global group and try to delete it using a group
   call assert_equal(5, sign_place(5, '', 'sign1', bnum, {'lnum' : 10}))
@@ -2010,7 +2010,7 @@ func Test_sign_funcs_multi()
 
   " Invalid arguments
   call assert_equal([], sign_placelist([]))
-  call assert_fails('call sign_placelist({})', "E714:")
+  call assert_fails('call sign_placelist({})', "E1211:")
   call assert_fails('call sign_placelist([[]])', "E715:")
   call assert_fails('call sign_placelist(["abc"])', "E715:")
   call assert_fails('call sign_placelist([100])', "E715:")
@@ -2021,7 +2021,7 @@ func Test_sign_funcs_multi()
 
   " Invalid arguments
   call assert_equal([], []->sign_unplacelist())
-  call assert_fails('call sign_unplacelist({})', "E714:")
+  call assert_fails('call sign_unplacelist({})', "E1211:")
   call assert_fails('call sign_unplacelist([[]])', "E715:")
   call assert_fails('call sign_unplacelist(["abc"])', "E715:")
   call assert_fails('call sign_unplacelist([100])', "E715:")

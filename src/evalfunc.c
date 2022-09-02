@@ -3235,11 +3235,8 @@ f_call(typval_T *argvars, typval_T *rettv)
 		|| check_for_opt_dict_arg(argvars, 2) == FAIL))
 	return;
 
-    if (argvars[1].v_type != VAR_LIST)
-    {
-	emsg(_(e_list_required));
+    if (check_for_list_arg(argvars, 1) == FAIL)
 	return;
-    }
     if (argvars[1].vval.v_list == NULL)
 	return;
 
@@ -3610,17 +3607,13 @@ f_deepcopy(typval_T *argvars, typval_T *rettv)
 {
     varnumber_T	noref = 0;
 
-    if (in_vim9script()
-	    && (check_for_opt_bool_arg(argvars, 1) == FAIL))
+    if (check_for_opt_bool_arg(argvars, 1) == FAIL)
 	return;
 
     if (argvars[1].v_type != VAR_UNKNOWN)
 	noref = tv_get_bool_chk(&argvars[1], NULL);
-    if (noref < 0 || noref > 1)
-	semsg(_(e_using_number_as_bool_nr), noref);
-    else
-	item_copy(&argvars[0], rettv, TRUE, TRUE,
-						noref == 0 ? get_copyID() : 0);
+
+    item_copy(&argvars[0], rettv, TRUE, TRUE, noref == 0 ? get_copyID() : 0);
 }
 
 /*
@@ -4811,9 +4804,12 @@ f_getchangelist(typval_T *argvars, typval_T *rettv)
     l = list_alloc();
     if (l == NULL)
 	return;
-
     if (list_append_list(rettv->vval.v_list, l) == FAIL)
+    {
+	vim_free(l);
 	return;
+    }
+
     /*
      * The current window change list index tracks only the position for the
      * current buffer. For other buffers use the stored index for the current
@@ -5045,9 +5041,12 @@ f_getjumplist(typval_T *argvars, typval_T *rettv)
     l = list_alloc();
     if (l == NULL)
 	return;
-
     if (list_append_list(rettv->vval.v_list, l) == FAIL)
+    {
+	vim_free(l);
 	return;
+    }
+
     list_append_number(rettv->vval.v_list, (varnumber_T)wp->w_jumplistidx);
 
     for (i = 0; i < wp->w_jumplistlen; ++i)
@@ -5254,21 +5253,11 @@ f_gettagstack(typval_T *argvars, typval_T *rettv)
     static void
 f_gettext(typval_T *argvars, typval_T *rettv)
 {
-    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+    if (check_for_nonempty_string_arg(argvars, 0) == FAIL)
 	return;
 
-    if (argvars[0].v_type != VAR_STRING
-	    || argvars[0].vval.v_string == NULL
-	    || *argvars[0].vval.v_string == NUL)
-    {
-	semsg(_(e_invalid_argument_str), tv_get_string(&argvars[0]));
-    }
-    else
-    {
-	rettv->v_type = VAR_STRING;
-	rettv->vval.v_string = vim_strsave(
-					(char_u *)_(argvars[0].vval.v_string));
-    }
+    rettv->v_type = VAR_STRING;
+    rettv->vval.v_string = vim_strsave((char_u *)_(argvars[0].vval.v_string));
 }
 
 // for VIM_VERSION_ defines
@@ -9638,7 +9627,9 @@ f_settagstack(typval_T *argvars, typval_T *rettv)
     // default is to replace the stack.
     if (argvars[2].v_type == VAR_UNKNOWN)
 	action = 'r';
-    else if (argvars[2].v_type == VAR_STRING)
+    else if (check_for_string_arg(argvars, 2) == FAIL)
+	return;
+    else
     {
 	char_u	*actstr;
 	actstr = tv_get_string_chk(&argvars[2]);
@@ -9652,11 +9643,6 @@ f_settagstack(typval_T *argvars, typval_T *rettv)
 	    semsg(_(e_invalid_action_str_2), actstr);
 	    return;
 	}
-    }
-    else
-    {
-	emsg(_(e_string_required));
-	return;
     }
 
     if (set_tagstack(wp, d, action) == OK)

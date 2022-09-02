@@ -14,15 +14,15 @@ endfunc
 
 func Test_conf_type()
   filetype on
-  call writefile(['# some comment', 'must be conf'], 'Xfile')
+  call writefile(['# some comment', 'must be conf'], 'Xconffile')
   augroup filetypedetect
     au BufNewFile,BufRead *	call assert_equal(0, did_filetype())
   augroup END
-  split Xfile
+  split Xconffile
   call assert_equal('conf', &filetype)
 
   bwipe!
-  call delete('Xfile')
+  call delete('Xconffile')
   filetype off
 endfunc
 
@@ -30,15 +30,15 @@ func Test_other_type()
   filetype on
   augroup filetypedetect
     au BufNewFile,BufRead *	call assert_equal(0, did_filetype())
-    au BufNewFile,BufRead Xfile	setf testfile
+    au BufNewFile,BufRead Xotherfile	setf testfile
     au BufNewFile,BufRead *	call assert_equal(1, did_filetype())
   augroup END
-  call writefile(['# some comment', 'must be conf'], 'Xfile')
-  split Xfile
+  call writefile(['# some comment', 'must be conf'], 'Xotherfile')
+  split Xotherfile
   call assert_equal('testfile', &filetype)
 
   bwipe!
-  call delete('Xfile')
+  call delete('Xotherfile')
   filetype off
 endfunc
 
@@ -1824,6 +1824,44 @@ func Test_sig_file()
   bwipe!
 
   call delete('Xfile.sig')
+  filetype off
+endfunc
+
+" Test dist#ft#FTsil()
+func Test_sil_file()
+  filetype on
+
+  split Xfile.sil
+  call assert_equal('sil', &filetype)
+  bwipe!
+
+  let lines =<< trim END
+  // valid
+  let protoErasedPathA = \ABCProtocol.a
+
+  // also valid
+  let protoErasedPathA =
+          \ABCProtocol.a
+  END
+  call writefile(lines, 'Xfile.sil')
+
+  split Xfile.sil
+  call assert_equal('sil', &filetype)
+  bwipe!
+
+  " SILE
+
+  call writefile(['% some comment'], 'Xfile.sil')
+  split Xfile.sil
+  call assert_equal('sile', &filetype)
+  bwipe!
+
+  call writefile(['\begin[papersize=a6]{document}foo\end{document}'], 'Xfile.sil')
+  split Xfile.sil
+  call assert_equal('sile', &filetype)
+  bwipe!
+
+  call delete('Xfile.sil')
   filetype off
 endfunc
 

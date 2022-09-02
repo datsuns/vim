@@ -29,7 +29,7 @@ static poppos_entry_T poppos_entries[] = {
 };
 
 #ifdef HAS_MESSAGE_WINDOW
-// Window used for messages when 'winheight' is zero.
+// Window used for ":echowindow"
 static win_T *message_win = NULL;
 #endif
 
@@ -1356,6 +1356,8 @@ popup_adjust_position(win_T *wp)
 
     if (wp->w_maxheight > 0)
 	maxheight = wp->w_maxheight;
+    else if (wp->w_popup_pos == POPPOS_BOTTOM)
+	maxheight = cmdline_row - 1;
 
     // start at the desired first line
     if (wp->w_firstline > 0)
@@ -2767,9 +2769,7 @@ f_popup_settext(typval_T *argvars, typval_T *rettv UNUSED)
     wp = find_popup_win(id);
     if (wp != NULL)
     {
-	if (argvars[1].v_type != VAR_STRING && argvars[1].v_type != VAR_LIST)
-	    semsg(_(e_invalid_argument_str), tv_get_string(&argvars[1]));
-	else
+	if (check_for_string_or_list_arg(argvars, 1) != FAIL)
 	{
 	    popup_set_buffer_text(wp->w_buffer, argvars[1]);
 	    redraw_win_later(wp, UPD_NOT_VALID);
@@ -4479,6 +4479,7 @@ popup_get_message_win(void)
 	message_win->w_popup_pos = POPPOS_BOTTOM;
 	message_win->w_wantcol = 1;
 	message_win->w_minwidth = 9999;
+	message_win->w_firstline = -1;
 
 	// no padding, border at the top
 	for (i = 0; i < 4; ++i)
@@ -4530,15 +4531,30 @@ popup_hide_message_win(void)
 }
 
 /*
- * If the message window exists: close it.
+ * Invoked before outputting a message for ":echowindow".
  */
     void
-popup_close_message_win(void)
+start_echowindow(void)
 {
-    if (message_win != NULL)
-	popup_close(message_win->w_id, TRUE);
+    in_echowindow = TRUE;
 }
 
+/*
+ * Invoked after outputting a message for ":echowindow".
+ */
+    void
+end_echowindow(void)
+{
+    // show the message window now
+    redraw_cmd(FALSE);
+
+    // do not overwrite messages
+    // TODO: only for message window
+    msg_didout = TRUE;
+    if (msg_col == 0)
+	msg_col = 1;
+    in_echowindow = FALSE;
+}
 #endif
 
 /*

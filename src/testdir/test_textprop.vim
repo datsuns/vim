@@ -381,7 +381,7 @@ func Test_prop_add_list()
   call assert_fails('call prop_add_list(#{type: "one"}, [[2, 2, 2, 2], [3, 20, 3, 22]])', 'E964:')
   call assert_fails('eval #{type: "one"}->prop_add_list([[2, 2, 2, 2], [3, 20, 3, 22]])', 'E964:')
   call assert_fails('call prop_add_list(test_null_dict(), [[2, 2, 2]])', 'E965:')
-  call assert_fails('call prop_add_list(#{type: "one"}, test_null_list())', 'E714:')
+  call assert_fails('call prop_add_list(#{type: "one"}, test_null_list())', 'E1298:')
   call assert_fails('call prop_add_list(#{type: "one"}, [test_null_list()])', 'E714:')
   call DeletePropTypes()
   bw!
@@ -1925,12 +1925,21 @@ func Test_prop_in_linebreak()
   let lines =<< trim END
     set breakindent linebreak breakat+=]
     call printf('%s]%s', repeat('x', 50), repeat('x', 70))->setline(1)
-    call prop_type_add('test', #{highlight: 'ErrorMsg'})
+    call prop_type_add('test', #{highlight: 'MatchParen'})
     call prop_add(1, 51, #{length: 1, type: 'test'})
+    func AddMatch()
+      syntax on
+      syntax match xTest /.*/
+      hi link xTest Comment
+      set signcolumn=yes
+    endfunc
   END
   call writefile(lines, 'XscriptPropLinebreak')
   let buf = RunVimInTerminal('-S XscriptPropLinebreak', #{rows: 10})
-  call VerifyScreenDump(buf, 'Test_prop_linebreak', {})
+  call VerifyScreenDump(buf, 'Test_prop_linebreak_1', {})
+
+  call term_sendkeys(buf, ":call AddMatch()\<CR>")
+  call VerifyScreenDump(buf, 'Test_prop_linebreak_2', {})
 
   call StopVimInTerminal(buf)
   call delete('XscriptPropLinebreak')

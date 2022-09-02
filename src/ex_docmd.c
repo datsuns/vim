@@ -1068,7 +1068,7 @@ do_cmdline(
 
 		    // Check for the next breakpoint at or after the ":while"
 		    // or ":for".
-		    if (breakpoint != NULL)
+		    if (breakpoint != NULL && lines_ga.ga_len > current_line)
 		    {
 			*breakpoint = dbg_find_breakpoint(
 			       getline_equal(fgetline, cookie, getsourceline),
@@ -2455,6 +2455,7 @@ do_one_cmd(
 	    case CMD_final:
 	    case CMD_help:
 	    case CMD_hide:
+	    case CMD_horizontal:
 	    case CMD_ijump:
 	    case CMD_ilist:
 	    case CMD_isearch:
@@ -2987,8 +2988,13 @@ parse_command_modifiers(
 			    continue;
 			}
 
+	    case 'h':	if (checkforcmd_noparen(&eap->cmd, "horizontal", 3))
+			{
+			    cmod->cmod_split |= WSP_HOR;
+			    continue;
+			}
 			// ":hide" and ":hide | cmd" are not modifiers
-	    case 'h':	if (p != eap->cmd || !checkforcmd_noparen(&p, "hide", 3)
+			if (p != eap->cmd || !checkforcmd_noparen(&p, "hide", 3)
 					       || *p == NUL || ends_excmd(*p))
 			    break;
 			eap->cmd = p;
@@ -8343,10 +8349,19 @@ ex_redir(exarg_T *eap)
 }
 
 /*
- * ":redraw": force redraw
+ * ":redraw": force redraw, with clear for ":redraw!".
  */
     void
 ex_redraw(exarg_T *eap)
+{
+    redraw_cmd(eap->forceit);
+}
+
+/*
+ * ":redraw": force redraw, with clear if "clear" is TRUE.
+ */
+    void
+redraw_cmd(int clear)
 {
     int		r = RedrawingDisabled;
     int		p = p_lz;
@@ -8355,7 +8370,7 @@ ex_redraw(exarg_T *eap)
     p_lz = FALSE;
     validate_cursor();
     update_topline();
-    update_screen(eap->forceit ? UPD_CLEAR : VIsual_active ? UPD_INVERTED : 0);
+    update_screen(clear ? UPD_CLEAR : VIsual_active ? UPD_INVERTED : 0);
     if (need_maketitle)
 	maketitle();
 #if defined(MSWIN) && (!defined(FEAT_GUI_MSWIN) || defined(VIMDLL))
@@ -8370,14 +8385,9 @@ ex_redraw(exarg_T *eap)
     // After drawing the statusline screen_attr may still be set.
     screen_stop_highlight();
 
-#ifdef HAS_MESSAGE_WINDOW
-    if (!use_message_window())  // append messages in the message window
-#endif
-    {
-	// Reset msg_didout, so that a message that's there is overwritten.
-	msg_didout = FALSE;
-	msg_col = 0;
-    }
+    // Reset msg_didout, so that a message that's there is overwritten.
+    msg_didout = FALSE;
+    msg_col = 0;
 
     // No need to wait after an intentional redraw.
     need_wait_return = FALSE;

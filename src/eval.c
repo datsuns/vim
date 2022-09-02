@@ -6728,9 +6728,6 @@ ex_execute(exarg_T *eap)
     long	start_lnum = SOURCING_LNUM;
 
     ga_init2(&ga, 1, 80);
-#ifdef HAS_MESSAGE_WINDOW
-    in_echowindow = (eap->cmdidx == CMD_echowindow);
-#endif
 
     if (eap->skip)
 	++emsg_skip;
@@ -6795,10 +6792,20 @@ ex_execute(exarg_T *eap)
 	    msg_sb_eol();
 	}
 
-	if (eap->cmdidx == CMD_echomsg || eap->cmdidx == CMD_echowindow)
+	if (eap->cmdidx == CMD_echomsg)
 	{
 	    msg_attr(ga.ga_data, echo_attr);
 	    out_flush();
+	}
+	else if (eap->cmdidx == CMD_echowindow)
+	{
+#ifdef HAS_MESSAGE_WINDOW
+	    start_echowindow();
+#endif
+	    msg_attr(ga.ga_data, echo_attr);
+#ifdef HAS_MESSAGE_WINDOW
+	    end_echowindow();
+#endif
 	}
 	else if (eap->cmdidx == CMD_echoconsole)
 	{
@@ -6831,19 +6838,6 @@ ex_execute(exarg_T *eap)
 
     if (eap->skip)
 	--emsg_skip;
-#ifdef HAS_MESSAGE_WINDOW
-    if (use_message_window() && eap->cmdidx != CMD_execute)
-    {
-	// show the message window now
-	ex_redraw(eap);
-
-	// do not overwrite messages
-	msg_didout = TRUE;
-	if (msg_col == 0)
-	    msg_col = 1;
-    }
-    in_echowindow = FALSE;
-#endif
     set_nextcmd(eap, arg);
 }
 
