@@ -238,6 +238,12 @@ func Test_saveas()
   syntax off
   %bw!
   call delete('Xsaveas.pl')
+
+  " :saveas fails for "nofile" buffer
+  set buftype=nofile
+  call assert_fails('saveas Xsafile', 'E676: No matching autocommands for buftype=nofile buffer')
+
+  bwipe!
 endfunc
 
 func Test_write_errors()
@@ -948,6 +954,19 @@ func Test_write_with_deferred_delete()
   call assert_equal('', glob('XdeferDelete'))
   call DefWriteDefer()
   call assert_equal('', glob('XdefdeferDelete'))
+endfunc
+
+func DoWriteFile()
+  call writefile(['text'], 'Xthefile', 'D')
+  cd ..
+endfunc
+
+func Test_write_defer_delete_chdir()
+  let dir = getcwd()
+  call DoWriteFile()
+  call assert_notequal(dir, getcwd())
+  call chdir(dir)
+  call assert_equal('', glob('Xthefile'))
 endfunc
 
 " Check that buffer is written before triggering QuitPre

@@ -1,4 +1,4 @@
-*builtin.txt*	For Vim version 9.0.  Last change: 2022 Jun 27
+*builtin.txt*	For Vim version 9.0.  Last change: 2022 Sep 17
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -195,7 +195,7 @@ foldlevel({lnum})		Number	fold level at {lnum}
 foldtext()			String	line displayed for closed fold
 foldtextresult({lnum})		String	text for closed fold at {lnum}
 foreground()			Number	bring the Vim window to the foreground
-fullcommand({name})		String	get full command from {name}
+fullcommand({name} [, {vim9}])	String	get full command from {name}
 funcref({name} [, {arglist}] [, {dict}])
 				Funcref	reference to function {name}
 function({name} [, {arglist}] [, {dict}])
@@ -325,6 +325,8 @@ js_encode({expr})		String	encode JS style JSON
 json_decode({string})		any	decode JSON
 json_encode({expr})		String	encode JSON
 keys({dict})			List	keys in {dict}
+keytrans({string})		String	translate internal keycodes to a form
+					that can be used by |:map|
 len({expr})			Number	the length of {expr}
 libcall({lib}, {func}, {arg})	String	call {func} in library {lib} with {arg}
 libcallnr({lib}, {func}, {arg})	Number	idem, but return a Number
@@ -471,7 +473,8 @@ remove({blob}, {idx} [, {end}])	Number/Blob
 					remove bytes {idx}-{end} from {blob}
 remove({dict}, {key})		any	remove entry {key} from {dict}
 rename({from}, {to})		Number	rename (move) file from {from} to {to}
-repeat({expr}, {count})		String	repeat {expr} {count} times
+repeat({expr}, {count})		List/Blob/String
+					repeat {expr} {count} times
 resolve({filename})		String	get filename a shortcut points to
 reverse({list})			List	reverse {list} in-place
 round({expr})			Float	round off {expr}
@@ -750,8 +753,6 @@ abs({expr})							*abs()*
 		Can also be used as a |method|: >
 			Compute()->abs()
 
-<		{only available when compiled with the |+float| feature}
-
 
 acos({expr})							*acos()*
 		Return the arc cosine of {expr} measured in radians, as a
@@ -766,8 +767,6 @@ acos({expr})							*acos()*
 
 		Can also be used as a |method|: >
 			Compute()->acos()
-
-<		{only available when compiled with the |+float| feature}
 
 
 add({object}, {expr})					*add()*
@@ -901,8 +900,6 @@ asin({expr})						*asin()*
 
 		Can also be used as a |method|: >
 			Compute()->asin()
-<
-		{only available when compiled with the |+float| feature}
 
 
 assert_ functions are documented here: |assert-functions-details|
@@ -922,8 +919,6 @@ atan({expr})						*atan()*
 
 		Can also be used as a |method|: >
 			Compute()->atan()
-<
-		{only available when compiled with the |+float| feature}
 
 
 atan2({expr1}, {expr2})					*atan2()*
@@ -940,8 +935,6 @@ atan2({expr1}, {expr2})					*atan2()*
 
 		Can also be used as a |method|: >
 			Compute()->atan2(1)
-<
-		{only available when compiled with the |+float| feature}
 
 
 autocmd_add({acmds})					*autocmd_add()*
@@ -1425,8 +1418,6 @@ ceil({expr})							*ceil()*
 
 		Can also be used as a |method|: >
 			Compute()->ceil()
-<
-		{only available when compiled with the |+float| feature}
 
 
 ch_ functions are documented here: |channel-functions-details|
@@ -1798,8 +1789,6 @@ cos({expr})						*cos()*
 
 		Can also be used as a |method|: >
 			Compute()->cos()
-<
-		{only available when compiled with the |+float| feature}
 
 
 cosh({expr})						*cosh()*
@@ -1815,8 +1804,6 @@ cosh({expr})						*cosh()*
 
 		Can also be used as a |method|: >
 			Compute()->cosh()
-<
-		{only available when compiled with the |+float| feature}
 
 
 count({comp}, {expr} [, {ic} [, {start}]])			*count()*
@@ -2402,8 +2389,6 @@ exp({expr})							*exp()*
 
 		Can also be used as a |method|: >
 			Compute()->exp()
-<
-		{only available when compiled with the |+float| feature}
 
 
 expand({string} [, {nosuf} [, {list}]])				*expand()*
@@ -2804,8 +2789,6 @@ float2nr({expr})					*float2nr()*
 
 		Can also be used as a |method|: >
 			Compute()->float2nr()
-<
-		{only available when compiled with the |+float| feature}
 
 
 floor({expr})							*floor()*
@@ -2823,8 +2806,6 @@ floor({expr})							*floor()*
 
 		Can also be used as a |method|: >
 			Compute()->floor()
-<
-		{only available when compiled with the |+float| feature}
 
 
 fmod({expr1}, {expr2})					*fmod()*
@@ -2845,8 +2826,6 @@ fmod({expr1}, {expr2})					*fmod()*
 
 		Can also be used as a |method|: >
 			Compute()->fmod(1.22)
-<
-		{only available when compiled with |+float| feature}
 
 
 fnameescape({string})					*fnameescape()*
@@ -2964,14 +2943,20 @@ foreground()	Move the Vim window to the foreground.  Useful when sent from
 		{only in the Win32, Motif and GTK GUI versions and the
 		Win32 console version}
 
-fullcommand({name})						*fullcommand()*
+fullcommand({name} [, {vim9}])				*fullcommand()*
 		Get the full command name from a short abbreviated command
 		name; see |20.2| for details on command abbreviations.
 
 		The string argument {name} may start with a `:` and can
 		include a [range], these are skipped and not returned.
-		Returns an empty string if a command doesn't exist or if it's
-		ambiguous (for user-defined commands).
+		Returns an empty string if a command doesn't exist, if it's
+		ambiguous (for user-defined commands) or cannot be shortened
+		this way. |vim9-no-shorten|
+
+		Without the {vim9} argument uses the current script version.
+		If {vim9} is present and FALSE then legacy script rules are
+		used.  When {vim9} is present and TRUE then Vim9 rules are
+		used, e.g. "en" is not a short form of "endif".
 
 		For example `fullcommand('s')`, `fullcommand('sub')`,
 		`fullcommand(':%substitute')` all return "substitute".
@@ -5041,8 +5026,6 @@ isinf({expr})						*isinf()*
 
 		Can also be used as a |method|: >
 			Compute()->isinf()
-<
-		{only available when compiled with the |+float| feature}
 
 islocked({expr})					*islocked()* *E786*
 		The result is a Number, which is |TRUE| when {expr} is the
@@ -5071,8 +5054,6 @@ isnan({expr})						*isnan()*
 
 		Can also be used as a |method|: >
 			Compute()->isnan()
-<
-		{only available when compiled with the |+float| feature}
 
 items({dict})						*items()*
 		Return a |List| with all the key-value pairs of {dict}.  Each
@@ -5203,6 +5184,16 @@ keys({dict})						*keys()*
 
 		Can also be used as a |method|: >
 			mydict->keys()
+
+keytrans({string})					*keytrans()*
+		Turn the internal byte representation of keys into a form that
+		can be used for |:map|.  E.g. >
+			:let xx = "\<C-Home>"
+			:echo keytrans(xx)
+<			<C-Home>
+
+		Can also be used as a |method|: >
+			"\<C-Home>"->keytrans()
 
 <							*len()* *E701*
 len({expr})	The result is a Number, which is the length of the argument.
@@ -5491,8 +5482,6 @@ log({expr})						*log()*
 
 		Can also be used as a |method|: >
 			Compute()->log()
-<
-		{only available when compiled with the |+float| feature}
 
 
 log10({expr})						*log10()*
@@ -5507,8 +5496,6 @@ log10({expr})						*log10()*
 
 		Can also be used as a |method|: >
 			Compute()->log10()
-<
-		{only available when compiled with the |+float| feature}
 
 luaeval({expr} [, {expr}])					*luaeval()*
 		Evaluate Lua expression {expr} and return its result converted
@@ -5516,8 +5503,7 @@ luaeval({expr} [, {expr}])					*luaeval()*
 		argument accessible as _A inside first {expr}.
 		Strings are returned as they are.
 		Boolean objects are converted to numbers.
-		Numbers are converted to |Float| values if vim was compiled
-		with |+float| and to numbers otherwise.
+		Numbers are converted to |Float| values.
 		Dictionaries and lists obtained by vim.eval() are returned
 		as-is.
 		Other objects are returned as zero without any errors.
@@ -5878,7 +5864,7 @@ matchadd({group}, {pattern} [, {priority} [, {id} [, {dict}]]])
 		respectively.  3 is reserved for use by the |matchparen|
 		plugin.
 		If the {id} argument is not specified or -1, |matchadd()|
-		automatically chooses a free ID.
+		automatically chooses a free ID, which is at least 1000.
 
 		The optional {dict} argument allows for further custom
 		values. Currently this is used to specify a match specific
@@ -5931,8 +5917,6 @@ matchaddpos({group}, {pos} [, {priority} [, {id} [, {dict}]]])
 		  be highlighted.
 		- A list with three numbers, e.g., [23, 11, 3]. As above, but
 		  the third number gives the length of the highlight in bytes.
-
-		The maximum number of positions in {pos} is 8.
 
 		Returns -1 on error.
 
@@ -6239,8 +6223,26 @@ min({expr})	Return the minimum value of all items in {expr}. Example:  >
 mkdir({name} [, {path} [, {prot}]])
 		Create directory {name}.
 
-		If {path} is "p" then intermediate directories are created as
-		necessary.  Otherwise it must be "".
+		If {path} contains "p" then intermediate directories are
+		created as necessary.  Otherwise it must be "".
+
+		If {path} contains "D" then {name} is deleted at the end of
+		the current function, as with: >
+			defer delete({name}, 'd')
+<
+		If {path} contains "R" then {name} is deleted recursively at
+		the end of the current function, as with: >
+			defer delete({name}, 'rf')
+<		Note that when {name} has more than one part and "p" is used
+		some directories may already exist.  Only the first one that
+		is created and what it contains is scheduled to be deleted.
+		E.g. when using: >
+			call mkdir('subdir/tmp/autoload', 'pR')
+<		and "subdir" already exists then "subdir/tmp" will be
+		scheduled for deletion, like with: >
+			defer delete('subdir/tmp', 'rf')
+<		Note that if scheduling the defer fails the directory is not
+		deleted.  This should only happen when out of memory.
 
 		If {prot} is given it is used to set the protection bits of
 		the new directory.  The default is 0o755 (rwxr-xr-x: r/w for
@@ -6446,8 +6448,6 @@ pow({x}, {y})						*pow()*
 
 		Can also be used as a |method|: >
 			Compute()->pow(3)
-<
-		{only available when compiled with the |+float| feature}
 
 prevnonblank({lnum})					*prevnonblank()*
 		Return the line number of the first line at or above {lnum}
@@ -7276,8 +7276,8 @@ repeat({expr}, {count})					*repeat()*
 		result.  Example: >
 			:let separator = repeat('-', 80)
 <		When {count} is zero or negative the result is empty.
-		When {expr} is a |List| the result is {expr} concatenated
-		{count} times.  Example: >
+		When {expr} is a |List| or a |Blob| the result is {expr}
+		concatenated {count} times.  Example: >
 			:let longlist = repeat(['a', 'b'], 3)
 <		Results in ['a', 'b', 'a', 'b', 'a', 'b'].
 
@@ -7329,8 +7329,6 @@ round({expr})							*round()*
 
 		Can also be used as a |method|: >
 			Compute()->round()
-<
-		{only available when compiled with the |+float| feature}
 
 rubyeval({expr})					*rubyeval()*
 		Evaluate Ruby expression {expr} and return its result
@@ -8499,8 +8497,6 @@ sin({expr})						*sin()*
 
 		Can also be used as a |method|: >
 			Compute()->sin()
-<
-		{only available when compiled with the |+float| feature}
 
 
 sinh({expr})						*sinh()*
@@ -8516,8 +8512,6 @@ sinh({expr})						*sinh()*
 
 		Can also be used as a |method|: >
 			Compute()->sinh()
-<
-		{only available when compiled with the |+float| feature}
 
 
 slice({expr}, {start} [, {end}])			*slice()*
@@ -8784,8 +8778,6 @@ sqrt({expr})						*sqrt()*
 
 		Can also be used as a |method|: >
 			Compute()->sqrt()
-<
-		{only available when compiled with the |+float| feature}
 
 
 srand([{expr}])						*srand()*
@@ -8859,8 +8851,6 @@ str2float({string} [, {quoted}])				*str2float()*
 
 		Can also be used as a |method|: >
 			let f = text->substitute(',', '', 'g')->str2float()
-<
-		{only available when compiled with the |+float| feature}
 
 str2list({string} [, {utf8}])					*str2list()*
 		Return a list containing the number values which represent
@@ -9606,8 +9596,6 @@ tan({expr})						*tan()*
 
 		Can also be used as a |method|: >
 			Compute()->tan()
-<
-		{only available when compiled with the |+float| feature}
 
 
 tanh({expr})						*tanh()*
@@ -9623,8 +9611,6 @@ tanh({expr})						*tanh()*
 
 		Can also be used as a |method|: >
 			Compute()->tanh()
-<
-		{only available when compiled with the |+float| feature}
 
 
 tempname()					*tempname()* *temp-file-name*
@@ -9860,8 +9846,6 @@ trunc({expr})							*trunc()*
 		Can also be used as a |method|: >
 			Compute()->trunc()
 <
-		{only available when compiled with the |+float| feature}
-
 							*type()*
 type({expr})	The result is a Number representing the type of {expr}.
 		Instead of using the number directly, it is better to use the

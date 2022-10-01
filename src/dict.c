@@ -911,13 +911,15 @@ eval_dict(char_u **arg, typval_T *rettv, evalarg_T *evalarg, int literal)
     int		vim9script = in_vim9script();
     int		had_comma;
 
-    // First check if it's not a curly-braces thing: {expr}.
+    // First check if it's not a curly-braces expression: {expr}.
     // Must do this without evaluating, otherwise a function may be called
     // twice.  Unfortunately this means we need to call eval1() twice for the
     // first item.
-    // But {} is an empty Dictionary.
+    // "{}" is an empty Dictionary.
+    // "#{abc}" is never a curly-braces expression.
     if (!vim9script
 	    && *curly_expr != '}'
+	    && !literal
 	    && eval1(&curly_expr, &tv, NULL) == OK
 	    && *skipwhite(curly_expr) == '}')
 	return NOTDONE;
@@ -982,13 +984,11 @@ eval_dict(char_u **arg, typval_T *rettv, evalarg_T *evalarg, int literal)
 	}
 	if (evaluate)
 	{
-#ifdef FEAT_FLOAT
 	    if (tvkey.v_type == VAR_FLOAT)
 	    {
 		tvkey.vval.v_string = typval_tostring(&tvkey, TRUE);
 		tvkey.v_type = VAR_STRING;
 	    }
-#endif
 	    key = tv_get_string_buf_chk(&tvkey, buf);
 	    if (key == NULL)
 	    {
@@ -1315,6 +1315,8 @@ dict_filter_map(
     dictitem_T	*di;
     int		todo;
     int		rem;
+    typval_T	newtv;
+    funccall_T	*fc;
 
     if (filtermap == FILTERMAP_MAPNEW)
     {
@@ -1335,6 +1337,9 @@ dict_filter_map(
 	d_ret = rettv->vval.v_dict;
     }
 
+    // Create one funccal_T for all eval_expr_typval() calls.
+    fc = eval_expr_get_funccal(expr, &newtv);
+
     if (filtermap != FILTERMAP_FILTER && d->dv_lock == 0)
 	d->dv_lock = VAR_LOCKED;
     ht = &d->dv_hashtab;
@@ -1345,7 +1350,6 @@ dict_filter_map(
 	if (!HASHITEM_EMPTY(hi))
 	{
 	    int		r;
-	    typval_T	newtv;
 
 	    --todo;
 	    di = HI2DI(hi);
@@ -1357,8 +1361,7 @@ dict_filter_map(
 		break;
 	    set_vim_var_string(VV_KEY, di->di_key, -1);
 	    newtv.v_type = VAR_UNKNOWN;
-	    r = filter_map_one(&di->di_tv, expr, filtermap,
-		    &newtv, &rem);
+	    r = filter_map_one(&di->di_tv, expr, filtermap, fc, &newtv, &rem);
 	    clear_tv(get_vim_var_tv(VV_KEY));
 	    if (r == FAIL || did_emsg)
 	    {
@@ -1398,6 +1401,8 @@ dict_filter_map(
     }
     hash_unlock(ht);
     d->dv_lock = prev_lock;
+    if (fc != NULL)
+	remove_funccal();
 }
 
 /*
