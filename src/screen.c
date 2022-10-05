@@ -420,6 +420,27 @@ reset_screen_attr(void)
 }
 
 /*
+ * Return TRUE if the character at "row" / "col" is under the popup menu and it
+ * will be redrawn soon or it is under another popup.
+ */
+    static int
+skip_for_popup(int row, int col)
+{
+    // Popup windows with zindex higher than POPUPMENU_ZINDEX go on top.
+    if (pum_under_menu(row, col, TRUE)
+#ifdef FEAT_PROP_POPUP
+	    && screen_zindex <= POPUPMENU_ZINDEX
+#endif
+	    )
+	return TRUE;
+#ifdef FEAT_PROP_POPUP
+    if (blocked_by_popup(row, col))
+	return TRUE;
+#endif
+    return FALSE;
+}
+
+/*
  * Move one "cooked" screen line to the screen, but only the characters that
  * have actually changed.  Handle insert/delete character.
  * "coloff" gives the first column on the screen for this line.
@@ -538,10 +559,10 @@ screen_line(
 		redraw_this = TRUE;
 	}
 #endif
-#ifdef FEAT_PROP_POPUP
-	if (blocked_by_popup(row, col + coloff))
+	// Do not redraw if under the popup menu.
+	if (redraw_this && skip_for_popup(row, col + coloff))
 	    redraw_this = FALSE;
-#endif
+
 	if (redraw_this)
 	{
 	    /*
@@ -669,15 +690,11 @@ screen_line(
 	    }
 #endif
 	    ScreenAttrs[off_to] = ScreenAttrs[off_from];
-	    ScreenCols[off_to] = ScreenCols[off_from];
 
 	    // For simplicity set the attributes of second half of a
 	    // double-wide character equal to the first half.
 	    if (char_cells == 2)
-	    {
 		ScreenAttrs[off_to + 1] = ScreenAttrs[off_from];
-		ScreenCols[off_to + 1] = ScreenCols[off_from + 1];
-	    }
 
 	    if (enc_dbcs != 0 && char_cells == 2)
 		screen_char_2(off_to, row, col + coloff);
@@ -711,7 +728,7 @@ screen_line(
 	col += char_cells;
     }
 
-    if (clear_next)
+    if (clear_next && !skip_for_popup(row, col + coloff))
     {
 	// Clear the second half of a double-wide character of which the left
 	// half was overwritten with a single-wide character.
@@ -775,12 +792,15 @@ screen_line(
 			}
 		    }
 
-		    if (enc_dbcs != 0 && prev_cells > 1)
-			screen_char_2(off_to - prev_cells, row,
+		    if (!skip_for_popup(row, col + coloff - prev_cells))
+		    {
+			if (enc_dbcs != 0 && prev_cells > 1)
+			    screen_char_2(off_to - prev_cells, row,
 						   col + coloff - prev_cells);
-		    else
-			screen_char(off_to - prev_cells, row,
+			else
+			    screen_char(off_to - prev_cells, row,
 						   col + coloff - prev_cells);
+		    }
 		}
 	    }
 #endif
@@ -804,9 +824,7 @@ screen_line(
 	// right of the window contents.  But not on top of a popup window.
 	if (coloff + col < Columns)
 	{
-#ifdef FEAT_PROP_POPUP
-	    if (!blocked_by_popup(row, col + coloff))
-#endif
+	    if (!skip_for_popup(row, col + coloff))
 	    {
 		int c;
 
@@ -1198,7 +1216,7 @@ get_keymap_str(
 	curwin = wp;
 	STRCPY(buf, "b:keymap_name");	// must be writable
 	++emsg_skip;
-	s = p = eval_to_string(buf, FALSE);
+	s = p = eval_to_string(buf, FALSE, FALSE);
 	--emsg_skip;
 	curbuf = old_curbuf;
 	curwin = old_curwin;
@@ -1547,15 +1565,18 @@ screen_puts_len(
 #endif
 	    && mb_fix_col(col, row) != col)
     {
-	ScreenLines[off - 1] = ' ';
-	ScreenAttrs[off - 1] = 0;
-	if (enc_utf8)
+	if (!skip_for_popup(row, col - 1))
 	{
-	    ScreenLinesUC[off - 1] = 0;
-	    ScreenLinesC[0][off - 1] = 0;
+	    ScreenLines[off - 1] = ' ';
+	    ScreenAttrs[off - 1] = 0;
+	    if (enc_utf8)
+	    {
+		ScreenLinesUC[off - 1] = 0;
+		ScreenLinesC[0][off - 1] = 0;
+	    }
+	    // redraw the previous cell, make it empty
+	    screen_char(off - 1, row, col - 1);
 	}
-	// redraw the previous cell, make it empty
-	screen_char(off - 1, row, col - 1);
 	// force the cell at "col" to be redrawn
 	force_redraw_next = TRUE;
     }
@@ -1634,11 +1655,7 @@ screen_puts_len(
 		|| ScreenAttrs[off] != attr
 		|| exmode_active;
 
-	if ((need_redraw || force_redraw_this)
-#ifdef FEAT_PROP_POPUP
-		&& !blocked_by_popup(row, col)
-#endif
-	   )
+	if ((need_redraw || force_redraw_this) && !skip_for_popup(row, col))
 	{
 #if defined(FEAT_GUI) || defined(UNIX)
 	    // The bold trick makes a single row of pixels appear in the next
@@ -1755,7 +1772,7 @@ screen_puts_len(
 
     // If we detected the next character needs to be redrawn, but the text
     // doesn't extend up to there, update the character here.
-    if (force_redraw_next && col < screen_Columns)
+    if (force_redraw_next && col < screen_Columns && !skip_for_popup(row, col))
     {
 	if (enc_dbcs != 0 && dbcs_off2cells(off, max_off) > 1)
 	    screen_char_2(off, row, col);
@@ -2164,19 +2181,6 @@ screen_char(unsigned off, int row, int col)
     if (row >= screen_Rows || col >= screen_Columns)
 	return;
 
-    // Skip if under the popup menu.
-    // Popup windows with zindex higher than POPUPMENU_ZINDEX go on top.
-    if (pum_under_menu(row, col, TRUE)
-#ifdef FEAT_PROP_POPUP
-	    && screen_zindex <= POPUPMENU_ZINDEX
-#endif
-	    )
-	return;
-#ifdef FEAT_PROP_POPUP
-    if (blocked_by_popup(row, col))
-	return;
-#endif
-
     // Outputting a character in the last cell on the screen may scroll the
     // screen up.  Only do it when the "xn" termcap property is set, otherwise
     // mark the character invalid (update it when scrolled up).
@@ -2307,12 +2311,14 @@ screen_draw_rectangle(
 	{
 	    if (enc_dbcs != 0 && dbcs_off2cells(off + c, max_off) > 1)
 	    {
-		screen_char_2(off + c, r, c);
+		if (!skip_for_popup(r, c))
+		    screen_char_2(off + c, r, c);
 		++c;
 	    }
 	    else
 	    {
-		screen_char(off + c, r, c);
+		if (!skip_for_popup(r, c))
+		    screen_char(off + c, r, c);
 		if (utf_off2cells(off + c, max_off) > 1)
 		    ++c;
 	    }
@@ -2478,11 +2484,8 @@ screen_fill(
 		    || force_next
 #endif
 		    )
-#ifdef FEAT_PROP_POPUP
 		    // Skip if under a(nother) popup.
-		    && !blocked_by_popup(row, col)
-#endif
-	       )
+		    && !skip_for_popup(row, col))
 	    {
 #if defined(FEAT_GUI) || defined(UNIX)
 		// The bold trick may make a single row of pixels appear in
@@ -2508,7 +2511,7 @@ screen_fill(
 		    else
 			force_next = FALSE;
 		}
-#endif
+#endif // FEAT_GUI || defined(UNIX)
 		ScreenLines[off] = c;
 		if (enc_utf8)
 		{
@@ -2976,7 +2979,7 @@ free_screenlines(void)
  * Clear the screen.
  * May delay if there is something the user should read.
  * Allocated the screen for resizing if needed.
- * Returns TRUE when the screen was actually claared, FALSE if all display
+ * Returns TRUE when the screen was actually cleared, FALSE if all display
  * cells were marked for updating.
  */
     int
@@ -4940,6 +4943,7 @@ set_chars_option(win_T *wp, char_u **varp, int apply)
 	{&fill_chars.foldsep,	"foldsep"},
 	{&fill_chars.diff,	"diff"},
 	{&fill_chars.eob,	"eob"},
+	{&fill_chars.lastline,	"lastline"},
     };
 
     static lcs_chars_T lcs_chars;
@@ -5019,6 +5023,7 @@ set_chars_option(win_T *wp, char_u **varp, int apply)
 		fill_chars.foldsep = '|';
 		fill_chars.diff = '-';
 		fill_chars.eob = '~';
+		fill_chars.lastline = '@';
 	    }
 	}
 	p = value;

@@ -1684,10 +1684,8 @@ current_tab_nr(tabpage_T *tab)
     static int
 comment_start(char_u *p, int starts_with_colon UNUSED)
 {
-#ifdef FEAT_EVAL
     if (in_vim9script())
 	return p[0] == '#' && !starts_with_colon;
-#endif
     return *p == '"';
 }
 
@@ -1736,9 +1734,9 @@ do_one_cmd(
     int		ni;			// set when Not Implemented
     char_u	*cmd;
     int		starts_with_colon = FALSE;
-#ifdef FEAT_EVAL
     int		may_have_range;
     int		vim9script;
+#ifdef FEAT_EVAL
     int		did_set_expr_line = FALSE;
 #endif
     int		sourcing = flags & DOCMD_VERBOSE;
@@ -1787,9 +1785,6 @@ do_one_cmd(
     if (parse_command_modifiers(&ea, &errormsg, &cmdmod, FALSE) == FAIL)
 	goto doend;
     apply_cmdmod(&cmdmod);
-#ifdef FEAT_EVAL
-    vim9script = in_vim9script();
-#endif
     after_modifier = ea.cmd;
 
 #ifdef FEAT_EVAL
@@ -1805,9 +1800,10 @@ do_one_cmd(
  * We need the command to know what kind of range it uses.
  */
     cmd = ea.cmd;
-#ifdef FEAT_EVAL
+
     // In Vim9 script a colon is required before the range.  This may also be
     // after command modifiers.
+    vim9script = in_vim9script();
     if (vim9script && (flags & DOCMD_RANGEOK) == 0)
     {
 	may_have_range = FALSE;
@@ -1822,16 +1818,18 @@ do_one_cmd(
     else
 	may_have_range = TRUE;
     if (may_have_range)
-#endif
 	ea.cmd = skip_range(ea.cmd, TRUE, NULL);
 
-#ifdef FEAT_EVAL
     if (vim9script && !may_have_range)
     {
 	if (ea.cmd == cmd + 1 && *cmd == '$')
 	    // should be "$VAR = val"
 	    --ea.cmd;
+#ifdef FEAT_EVAL
 	p = find_ex_command(&ea, NULL, lookup_scriptitem, NULL);
+#else
+	p = find_ex_command(&ea, NULL, NULL, NULL);
+#endif
 	if (ea.cmdidx == CMD_SIZE)
 	{
 	    char_u *ar = skip_range(ea.cmd, TRUE, NULL);
@@ -1846,7 +1844,6 @@ do_one_cmd(
 	}
     }
     else
-#endif
 	p = find_ex_command(&ea, NULL, NULL, NULL);
 
 #ifdef FEAT_EVAL
@@ -1930,13 +1927,10 @@ do_one_cmd(
     }
 
     ea.cmd = cmd;
-#ifdef FEAT_EVAL
     if (!may_have_range)
 	ea.line1 = ea.line2 = default_address(&ea);
-    else
-#endif
-	if (parse_cmd_address(&ea, &errormsg, FALSE) == FAIL)
-	    goto doend;
+    else if (parse_cmd_address(&ea, &errormsg, FALSE) == FAIL)
+	goto doend;
 
 /*
  * 5. Parse the command.
@@ -2089,14 +2083,12 @@ do_one_cmd(
 
 	if (!IS_USER_CMDIDX(ea.cmdidx))
 	{
-#ifdef FEAT_CMDWIN
 	    if (cmdwin_type != 0 && !(ea.argt & EX_CMDWIN))
 	    {
 		// Command not allowed in the command line window
 		errormsg = _(e_invalid_in_cmdline_window);
 		goto doend;
 	    }
-#endif
 	    if (text_locked() && !(ea.argt & EX_LOCK_OK))
 	    {
 		// Command not allowed when text is locked
@@ -5275,24 +5267,20 @@ separate_nextcmd(exarg_T *eap, int keep_backslash)
 	}
 #endif
 
-	// Check for '"': start of comment or '|': next command
+	// Check for '"'/'#': start of comment or '|': next command
 	// :@" and :*" do not start a comment!
 	// :redir @" doesn't either.
 	else if ((*p == '"'
-#ifdef FEAT_EVAL
 		    && !in_vim9script()
-#endif
 		    && !(eap->argt & EX_NOTRLCOM)
 		    && ((eap->cmdidx != CMD_at && eap->cmdidx != CMD_star)
 							      || p != eap->arg)
 		    && (eap->cmdidx != CMD_redir
 					 || p != eap->arg + 1 || p[-1] != '@'))
-#ifdef FEAT_EVAL
 		|| (*p == '#'
 		    && in_vim9script()
 		    && !(eap->argt & EX_NOTRLCOM)
 		    && p > eap->cmd && VIM_ISWHITE(p[-1]))
-#endif
 		|| *p == '|' || *p == '\n')
 	{
 	    /*
@@ -5636,10 +5624,8 @@ ends_excmd(int c)
 {
     int comment_char = '"';
 
-#ifdef FEAT_EVAL
     if (in_vim9script())
 	comment_char = '#';
-#endif
     return (c == NUL || c == '|' || c == comment_char || c == '\n');
 }
 
@@ -5654,12 +5640,10 @@ ends_excmd2(char_u *cmd_start UNUSED, char_u *cmd)
 
     if (c == NUL || c == '|' || c == '\n')
 	return TRUE;
-#ifdef FEAT_EVAL
     if (in_vim9script())
 	//  # starts a comment, #{ might be a mistake, #{{ can start a fold
 	return c == '#' && (cmd[1] != '{' || cmd[2] == '{')
 				 && (cmd == cmd_start || VIM_ISWHITE(cmd[-1]));
-#endif
     return c == '"';
 }
 
@@ -5778,7 +5762,7 @@ ex_colorscheme(exarg_T *eap)
 	if (expr != NULL)
 	{
 	    ++emsg_off;
-	    p = eval_to_string(expr, FALSE);
+	    p = eval_to_string(expr, FALSE, FALSE);
 	    --emsg_off;
 	    vim_free(expr);
 	}
@@ -5863,13 +5847,11 @@ ex_quit(exarg_T *eap)
 {
     win_T	*wp;
 
-#ifdef FEAT_CMDWIN
     if (cmdwin_type != 0)
     {
 	cmdwin_result = Ctrl_C;
 	return;
     }
-#endif
     // Don't quit while editing the command line.
     if (text_locked())
     {
@@ -5948,7 +5930,6 @@ ex_cquit(exarg_T *eap UNUSED)
     static void
 ex_quit_all(exarg_T *eap)
 {
-# ifdef FEAT_CMDWIN
     if (cmdwin_type != 0)
     {
 	if (eap->forceit)
@@ -5957,7 +5938,6 @@ ex_quit_all(exarg_T *eap)
 	    cmdwin_result = K_XF2;
 	return;
     }
-# endif
 
     // Don't quit while editing the command line.
     if (text_locked())
@@ -5983,11 +5963,9 @@ ex_close(exarg_T *eap)
 {
     win_T	*win;
     int		winnr = 0;
-#ifdef FEAT_CMDWIN
     if (cmdwin_type != 0)
 	cmdwin_result = Ctrl_C;
     else
-#endif
 	if (!text_locked() && !curbuf_locked())
 	{
 	    if (eap->addr_count == 0)
@@ -6203,33 +6181,30 @@ ex_tabclose(exarg_T *eap)
     tabpage_T	*tp;
     int		tab_number;
 
-# ifdef FEAT_CMDWIN
     if (cmdwin_type != 0)
 	cmdwin_result = K_IGNORE;
+    else if (first_tabpage->tp_next == NULL)
+	emsg(_(e_cannot_close_last_tab_page));
     else
-# endif
-	if (first_tabpage->tp_next == NULL)
-	    emsg(_(e_cannot_close_last_tab_page));
-	else
+    {
+	tab_number = get_tabpage_arg(eap);
+	if (eap->errmsg == NULL)
 	{
-	    tab_number = get_tabpage_arg(eap);
-	    if (eap->errmsg == NULL)
+	    tp = find_tabpage(tab_number);
+	    if (tp == NULL)
 	    {
-		tp = find_tabpage(tab_number);
-		if (tp == NULL)
-		{
-		    beep_flush();
-		    return;
-		}
-		if (tp != curtab)
-		{
-		    tabpage_close_other(tp, eap->forceit);
-		    return;
-		}
-		else if (!text_locked() && !curbuf_locked())
-		    tabpage_close(eap->forceit);
+		beep_flush();
+		return;
 	    }
+	    if (tp != curtab)
+	    {
+		tabpage_close_other(tp, eap->forceit);
+		return;
+	    }
+	    else if (!text_locked() && !curbuf_locked())
+		tabpage_close(eap->forceit);
 	}
+    }
 }
 
 /*
@@ -6242,38 +6217,35 @@ ex_tabonly(exarg_T *eap)
     int		done;
     int		tab_number;
 
-# ifdef FEAT_CMDWIN
     if (cmdwin_type != 0)
 	cmdwin_result = K_IGNORE;
+    else if (first_tabpage->tp_next == NULL)
+	msg(_("Already only one tab page"));
     else
-# endif
-	if (first_tabpage->tp_next == NULL)
-	    msg(_("Already only one tab page"));
-	else
+    {
+	tab_number = get_tabpage_arg(eap);
+	if (eap->errmsg == NULL)
 	{
-	    tab_number = get_tabpage_arg(eap);
-	    if (eap->errmsg == NULL)
+	    goto_tabpage(tab_number);
+	    // Repeat this up to a 1000 times, because autocommands may
+	    // mess up the lists.
+	    for (done = 0; done < 1000; ++done)
 	    {
-		goto_tabpage(tab_number);
-		// Repeat this up to a 1000 times, because autocommands may
-		// mess up the lists.
-		for (done = 0; done < 1000; ++done)
-		{
-		    FOR_ALL_TABPAGES(tp)
-			if (tp->tp_topframe != topframe)
-			{
-			    tabpage_close_other(tp, eap->forceit);
-			    // if we failed to close it quit
-			    if (valid_tabpage(tp))
-				done = 1000;
-			    // start over, "tp" is now invalid
-			    break;
-			}
-		    if (first_tabpage->tp_next == NULL)
+		FOR_ALL_TABPAGES(tp)
+		    if (tp->tp_topframe != topframe)
+		    {
+			tabpage_close_other(tp, eap->forceit);
+			// if we failed to close it quit
+			if (valid_tabpage(tp))
+			    done = 1000;
+			// start over, "tp" is now invalid
 			break;
-		}
+		    }
+		if (first_tabpage->tp_next == NULL)
+		    break;
 	    }
 	}
+    }
 }
 
 /*
@@ -6417,13 +6389,11 @@ ex_exit(exarg_T *eap)
     if (not_in_vim9(eap) == FAIL)
 	return;
 #endif
-#ifdef FEAT_CMDWIN
     if (cmdwin_type != 0)
     {
 	cmdwin_result = Ctrl_C;
 	return;
     }
-#endif
     // Don't quit while editing the command line.
     if (text_locked())
     {

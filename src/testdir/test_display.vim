@@ -143,7 +143,7 @@ func Test_display_listchars_precedes()
 
   let lines = ScreenLines([1,10], winwidth(0)+1)
   let expect = [
-        \ "<aaa aaa a|",
+        \ "<<<a aaa a|",
         \ "a aaa aaa |",
         \ "aa aaa aaa|",
         \ " aa aaa aa|",
@@ -391,29 +391,49 @@ func Test_display_linebreak_breakat()
   let &breakat=_breakat
 endfunc
 
-func Test_display_lastline()
-  CheckScreendump
-
+func Run_Test_display_lastline(euro)
   let lines =<< trim END
-      call setline(1, ['aaa', 'b'->repeat(100)])
+      call setline(1, ['aaa', 'b'->repeat(200)])
       set display=truncate
+
       vsplit
       100wincmd <
   END
+  if a:euro != ''
+    let lines[2] = 'set fillchars=vert:\|,lastline:€'
+  endif
   call writefile(lines, 'XdispLastline', 'D')
   let buf = RunVimInTerminal('-S XdispLastline', #{rows: 10})
-  call VerifyScreenDump(buf, 'Test_display_lastline_1', {})
+  call VerifyScreenDump(buf, $'Test_display_lastline_{a:euro}1', {})
 
   call term_sendkeys(buf, ":set display=lastline\<CR>")
-  call VerifyScreenDump(buf, 'Test_display_lastline_2', {})
+  call VerifyScreenDump(buf, $'Test_display_lastline_{a:euro}2', {})
 
   call term_sendkeys(buf, ":100wincmd >\<CR>")
-  call VerifyScreenDump(buf, 'Test_display_lastline_3', {})
+  call VerifyScreenDump(buf, $'Test_display_lastline_{a:euro}3', {})
 
   call term_sendkeys(buf, ":set display=truncate\<CR>")
-  call VerifyScreenDump(buf, 'Test_display_lastline_4', {})
+  call VerifyScreenDump(buf, $'Test_display_lastline_{a:euro}4', {})
+
+  call term_sendkeys(buf, ":close\<CR>")
+  call term_sendkeys(buf, ":3split\<CR>")
+  call VerifyScreenDump(buf, $'Test_display_lastline_{a:euro}5', {})
+
+  call term_sendkeys(buf, ":close\<CR>")
+  call term_sendkeys(buf, ":2vsplit\<CR>")
+  call VerifyScreenDump(buf, $'Test_display_lastline_{a:euro}6', {})
 
   call StopVimInTerminal(buf)
+endfunc
+
+func Test_display_lastline()
+  CheckScreendump
+
+  call Run_Test_display_lastline('')
+  call Run_Test_display_lastline('euro_')
+
+  call assert_fails(':set fillchars=lastline:', 'E474:')
+  call assert_fails(':set fillchars=lastline:〇', 'E474:')
 endfunc
 
 

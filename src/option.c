@@ -2404,10 +2404,8 @@ didset_options(void)
     (void)compile_cap_prog(curwin->w_s);
     (void)did_set_spell_option(TRUE);
 #endif
-#ifdef FEAT_CMDWIN
     // set cedit_key
     (void)check_cedit();
-#endif
 #ifdef FEAT_LINEBREAK
     // initialize the table for 'breakat'.
     fill_breakat_flags();
@@ -2963,6 +2961,15 @@ set_bool_option(
 	}
     }
 #endif
+
+    else if ((int *)varp == &curwin->w_p_sms)
+    {
+	if (!curwin->w_p_sms)
+	{
+	    curwin->w_skipcol = 0;
+	    changed_line_abv_curs();
+	}
+    }
 
     // when 'textmode' is set or reset also change 'fileformat'
     else if ((int *)varp == &curbuf->b_p_tx)
@@ -3795,13 +3802,11 @@ set_num_option(
 	errmsg = e_argument_must_be_positive;
 	p_siso = 0;
     }
-#ifdef FEAT_CMDWIN
     if (p_cwh < 1)
     {
 	errmsg = e_argument_must_be_positive;
 	p_cwh = 1;
     }
-#endif
     if (p_ut < 0)
     {
 	errmsg = e_argument_must_be_positive;
@@ -5436,6 +5441,7 @@ get_varp(struct vimoption *p)
 	case PV_RLC:	return (char_u *)&(curwin->w_p_rlc);
 #endif
 	case PV_SCROLL:	return (char_u *)&(curwin->w_p_scr);
+	case PV_SMS:	return (char_u *)&(curwin->w_p_sms);
 	case PV_WRAP:	return (char_u *)&(curwin->w_p_wrap);
 #ifdef FEAT_LINEBREAK
 	case PV_LBR:	return (char_u *)&(curwin->w_p_lbr);
@@ -5669,6 +5675,7 @@ copy_winopt(winopt_T *from, winopt_T *to)
     to->wo_wcr = copy_option_val(from->wo_wcr);
     to->wo_scb = from->wo_scb;
     to->wo_scb_save = from->wo_scb_save;
+    to->wo_sms = from->wo_sms;
     to->wo_crb = from->wo_crb;
     to->wo_crb_save = from->wo_crb_save;
 #ifdef FEAT_SPELL
