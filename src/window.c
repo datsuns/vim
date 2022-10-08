@@ -4332,7 +4332,7 @@ enter_tabpage(
     // When cmdheight is changed in a tab page with '<C-w>-', cmdline_row is
     // changed but p_ch and tp_ch_used are not changed. Thus we also need to
     // check cmdline_row.
-    if ((row < cmdline_row) && (cmdline_row <= Rows - p_ch))
+    if (row < cmdline_row && cmdline_row <= Rows - p_ch)
 	clear_cmdline = TRUE;
 
     // The tabpage line may have appeared or disappeared, may need to resize
@@ -5322,7 +5322,8 @@ win_free_popup(win_T *win)
 	    close_buffer(win, win->w_buffer, 0, FALSE, FALSE);
     }
 # if defined(FEAT_TIMERS)
-    if (win->w_popup_timer != NULL)
+    // the timer may have been cleared, making the pointer invalid
+    if (timer_valid(win->w_popup_timer))
 	stop_timer(win->w_popup_timer);
 # endif
     vim_free(win->w_frame);
@@ -6356,7 +6357,8 @@ win_fix_scroll(int resize)
 	if (wp->w_height != wp->w_prev_height)
 	{
 	    // If window has moved update botline to keep the same screenlines.
-	    if (*p_spk == 's' && wp->w_winrow != wp->w_prev_winrow)
+	    if (*p_spk == 's' && wp->w_winrow != wp->w_prev_winrow
+		      && wp->w_botline - 1 <= wp->w_buffer->b_ml.ml_line_count)
 	    {
 		lnum = wp->w_cursor.lnum;
 		diff = (wp->w_winrow - wp->w_prev_winrow)
@@ -6644,7 +6646,7 @@ win_comp_scroll(win_T *wp)
 }
 
 /*
- * command_height: called whenever p_ch has been changed
+ * Command_height: called whenever p_ch has been changed.
  */
     void
 command_height(void)
@@ -6662,6 +6664,9 @@ command_height(void)
     // is nothing to do (window size must have decreased).
     if (p_ch > old_p_ch && cmdline_row <= Rows - p_ch)
 	return;
+
+    // Update cmdline_row to what it should be: just below the last window.
+    cmdline_row = topframe->fr_height + tabline_height();
 
     // If cmdline_row is smaller than what it is supposed to be for 'cmdheight'
     // then set old_p_ch to what it would be, so that the windows get resized
