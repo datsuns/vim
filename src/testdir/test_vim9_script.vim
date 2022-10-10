@@ -297,6 +297,33 @@ def Test_const()
     constdict->assert_equal({one: 1, two: {five: 55, six: 66}, three: 3})
   END
   v9.CheckDefAndScriptSuccess(lines)
+
+  # "any" type with const flag is recognized as "any"
+  lines =<< trim END
+      const dict: dict<any> = {foo: {bar: 42}}
+      const foo = dict.foo
+      assert_equal(v:t_number, type(foo.bar))
+  END
+  v9.CheckDefAndScriptSuccess(lines)
+
+  # also when used as a builtin function argument
+  lines =<< trim END
+      vim9script
+
+      def SorterFunc(lhs: dict<string>, rhs: dict<string>): number
+        return lhs.name <# rhs.name ? -1 : 1
+      enddef
+
+      def Run(): void
+        var list =  [{name: "3"}, {name: "2"}]
+        const Sorter = get({}, "unknown", SorterFunc)
+        sort(list, Sorter)
+        assert_equal([{name: "2"}, {name: "3"}], list)
+      enddef
+
+      Run()
+  END
+  v9.CheckScriptSuccess(lines)
 enddef
 
 def Test_const_bang()
