@@ -475,6 +475,10 @@ screen_line(
 #endif
 				;
     int		    redraw_next;	// redraw_this for next character
+#ifdef FEAT_GUI_MSWIN
+    int		    changed_this;	// TRUE if character changed
+    int		    changed_next;	// TRUE if next character changed
+#endif
     int		    clear_next = FALSE;
     int		    char_cells;		// 1: normal char
 					// 2: occupies two display cells
@@ -534,6 +538,9 @@ screen_line(
 #endif
 
     redraw_next = char_needs_redraw(off_from, off_to, endcol - col);
+#ifdef FEAT_GUI_MSWIN
+    changed_next = redraw_next;
+#endif
 
     while (col < endcol)
     {
@@ -547,15 +554,24 @@ screen_line(
 			      off_to + char_cells, endcol - col - char_cells);
 
 #ifdef FEAT_GUI
+# ifdef FEAT_GUI_MSWIN
+	changed_this = changed_next;
+	changed_next = redraw_next;
+# endif
 	// If the next character was bold, then redraw the current character to
 	// remove any pixels that might have spilt over into us.  This only
 	// happens in the GUI.
+	// With MS-Windows antialiasing may also cause pixels to spill over
+	// from a previous character, no matter attributes, always redraw if a
+	// character changed.
 	if (redraw_next && gui.in_use)
 	{
+# ifndef FEAT_GUI_MSWIN
 	    hl = ScreenAttrs[off_to + char_cells];
 	    if (hl > HL_ALL)
 		hl = syn_attr2attr(hl);
 	    if (hl & HL_BOLD)
+# endif
 		redraw_this = TRUE;
 	}
 #endif
@@ -688,6 +704,12 @@ screen_line(
 		if (hl & HL_BOLD)
 		    redraw_next = TRUE;
 	    }
+#endif
+#ifdef FEAT_GUI_MSWIN
+	    // MS-Windows antialiasing may spill over to the next character,
+	    // redraw that one if this one changed, no matter attributes.
+	    if (gui.in_use && changed_this)
+		redraw_next = TRUE;
 #endif
 	    ScreenAttrs[off_to] = ScreenAttrs[off_from];
 
@@ -4398,7 +4420,6 @@ showmode(void)
 	msg_clr_eos();
     }
 
-#ifdef FEAT_CMDL_INFO
     // In Visual mode the size of the selected area must be redrawn.
     if (VIsual_active)
 	clear_showcmd();
@@ -4407,7 +4428,7 @@ showmode(void)
     // message and must be redrawn
     if (redrawing() && lastwin->w_status_height == 0)
 	win_redr_ruler(lastwin, TRUE, FALSE);
-#endif
+
     redraw_cmdline = FALSE;
     redraw_mode = FALSE;
     clear_cmdline = FALSE;
@@ -4768,18 +4789,17 @@ messaging(void)
     void
 comp_col(void)
 {
-#if defined(FEAT_CMDL_INFO)
     int last_has_status = (p_ls == 2 || (p_ls == 1 && !ONE_WINDOW));
 
     sc_col = 0;
     ru_col = 0;
     if (p_ru)
     {
-# ifdef FEAT_STL_OPT
+#ifdef FEAT_STL_OPT
 	ru_col = (ru_wid ? ru_wid : COL_RULER) + 1;
-# else
+#else
 	ru_col = COL_RULER + 1;
-# endif
+#endif
 	// no last status line, adjust sc_col
 	if (!last_has_status)
 	    sc_col = ru_col;
@@ -4796,10 +4816,6 @@ comp_col(void)
 	sc_col = 1;
     if (ru_col <= 0)
 	ru_col = 1;
-#else
-    sc_col = Columns;
-    ru_col = Columns;
-#endif
 #ifdef FEAT_EVAL
     set_vim_var_nr(VV_ECHOSPACE, sc_col - 1);
 #endif

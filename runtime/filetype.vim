@@ -369,6 +369,9 @@ au BufNewFile,BufRead *.ch			call dist#ft#FTchange()
 " ChordPro
 au BufNewFile,BufRead *.chopro,*.crd,*.cho,*.crdpro,*.chordpro	setf chordpro
 
+" Clang-tidy
+au BufNewFile,BufRead .clang-tidy		setf yaml
+
 " Clean
 au BufNewFile,BufRead *.dcl,*.icl		setf clean
 
@@ -1625,6 +1628,9 @@ else
   au BufNewFile,BufRead *.rmd,*.smd			setf rmd
 endif
 
+" R profile file
+au BufNewFile,BufRead .Rprofile,Rprofile,Rprofile.site	setf r
+
 " RSS looks like XML
 au BufNewFile,BufRead *.rss				setf xml
 
@@ -1749,6 +1755,9 @@ au BufNewFile,BufRead *.sed			setf sed
 
 " SubRip
 au BufNewFile,BufRead *.srt			setf srt
+
+" SubStation Alpha
+au BufNewFile,BufRead *.ass,*.ssa		setf ssa
 
 " svelte
 au BufNewFile,BufRead *.svelte			setf svelte
