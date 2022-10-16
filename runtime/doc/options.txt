@@ -1,4 +1,4 @@
-*options.txt*	For Vim version 9.0.  Last change: 2022 Oct 03
+*options.txt*	For Vim version 9.0.  Last change: 2022 Oct 15
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -4624,7 +4624,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 	in Insert mode as specified with the 'indentkeys' option.
 	When this option is not empty, it overrules the 'cindent' and
 	'smartindent' indenting.  When 'lisp' is set, this option is
-	overridden by the Lisp indentation algorithm.
+	is only used when 'lispoptions' contains "expr:1".
 	When 'paste' is set this option is not used for indenting.
 	The expression is evaluated with |v:lnum| set to the line number for
 	which the indent is to be computed.  The cursor is also in this line
@@ -5065,6 +5065,17 @@ A jump table for the options with a short description can be found at |Q_op|.
 	"=" operator to use this same indentation algorithm rather than
 	calling an external program if 'equalprg' is empty.
 	This option is not used when 'paste' is set.
+
+						*'lispoptions'* *'lop'*
+'lispoptions' 'lop'	string	(default "")
+			local to buffer
+	Comma-separated list of items that influence the Lisp indenting when
+	enabled with the |'lisp'| option.  Currently only one item is
+	supported:
+		expr:1	use 'indentexpr' for Lisp indenting when it is set
+		expr:0	do not use 'indentexpr' for Lisp indenting (default)
+	Note that when using 'indentexpr' the `=` operator indents all the
+	lines, otherwise the first line is not indented (Vi-compatible).
 
 						*'lispwords'* *'lw'*
 'lispwords' 'lw'	string	(default is very long)
@@ -7526,7 +7537,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 	When on, splitting a window will put the new window below the current
 	one. |:split|
 
-			*'splitkeep'* *'spk'
+			*'splitkeep'* *'spk'*
 'splitkeep' 'spk'	string	(default "cursor")
 			global
 	The value of this option determines the scroll behavior when opening,
@@ -7540,7 +7551,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 	For the "screen" and "topline" values, the cursor position will be
 	changed when necessary. In this case, the jumplist will be populated
 	with the previous cursor position. For "screen", the text cannot always
-	be kept on the same screen line	when 'wrap' is enabled.
+	be kept on the same screen line when 'wrap' is enabled.
 
 			*'splitright'* *'spr'* *'nosplitright'* *'nospr'*
 'splitright' 'spr'	boolean	(default off)
