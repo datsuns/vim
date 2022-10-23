@@ -929,6 +929,8 @@ do_bang(
 	    STRCAT(t, newcmd);
 	if (ins_prevcmd)
 	    STRCAT(t, prevcmd);
+	else
+	    vim_free(t);
 	p = t + STRLEN(t);
 	STRCAT(t, trailarg);
 	vim_free(newcmd);
@@ -957,8 +959,12 @@ do_bang(
 	}
     } while (trailarg != NULL);
 
-    vim_free(prevcmd);
-    prevcmd = newcmd;
+    // Don't clear "prevcmd" if there is no command to run.
+    if (STRLEN(newcmd) > 0)
+    {
+	vim_free(prevcmd);
+	prevcmd = newcmd;
+    }
 
     if (bangredo)	    // put cmd in redo buffer for ! command
     {
