@@ -202,7 +202,7 @@ static void vtp_sgr_bulk(int arg);
 static void vtp_sgr_bulks(int argc, int *argv);
 
 static int wt_working = 0;
-static void wt_init();
+static void wt_init(void);
 
 static int g_color_index_bg = 0;
 static int g_color_index_fg = 7;
@@ -238,6 +238,7 @@ static int suppress_winsize = 1;	// don't fiddle with console
 static char_u *exe_path = NULL;
 
 static BOOL win8_or_later = FALSE;
+static BOOL win11_or_later = FALSE;
 
 /*
  * Get version number including build number
@@ -893,6 +894,10 @@ PlatformId(void)
 		|| ovi.dwMajorVersion > 6)
 	    win8_or_later = TRUE;
 
+	if ((ovi.dwMajorVersion == 10 && ovi.dwBuildNumber >= 22000)
+		|| ovi.dwMajorVersion > 10)
+	    win11_or_later = TRUE;
+
 #ifdef HAVE_ACL
 	// Enable privilege for getting or setting SACLs.
 	win32_enable_privilege(SE_SECURITY_NAME, TRUE);
@@ -1257,7 +1262,7 @@ decode_mouse_wheel(MOUSE_EVENT_RECORD *pmer)
     g_xMouse = pmer->dwMousePosition.X;
     g_yMouse = pmer->dwMousePosition.Y;
 
-#ifdef FEAT_PROP_POPUP
+# ifdef FEAT_PROP_POPUP
     int lcol = g_xMouse;
     int lrow = g_yMouse;
     win_T *wp = mouse_find_win(&lrow, &lcol, FIND_POPUP);
@@ -1289,7 +1294,7 @@ decode_mouse_wheel(MOUSE_EVENT_RECORD *pmer)
 	out_flush();
 	return;
     }
-#endif
+# endif
     mouse_col = g_xMouse;
     mouse_row = g_yMouse;
 
@@ -2683,6 +2688,11 @@ SaveConsoleBuffer(
     }
     cb->IsValid = TRUE;
 
+    // VTP uses alternate screen buffer.
+    // No need to save buffer contents for restoration.
+    if (win11_or_later && vtp_working)
+	return TRUE;
+
     /*
      * Allocate a buffer large enough to hold the entire console screen
      * buffer.  If this ConsoleBuffer structure has already been initialized
@@ -2775,6 +2785,11 @@ RestoreConsoleBuffer(
     COORD BufferCoord;
     SMALL_RECT WriteRegion;
     int i;
+
+    // VTP uses alternate screen buffer.
+    // No need to restore buffer contents.
+    if (win11_or_later && vtp_working)
+	return TRUE;
 
     if (cb == NULL || !cb->IsValid)
 	return FALSE;
@@ -5736,7 +5751,9 @@ termcap_mode_start(void)
     if (g_fTermcapMode)
 	return;
 
-    if (!p_rs && USE_VTP)
+    // VTP uses alternate screen buffer.
+    // Switch to a new alternate screen buffer.
+    if (win11_or_later && p_rs && vtp_working)
 	vtp_printf("\033[?1049h");
 
     SaveConsoleBuffer(&g_cbNonTermcap);
@@ -5816,17 +5833,22 @@ termcap_mode_end(void)
 # endif
     RestoreConsoleBuffer(cb, p_rs);
     restore_console_color_rgb();
-    SetConsoleCursorInfo(g_hConOut, &g_cci);
 
-    if (p_rs || exiting)
+    // VTP uses alternate screen buffer.
+    // Switch back to main screen buffer.
+    if (exiting && win11_or_later && p_rs && vtp_working)
+	vtp_printf("\033[?1049l");
+
+    if (!USE_WT && (p_rs || exiting))
     {
 	/*
 	 * Clear anything that happens to be on the current line.
 	 */
 	coord.X = 0;
 	coord.Y = (SHORT) (p_rs ? cb->Info.dwCursorPosition.Y : (Rows - 1));
-	FillConsoleOutputCharacter(g_hConOut, ' ',
-		cb->Info.dwSize.X, coord, &dwDummy);
+	if (!vtp_working)
+	    FillConsoleOutputCharacter(g_hConOut, ' ',
+		    cb->Info.dwSize.X, coord, &dwDummy);
 	/*
 	 * The following is just for aesthetics.  If we are exiting without
 	 * restoring the screen, then we want to have a prompt string
@@ -5842,10 +5864,7 @@ termcap_mode_end(void)
 	 */
 	SetConsoleCursorPosition(g_hConOut, coord);
     }
-
-    if (!p_rs && USE_VTP)
-	vtp_printf("\033[?1049l");
-
+    SetConsoleCursorInfo(g_hConOut, &g_cci);
     g_fTermcapMode = FALSE;
 }
 #endif // !FEAT_GUI_MSWIN || VIMDLL
@@ -6040,9 +6059,9 @@ insert_lines(unsigned cLines)
 
     fill.Char.AsciiChar = ' ';
     if (!(vtp_working
-#ifdef FEAT_TERMGUICOLORS
+# ifdef FEAT_TERMGUICOLORS
 		&& (p_tgc || t_colors >= 256)
-#endif
+# endif
 	 ))
 	fill.Attributes = g_attrCurrent;
     else
@@ -6168,9 +6187,9 @@ gotoxy(
 	return;
 
     if (!(vtp_working
-#ifdef FEAT_TERMGUICOLORS
+# ifdef FEAT_TERMGUICOLORS
 		&& (p_tgc || t_colors >= 256)
-#endif
+# endif
 	 ))
     {
 	// There are reports of double-width characters not displayed
@@ -6416,9 +6435,9 @@ write_chars(
     }
 
     if (!(vtp_working
-#ifdef FEAT_TERMGUICOLORS
+# ifdef FEAT_TERMGUICOLORS
 	    && (p_tgc || t_colors >= 256)
-#endif
+# endif
 	))
     {
 	FillConsoleOutputAttribute(g_hConOut, g_attrCurrent, cells,
@@ -6460,9 +6479,9 @@ write_chars(
 
     // Cursor under VTP is always in the correct position, no need to reset.
     if (!(vtp_working
-#ifdef FEAT_TERMGUICOLORS
+# ifdef FEAT_TERMGUICOLORS
 		&& (p_tgc || t_colors >= 256)
-#endif
+# endif
 	 ))
 	gotoxy(g_coord.X + 1, g_coord.Y + 1);
 
@@ -7946,8 +7965,12 @@ mch_setenv(char *var, char *value, int x UNUSED)
  * Not stable now.
  */
 #define CONPTY_STABLE_BUILD	    MAKE_VER(10, 0, 32767)  // T.B.D.
-// Note: Windows 11 (build >= 22000 means Windows 11, even though the major
-// version says 10!)
+// Notes:
+// Win 10 22H2 Final is build 19045, it's conpty is widely used.
+// Strangely, 19045 is newer but is a lower build number than the 2020 insider
+// preview which had a build 19587.  And, not sure how stable that was?
+// Win Server 2022 (May 10, 2022) is build 20348, its conpty is widely used.
+// Win 11 starts from build 22000, even though the major version says 10!
 
     static void
 vtp_flag_init(void)
@@ -8202,13 +8225,7 @@ vtp_sgr_bulks(
     static void
 wt_init(void)
 {
-    wt_working = (mch_getenv("WT_SESSION") != NULL);
-}
-
-    int
-use_wt(void)
-{
-    return USE_WT;
+    wt_working = mch_getenv("WT_SESSION") != NULL;
 }
 
 # ifdef FEAT_TERMGUICOLORS

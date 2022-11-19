@@ -230,9 +230,13 @@ func Test_smoothscroll_wrap_scrolloff_zero()
   call term_sendkeys(buf, "G")
   call VerifyScreenDump(buf, 'Test_smooth_wrap_4', {})
 
-  " moving cursor up - whole top line shows
-  call term_sendkeys(buf, "2k")
+  " moving cursor up right after the >>> marker - no need to show whole line
+  call term_sendkeys(buf, "2gj3l2k")
   call VerifyScreenDump(buf, 'Test_smooth_wrap_5', {})
+
+  " moving cursor up where the >>> marker is - whole top line shows
+  call term_sendkeys(buf, "2j02k")
+  call VerifyScreenDump(buf, 'Test_smooth_wrap_6', {})
 
   call StopVimInTerminal(buf)
 endfunc
@@ -306,6 +310,122 @@ func Test_smoothscroll_one_long_line()
   call VerifyScreenDump(buf, 'Test_smooth_one_long_1', {})
 
   call StopVimInTerminal(buf)
+endfunc
+
+func Test_smoothscroll_long_line_showbreak()
+  CheckScreendump
+
+  let lines =<< trim END
+      vim9script
+      # a line that spans four screen lines
+      setline(1, 'with lots of text in one line '->repeat(6))
+      set smoothscroll scrolloff=0 showbreak=+++\ 
+  END
+  call writefile(lines, 'XSmoothLongShowbreak', 'D')
+  let buf = RunVimInTerminal('-S XSmoothLongShowbreak', #{rows: 6, cols: 40})
+  call VerifyScreenDump(buf, 'Test_smooth_long_showbreak_1', {})
+  
+  call term_sendkeys(buf, "\<C-E>")
+  call VerifyScreenDump(buf, 'Test_smooth_long_showbreak_2', {})
+
+  call term_sendkeys(buf, "0")
+  call VerifyScreenDump(buf, 'Test_smooth_long_showbreak_1', {})
+
+  call StopVimInTerminal(buf)
+endfunc
+
+" Test that if the current cursor is on a smooth scrolled line, we correctly
+" reposition it. Also check that we don't miscalculate the values by checking
+" the consistency between wincol() and col('.') as they are calculated
+" separately in code.
+func Test_smoothscroll_cursor_position()
+  call NewWindow(10, 20)
+  setl smoothscroll wrap
+  call setline(1, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+  func s:check_col_calc(win_col, win_line, buf_col)
+    call assert_equal(a:win_col, wincol())
+    call assert_equal(a:win_line, winline())
+    call assert_equal(a:buf_col, col('.'))
+  endfunc
+
+  call s:check_col_calc(1, 1, 1)
+  exe "normal \<C-E>"
+
+  " Move down another line to avoid blocking the <<< display
+  call s:check_col_calc(1, 2, 41)
+  exe "normal \<C-Y>"
+  call s:check_col_calc(1, 3, 41)
+
+  normal gg3l
+  exe "normal \<C-E>"
+
+  " Move down only 1 line when we are out of the range of the <<< display
+  call s:check_col_calc(4, 1, 24)
+  exe "normal \<C-Y>"
+  call s:check_col_calc(4, 2, 24)
+  normal ggg$
+  exe "normal \<C-E>"
+  call s:check_col_calc(20, 1, 40)
+  exe "normal \<C-Y>"
+  call s:check_col_calc(20, 2, 40)
+  normal gg
+
+  " Test number, where we have indented lines
+  setl number
+  call s:check_col_calc(5, 1, 1)
+  exe "normal \<C-E>"
+
+  " Move down only 1 line when the <<< display is on the number column
+  call s:check_col_calc(5, 1, 17)
+  exe "normal \<C-Y>"
+  call s:check_col_calc(5, 2, 17)
+  normal ggg$
+  exe "normal \<C-E>"
+  call s:check_col_calc(20, 1, 32)
+  exe "normal \<C-Y>"
+  call s:check_col_calc(20, 2, 32)
+  normal gg
+
+  setl numberwidth=1
+
+  " Move down another line when numberwidth is too short to cover the whole
+  " <<< display
+  call s:check_col_calc(3, 1, 1)
+  exe "normal \<C-E>"
+  call s:check_col_calc(3, 2, 37)
+  exe "normal \<C-Y>"
+  call s:check_col_calc(3, 3, 37)
+  normal ggl
+
+  " Only move 1 line down when we are just past the <<< display
+  call s:check_col_calc(4, 1, 2)
+  exe "normal \<C-E>"
+  call s:check_col_calc(4, 1, 20)
+  exe "normal \<C-Y>"
+  call s:check_col_calc(4, 2, 20)
+  normal gg
+  setl numberwidth&
+
+  " Test number + showbreak, so test that the additional indentation works
+  setl number showbreak=+++
+  call s:check_col_calc(5, 1, 1)
+  exe "normal \<C-E>"
+  call s:check_col_calc(8, 1, 17)
+  exe "normal \<C-Y>"
+  call s:check_col_calc(8, 2, 17)
+  normal gg
+
+  " Test number + cpo+=n mode, where wrapped lines aren't indented
+  setl number cpo+=n showbreak=
+  call s:check_col_calc(5, 1, 1)
+  exe "normal \<C-E>"
+  call s:check_col_calc(1, 2, 37)
+  exe "normal \<C-Y>"
+  call s:check_col_calc(1, 3, 37)
+  normal gg
+
+  bwipeout!
 endfunc
 
 
