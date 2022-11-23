@@ -191,6 +191,7 @@ static struct event_name
     {"WinClosed",	EVENT_WINCLOSED},
     {"WinEnter",	EVENT_WINENTER},
     {"WinLeave",	EVENT_WINLEAVE},
+    {"WinResized",	EVENT_WINRESIZED},
     {"WinScrolled",	EVENT_WINSCROLLED},
     {"VimResized",	EVENT_VIMRESIZED},
     {"TextYankPost",	EVENT_TEXTYANKPOST},
@@ -1263,15 +1264,22 @@ do_autocmd_event(
 		if (event == EVENT_MODECHANGED && !has_modechanged())
 		    get_mode(last_mode);
 #endif
-		// Initialize the fields checked by the WinScrolled trigger to
-		// stop it from firing right after the first autocmd is defined.
-		if (event == EVENT_WINSCROLLED && !has_winscrolled())
+		// Initialize the fields checked by the WinScrolled and
+		// WinResized trigger to prevent them from firing right after
+		// the first autocmd is defined.
+		if ((event == EVENT_WINSCROLLED || event == EVENT_WINRESIZED)
+			&& !(has_winscrolled() || has_winresized()))
 		{
-		    curwin->w_last_topline = curwin->w_topline;
-		    curwin->w_last_leftcol = curwin->w_leftcol;
-		    curwin->w_last_skipcol = curwin->w_skipcol;
-		    curwin->w_last_width = curwin->w_width;
-		    curwin->w_last_height = curwin->w_height;
+		    tabpage_T *save_curtab = curtab;
+		    tabpage_T *tp;
+		    FOR_ALL_TABPAGES(tp)
+		    {
+			unuse_tabpage(curtab);
+			use_tabpage(tp);
+			snapshot_windows_scroll_size();
+		    }
+		    unuse_tabpage(curtab);
+		    use_tabpage(save_curtab);
 		}
 
 		if (is_buflocal)
@@ -1805,6 +1813,15 @@ trigger_cursorhold(void)
 }
 
 /*
+ * Return TRUE when there is a WinResized autocommand defined.
+ */
+    int
+has_winresized(void)
+{
+    return (first_autopat[(int)EVENT_WINRESIZED] != NULL);
+}
+
+/*
  * Return TRUE when there is a WinScrolled autocommand defined.
  */
     int
@@ -2111,6 +2128,7 @@ apply_autocmds_group(
 		|| event == EVENT_MENUPOPUP
 		|| event == EVENT_USER
 		|| event == EVENT_WINCLOSED
+		|| event == EVENT_WINRESIZED
 		|| event == EVENT_WINSCROLLED)
 	{
 	    fname = vim_strsave(fname);
