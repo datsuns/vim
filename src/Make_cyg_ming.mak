@@ -801,6 +801,7 @@ OBJ = \
 	$(OUTDIR)/json.o \
 	$(OUTDIR)/list.o \
 	$(OUTDIR)/locale.o \
+	$(OUTDIR)/logfile.o \
 	$(OUTDIR)/main.o \
 	$(OUTDIR)/map.o \
 	$(OUTDIR)/mark.o \

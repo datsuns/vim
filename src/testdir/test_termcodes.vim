@@ -2459,6 +2459,104 @@ func Test_mapping_works_with_shift_ctrl_alt()
   call RunTest_mapping_works_with_mods(function('GetEscCodeCSIu'), 'C-S-A', 8)
 endfunc
 
+func Test_mapping_works_with_unknown_modifiers()
+  new
+  set timeoutlen=10
+
+  for Func in [function('GetEscCodeCSI27'), function('GetEscCodeCSIu')]
+    call RunTest_mapping_mods('<C-z>', 'z', Func, 5)
+    " Add 16, 32, 64 or 128 for modifiers we currently don't support.
+    call RunTest_mapping_mods('<C-z>', 'z', Func, 5 + 16)
+    call RunTest_mapping_mods('<C-z>', 'z', Func, 5 + 32)
+    call RunTest_mapping_mods('<C-z>', 'z', Func, 5 + 64)
+    call RunTest_mapping_mods('<C-z>', 'z', Func, 5 + 128)
+
+    call RunTest_mapping_mods('<S-X>', 'X', Func, 2)
+    " Add 16, 32, 64 or 128 for modifiers we currently don't support.
+    call RunTest_mapping_mods('<S-X>', 'X', Func, 2 + 16)
+    call RunTest_mapping_mods('<S-X>', 'X', Func, 2 + 32)
+    call RunTest_mapping_mods('<S-X>', 'X', Func, 2 + 64)
+    call RunTest_mapping_mods('<S-X>', 'X', Func, 2 + 128)
+  endfor
+
+  bwipe!
+  set timeoutlen&
+endfunc
+
+func RunTest_mapping_funckey(map, func, key, code)
+  call setline(1, '')
+  exe 'inoremap ' .. a:map .. ' xyz'
+  call feedkeys('a' .. a:func(a:key, a:code) .. "\<Esc>", 'Lx!')
+  call assert_equal("xyz", getline(1), 'mapping ' .. a:map)
+  exe 'iunmap ' .. a:map
+endfunc
+
+func Test_mapping_kitty_function_keys()
+  new
+  set timeoutlen=10
+
+  " Function keys made with CSI and ending in [ABCDEFHPQRS].
+  " 'E' is keypad BEGIN, not supported
+  let maps = [
+        \    ['<Up>', 'A', 0],
+        \    ['<S-Up>', 'A', 2],
+        \    ['<C-Up>', 'A', 5],
+        \    ['<C-S-Up>', 'A', 6],
+        \
+        \    ['<Down>', 'B', 0],
+        \    ['<S-Down>', 'B', 2],
+        \    ['<C-Down>', 'B', 5],
+        \    ['<C-S-Down>', 'B', 6],
+        \
+        \    ['<Right>', 'C', 0],
+        \    ['<S-Right>', 'C', 2],
+        \    ['<C-Right>', 'C', 5],
+        \    ['<C-S-Right>', 'C', 6],
+        \
+        \    ['<Left>', 'D', 0],
+        \    ['<S-Left>', 'D', 2],
+        \    ['<C-Left>', 'D', 5],
+        \    ['<C-S-Left>', 'D', 6],
+        \
+        \    ['<End>', 'F', 0],
+        \    ['<S-End>', 'F', 2],
+        \    ['<C-End>', 'F', 5],
+        \    ['<C-S-End>', 'F', 6],
+        \
+        \    ['<Home>', 'H', 0],
+        \    ['<S-Home>', 'H', 2],
+        \    ['<C-Home>', 'H', 5],
+        \    ['<C-S-Home>', 'H', 6],
+        \
+        \    ['<F1>', 'P', 0],
+        \    ['<S-F1>', 'P', 2],
+        \    ['<C-F1>', 'P', 5],
+        \    ['<C-S-F1>', 'P', 6],
+        \
+        \    ['<F2>', 'Q', 0],
+        \    ['<S-F2>', 'Q', 2],
+        \    ['<C-F2>', 'Q', 5],
+        \    ['<C-S-F2>', 'Q', 6],
+        \
+        \    ['<F3>', 'R', 0],
+        \    ['<S-F3>', 'R', 2],
+        \    ['<C-F3>', 'R', 5],
+        \    ['<C-S-F3>', 'R', 6],
+        \
+        \    ['<F4>', 'S', 0],
+        \    ['<S-F4>', 'S', 2],
+        \    ['<C-F4>', 'S', 5],
+        \    ['<C-S-F4>', 'S', 6],
+        \ ]
+
+  for map in maps
+    call RunTest_mapping_funckey(map[0], function('GetEscCodeFunckey'), map[1], map[2])
+  endfor
+
+  bwipe!
+  set timeoutlen&
+endfunc
+
 func Test_insert_literal()
   set timeoutlen=10
 
