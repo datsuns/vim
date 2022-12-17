@@ -33,7 +33,9 @@ typedef enum {
     ISN_SOURCE,	    // source autoload script, isn_arg.number is the script ID
     ISN_INSTR,	    // instructions compiled from expression
     ISN_CONSTRUCT,  // construct an object, using contstruct_T
-    ISN_OBJ_MEMBER, // object member, index is isn_arg.number
+    ISN_GET_OBJ_MEMBER, // object member, index is isn_arg.number
+    ISN_STORE_THIS, // store value in "this" object member, index is
+		    // isn_arg.number
 
     // get and set variables
     ISN_LOAD,	    // push local variable isn_arg.number
@@ -121,6 +123,8 @@ typedef enum {
     // expression operations
     ISN_JUMP,	    // jump if condition is matched isn_arg.jump
     ISN_JUMP_IF_ARG_SET, // jump if argument is already set, uses
+			 // isn_arg.jumparg
+    ISN_JUMP_IF_ARG_NOT_SET, // jump if argument is not set, uses
 			 // isn_arg.jumparg
 
     // loop
@@ -258,7 +262,7 @@ typedef struct {
     int		jump_where;	// position to jump to
 } jump_T;
 
-// arguments to ISN_JUMP_IF_ARG_SET
+// arguments to ISN_JUMP_IF_ARG_SET and ISN_JUMP_IF_ARG_NOT_SET
 typedef struct {
     int		jump_arg_off;	// argument index, negative
     int		jump_where;	// position to jump to

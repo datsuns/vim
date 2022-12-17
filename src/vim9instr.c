@@ -132,20 +132,39 @@ generate_CONSTRUCT(cctx_T *cctx, class_T *cl)
 }
 
 /*
- * Generate ISN_OBJ_MEMBER - access object member by indes.
+ * Generate ISN_GET_OBJ_MEMBER - access member of object at bottom of stack by
+ * index.
  */
     int
-generate_OBJ_MEMBER(cctx_T *cctx, int idx, type_T *type)
+generate_GET_OBJ_MEMBER(cctx_T *cctx, int idx, type_T *type)
 {
     RETURN_OK_IF_SKIP(cctx);
 
     // drop the object type
-    isn_T *isn = generate_instr_drop(cctx, ISN_OBJ_MEMBER, 1);
+    isn_T *isn = generate_instr_drop(cctx, ISN_GET_OBJ_MEMBER, 1);
     if (isn == NULL)
 	return FAIL;
 
     isn->isn_arg.number = idx;
     return push_type_stack2(cctx, type, &t_any);
+}
+
+/*
+ * Generate ISN_STORE_THIS - store value in member of "this" object with member
+ * index "idx".
+ */
+    int
+generate_STORE_THIS(cctx_T *cctx, int idx)
+{
+    RETURN_OK_IF_SKIP(cctx);
+
+    // drop the value type
+    isn_T *isn = generate_instr_drop(cctx, ISN_STORE_THIS, 1);
+    if (isn == NULL)
+	return FAIL;
+
+    isn->isn_arg.number = idx;
+    return OK;
 }
 
 /*
@@ -1389,15 +1408,15 @@ generate_WHILE(cctx_T *cctx, int funcref_idx)
 }
 
 /*
- * Generate an ISN_JUMP_IF_ARG_SET instruction.
+ * Generate an ISN_JUMP_IF_ARG_SET or ISN_JUMP_IF_ARG_NOT_SET instruction.
  */
     int
-generate_JUMP_IF_ARG_SET(cctx_T *cctx, int arg_off)
+generate_JUMP_IF_ARG(cctx_T *cctx, isntype_T isn_type, int arg_off)
 {
     isn_T	*isn;
 
     RETURN_OK_IF_SKIP(cctx);
-    if ((isn = generate_instr(cctx, ISN_JUMP_IF_ARG_SET)) == NULL)
+    if ((isn = generate_instr(cctx, isn_type)) == NULL)
 	return FAIL;
     isn->isn_arg.jumparg.jump_arg_off = arg_off;
     // jump_where is set later
@@ -2458,7 +2477,9 @@ delete_instr(isn_T *isn)
 	case ISN_FINISH:
 	case ISN_FOR:
 	case ISN_GETITEM:
+	case ISN_GET_OBJ_MEMBER:
 	case ISN_JUMP:
+	case ISN_JUMP_IF_ARG_NOT_SET:
 	case ISN_JUMP_IF_ARG_SET:
 	case ISN_LISTAPPEND:
 	case ISN_LISTINDEX:
@@ -2477,7 +2498,6 @@ delete_instr(isn_T *isn)
 	case ISN_NEWDICT:
 	case ISN_NEWLIST:
 	case ISN_NEWPARTIAL:
-	case ISN_OBJ_MEMBER:
 	case ISN_OPANY:
 	case ISN_OPFLOAT:
 	case ISN_OPNR:
@@ -2495,8 +2515,8 @@ delete_instr(isn_T *isn)
 	case ISN_REDIREND:
 	case ISN_REDIRSTART:
 	case ISN_RETURN:
-	case ISN_RETURN_VOID:
 	case ISN_RETURN_OBJECT:
+	case ISN_RETURN_VOID:
 	case ISN_SHUFFLE:
 	case ISN_SLICE:
 	case ISN_SOURCE:
@@ -2504,6 +2524,7 @@ delete_instr(isn_T *isn)
 	case ISN_STOREINDEX:
 	case ISN_STORENR:
 	case ISN_STOREOUTER:
+	case ISN_STORE_THIS:
 	case ISN_STORERANGE:
 	case ISN_STOREREG:
 	case ISN_STOREV:

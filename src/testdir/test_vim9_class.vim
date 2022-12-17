@@ -129,7 +129,7 @@ def Test_class_basic()
 
       class TextPosition
         this.lnum: number
-	this.col: number
+        this.col: number
 
         def ToString(): string
           return $'({this.lnum}, {this.col})'
@@ -143,6 +143,185 @@ def Test_class_basic()
 
       # call an object method
       assert_equal('(2, 12)', pos.ToString())
+  END
+  v9.CheckScriptSuccess(lines)
+enddef
+
+def Test_class_member_initializer()
+  var lines =<< trim END
+      vim9script
+
+      class TextPosition
+        this.lnum: number = 1
+        this.col: number = 1
+
+        def new(lnum: number)
+          this.lnum = lnum
+        enddef
+      endclass
+
+      var pos = TextPosition.new(3)
+      assert_equal(3, pos.lnum)
+      assert_equal(1, pos.col)
+
+      var instr = execute('disassemble TextPosition.new')
+      assert_match('new\_s*' ..
+            '0 NEW TextPosition size \d\+\_s*' ..
+            '\d PUSHNR 1\_s*' ..
+            '\d STORE_THIS 0\_s*' ..
+            '\d PUSHNR 1\_s*' ..
+            '\d STORE_THIS 1\_s*' ..
+            'this.lnum = lnum\_s*' ..
+            '\d LOAD arg\[-1]\_s*' ..
+            '\d PUSHNR 0\_s*' ..
+            '\d LOAD $0\_s*' ..
+            '\d\+ STOREINDEX object\_s*' ..
+            '\d\+ RETURN object.*',
+            instr)
+  END
+  v9.CheckScriptSuccess(lines)
+enddef
+
+def Test_class_default_new()
+  var lines =<< trim END
+      vim9script
+
+      class TextPosition
+        this.lnum: number = 1
+        this.col: number = 1
+      endclass
+
+      var pos = TextPosition.new()
+      assert_equal(1, pos.lnum)
+      assert_equal(1, pos.col)
+
+      pos = TextPosition.new(v:none, v:none)
+      assert_equal(1, pos.lnum)
+      assert_equal(1, pos.col)
+
+      pos = TextPosition.new(3, 22)
+      assert_equal(3, pos.lnum)
+      assert_equal(22, pos.col)
+
+      pos = TextPosition.new(v:none, 33)
+      assert_equal(1, pos.lnum)
+      assert_equal(33, pos.col)
+  END
+  v9.CheckScriptSuccess(lines)
+
+  lines =<< trim END
+      vim9script
+      class Person
+        this.name: string
+        this.age: number = 42
+        this.education: string = "unknown"
+
+        def new(this.name, this.age = v:none, this.education = v:none)
+        enddef
+      endclass
+
+      var piet = Person.new("Piet")
+      assert_equal("Piet", piet.name)
+      assert_equal(42, piet.age)
+      assert_equal("unknown", piet.education)
+
+      var chris = Person.new("Chris", 4, "none")
+      assert_equal("Chris", chris.name)
+      assert_equal(4, chris.age)
+      assert_equal("none", chris.education)
+  END
+  v9.CheckScriptSuccess(lines)
+
+  lines =<< trim END
+      vim9script
+      class Person
+        this.name: string
+        this.age: number = 42
+        this.education: string = "unknown"
+
+        def new(this.name, this.age = v:none, this.education = v:none)
+        enddef
+      endclass
+
+      var missing = Person.new()
+  END
+  v9.CheckScriptFailure(lines, 'E119:')
+enddef
+
+def Test_class_object_member_inits()
+  var lines =<< trim END
+      vim9script
+      class TextPosition
+        this.lnum: number
+        this.col = 1
+        this.addcol: number = 2
+      endclass
+
+      var pos = TextPosition.new()
+      assert_equal(0, pos.lnum)
+      assert_equal(1, pos.col)
+      assert_equal(2, pos.addcol)
+  END
+  v9.CheckScriptSuccess(lines)
+
+  lines =<< trim END
+      vim9script
+      class TextPosition
+        this.lnum
+        this.col = 1
+      endclass
+  END
+  v9.CheckScriptFailure(lines, 'E1022:')
+
+  lines =<< trim END
+      vim9script
+      class TextPosition
+        this.lnum = v:none
+        this.col = 1
+      endclass
+  END
+  v9.CheckScriptFailure(lines, 'E1330:')
+enddef
+
+def Test_class_object_member_access()
+  var lines =<< trim END
+      vim9script
+      class Triple
+         this._one = 1
+         this.two = 2
+         public this.three = 3
+
+         def GetOne(): number
+           return this._one
+         enddef
+      endclass
+
+      var trip = Triple.new()
+      assert_equal(1, trip.GetOne())
+      assert_equal(2, trip.two)
+      assert_equal(3, trip.three)
+      assert_fails('echo trip._one', 'E1333')
+
+      assert_fails('trip._one = 11', 'E1333')
+      assert_fails('trip.two = 22', 'E1335')
+      trip.three = 33
+      assert_equal(33, trip.three)
+  END
+  v9.CheckScriptSuccess(lines)
+enddef
+
+def Test_class_object_to_string()
+  var lines =<< trim END
+      vim9script
+      class TextPosition
+        this.lnum = 1
+        this.col = 22
+      endclass
+
+      assert_equal("class TextPosition", string(TextPosition))
+
+      var pos = TextPosition.new()
+      assert_equal("object of TextPosition {lnum: 1, col: 22}", string(pos))
   END
   v9.CheckScriptSuccess(lines)
 enddef

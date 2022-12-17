@@ -110,41 +110,109 @@ ex_class(exarg_T *eap)
 	    break;
 	}
 
-	// "this.varname"
 	// "this._varname"
-	// TODO:
-	//	"public this.varname"
-	if (STRNCMP(line, "this", 4) == 0)
+	// "this.varname"
+	// "public this.varname"
+	int has_public = FALSE;
+	if (checkforcmd(&p, "public", 3))
 	{
-	    if (line[4] != '.' || !eval_isnamec1(line[5]))
+	    if (STRNCMP(line, "public", 6) != 0)
 	    {
-		semsg(_(e_invalid_object_member_declaration_str), line);
+		semsg(_(e_command_cannot_be_shortened_str), line);
 		break;
 	    }
-	    char_u *varname = line + 5;
+	    has_public = TRUE;
+	    p = skipwhite(line + 6);
+
+	    if (STRNCMP(p, "this", 4) != 0)
+	    {
+		emsg(_(e_public_must_be_followed_by_this));
+		break;
+	    }
+	}
+	if (STRNCMP(p, "this", 4) == 0)
+	{
+	    if (p[4] != '.' || !eval_isnamec1(p[5]))
+	    {
+		semsg(_(e_invalid_object_member_declaration_str), p);
+		break;
+	    }
+	    char_u *varname = p + 5;
 	    char_u *varname_end = to_name_end(varname, FALSE);
+	    if (*varname == '_' && has_public)
+	    {
+		semsg(_(e_public_object_member_name_cannot_start_with_underscore_str), line);
+		break;
+	    }
 
 	    char_u *colon = skipwhite(varname_end);
-	    // TODO: accept initialization and figure out type from it
-	    if (*colon != ':')
+	    char_u *type_arg = colon;
+	    type_T *type = NULL;
+	    if (*colon == ':')
+	    {
+		if (VIM_ISWHITE(*varname_end))
+		{
+		    semsg(_(e_no_white_space_allowed_before_colon_str),
+								      varname);
+		    break;
+		}
+		if (!VIM_ISWHITE(colon[1]))
+		{
+		    semsg(_(e_white_space_required_after_str_str), ":",
+								      varname);
+		    break;
+		}
+		type_arg = skipwhite(colon + 1);
+		type = parse_type(&type_arg, &type_list, TRUE);
+		if (type == NULL)
+		    break;
+	    }
+
+	    char_u *expr_start = skipwhite(type_arg);
+	    char_u *expr_end = expr_start;
+	    if (type == NULL && *expr_start != '=')
 	    {
 		emsg(_(e_type_or_initialization_required));
 		break;
 	    }
-	    if (VIM_ISWHITE(*varname_end))
-	    {
-		semsg(_(e_no_white_space_allowed_before_colon_str), varname);
-		break;
-	    }
-	    if (!VIM_ISWHITE(colon[1]))
-	    {
-		semsg(_(e_white_space_required_after_str_str), ":", varname);
-		break;
-	    }
 
-	    char_u *type_arg = skipwhite(colon + 1);
-	    type_T *type = parse_type(&type_arg, &type_list, TRUE);
-	    if (type == NULL)
+	    if (*expr_start == '=')
+	    {
+		if (!VIM_ISWHITE(expr_start[-1]) || !VIM_ISWHITE(expr_start[1]))
+		{
+		    semsg(_(e_white_space_required_before_and_after_str_at_str),
+								"=", type_arg);
+		    break;
+		}
+		expr_start = skipwhite(expr_start + 1);
+
+		expr_end = expr_start;
+		evalarg_T evalarg;
+		fill_evalarg_from_eap(&evalarg, eap, FALSE);
+		skip_expr(&expr_end, NULL);
+
+		if (type == NULL)
+		{
+		    // No type specified, use the type of the initializer.
+		    typval_T tv;
+		    tv.v_type = VAR_UNKNOWN;
+		    char_u *expr = expr_start;
+		    int res = eval0(expr, &tv, eap, &evalarg);
+
+		    if (res == OK)
+			type = typval2type(&tv, get_copyID(), &type_list,
+							       TVTT_DO_MEMBER);
+		    if (type == NULL)
+		    {
+			semsg(_(e_cannot_get_object_member_type_from_initializer_str),
+				expr_start);
+			clear_evalarg(&evalarg, NULL);
+			break;
+		    }
+		}
+		clear_evalarg(&evalarg, NULL);
+	    }
+	    if (!valid_declaration_type(type))
 		break;
 
 	    if (ga_grow(&objmembers, 1) == FAIL)
@@ -152,7 +220,12 @@ ex_class(exarg_T *eap)
 	    objmember_T *m = ((objmember_T *)objmembers.ga_data)
 							  + objmembers.ga_len;
 	    m->om_name = vim_strnsave(varname, varname_end - varname);
+	    m->om_access = has_public ? ACCESS_ALL
+			    : *varname == '_' ? ACCESS_PRIVATE
+			    : ACCESS_READ;
 	    m->om_type = type;
+	    if (expr_end > expr_start)
+		m->om_init = vim_strnsave(expr_start, expr_end - expr_start);
 	    ++objmembers.ga_len;
 	}
 
@@ -190,6 +263,9 @@ ex_class(exarg_T *eap)
 	    // TODO: how about errors?
 	    if (uf != NULL && ga_grow(&objmethods, 1) == OK)
 	    {
+		if (STRNCMP(uf->uf_name, "new", 3) == 0)
+		    uf->uf_flags |= FC_NEW;
+
 		((ufunc_T **)objmethods.ga_data)[objmethods.ga_len] = uf;
 		++objmethods.ga_len;
 	    }
@@ -203,9 +279,10 @@ ex_class(exarg_T *eap)
     }
     vim_free(theline);
 
+    class_T *cl = NULL;
     if (success)
     {
-	class_T *cl = ALLOC_CLEAR_ONE(class_T);
+	cl = ALLOC_CLEAR_ONE(class_T);
 	if (cl == NULL)
 	    goto cleanup;
 	cl->class_refcount = 1;
@@ -217,12 +294,7 @@ ex_class(exarg_T *eap)
 				  : ALLOC_MULT(objmember_T, objmembers.ga_len);
 	if (cl->class_name == NULL
 		|| (objmembers.ga_len > 0 && cl->class_obj_members == NULL))
-	{
-	    vim_free(cl->class_name);
-	    vim_free(cl->class_obj_members);
-	    vim_free(cl);
 	    goto cleanup;
-	}
 	mch_memmove(cl->class_obj_members, objmembers.ga_data,
 				      sizeof(objmember_T) * objmembers.ga_len);
 	vim_free(objmembers.ga_data);
@@ -248,6 +320,7 @@ ex_class(exarg_T *eap)
 		ga_concat(&fga, (char_u *)"this.");
 		objmember_T *m = cl->class_obj_members + i;
 		ga_concat(&fga, (char_u *)m->om_name);
+		ga_concat(&fga, (char_u *)" = v:none");
 	    }
 	    ga_concat(&fga, (char_u *)")\nenddef\n");
 	    ga_append(&fga, NUL);
@@ -285,13 +358,7 @@ ex_class(exarg_T *eap)
 	cl->class_obj_method_count = objmethods.ga_len;
 	cl->class_obj_methods = ALLOC_MULT(ufunc_T *, objmethods.ga_len);
 	if (cl->class_obj_methods == NULL)
-	{
-	    vim_free(cl->class_name);
-	    vim_free(cl->class_obj_members);
-	    vim_free(cl->class_obj_methods);
-	    vim_free(cl);
 	    goto cleanup;
-	}
 	mch_memmove(cl->class_obj_methods, objmethods.ga_data,
 					sizeof(ufunc_T *) * objmethods.ga_len);
 	vim_free(objmethods.ga_data);
@@ -329,10 +396,19 @@ ex_class(exarg_T *eap)
     }
 
 cleanup:
+    if (cl != NULL)
+    {
+	vim_free(cl->class_name);
+	vim_free(cl->class_obj_members);
+	vim_free(cl->class_obj_methods);
+	vim_free(cl);
+    }
+
     for (int i = 0; i < objmembers.ga_len; ++i)
     {
 	objmember_T *m = ((objmember_T *)objmembers.ga_data) + i;
 	vim_free(m->om_name);
+	vim_free(m->om_init);
     }
     ga_clear(&objmembers);
 
@@ -499,6 +575,13 @@ class_object_index(
 	    objmember_T *m = &cl->class_obj_members[i];
 	    if (STRNCMP(name, m->om_name, len) == 0 && m->om_name[len] == NUL)
 	    {
+		if (*name == '_')
+		{
+		    semsg(_(e_cannot_access_private_object_member_str),
+								   m->om_name);
+		    return FAIL;
+		}
+
 		// The object only contains a pointer to the class, the member
 		// values array follows right after that.
 		object_T *obj = rettv->vval.v_object;
@@ -517,6 +600,54 @@ class_object_index(
     // TODO: class member
 
     return FAIL;
+}
+
+/*
+ * If "arg" points to a class or object method, return it.
+ * Otherwise return NULL.
+ */
+    ufunc_T *
+find_class_func(char_u **arg)
+{
+    char_u *name = *arg;
+    char_u *name_end = find_name_end(name, NULL, NULL, FNE_CHECK_START);
+    if (name_end == name || *name_end != '.')
+	return NULL;
+
+    size_t len = name_end - name;
+    typval_T tv;
+    tv.v_type = VAR_UNKNOWN;
+    if (eval_variable(name, len, 0, &tv, NULL, EVAL_VAR_NOAUTOLOAD) == FAIL)
+	return NULL;
+    if (tv.v_type != VAR_CLASS && tv.v_type != VAR_OBJECT)
+	goto fail_after_eval;
+
+    class_T *cl = tv.v_type == VAR_CLASS ? tv.vval.v_class
+						 : tv.vval.v_object->obj_class;
+    if (cl == NULL)
+	goto fail_after_eval;
+    char_u *fname = name_end + 1;
+    char_u *fname_end = find_name_end(fname, NULL, NULL, FNE_CHECK_START);
+    if (fname_end == fname)
+	goto fail_after_eval;
+    len = fname_end - fname;
+
+    for (int i = 0; i < cl->class_obj_method_count; ++i)
+    {
+	ufunc_T *fp = cl->class_obj_methods[i];
+	// Use a separate pointer to avoid that ASAN complains about
+	// uf_name[] only being 4 characters.
+	char_u *ufname = (char_u *)fp->uf_name;
+	if (STRNCMP(fname, ufname, len) == 0 && ufname[len] == NUL)
+	{
+	    clear_tv(&tv);
+	    return fp;
+	}
+    }
+
+fail_after_eval:
+    clear_tv(&tv);
+    return NULL;
 }
 
 /*
@@ -585,6 +716,7 @@ class_unref(class_T *cl)
 	{
 	    objmember_T *m = &cl->class_obj_members[i];
 	    vim_free(m->om_name);
+	    vim_free(m->om_init);
 	}
 	vim_free(cl->class_obj_members);
 

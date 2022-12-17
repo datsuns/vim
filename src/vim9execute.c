@@ -2068,7 +2068,7 @@ handle_debug(isn_T *iptr, ectx_T *ectx)
 }
 
 /*
- * Store a value in a list, dict or blob variable.
+ * Store a value in a list, dict, blob or object variable.
  * Returns OK, FAIL or NOTDONE (uncatchable error).
  */
     static int
@@ -2177,9 +2177,9 @@ execute_storeindex(isn_T *iptr, ectx_T *ectx)
 	{
 	    long	    lidx = (long)tv_idx->vval.v_number;
 	    blob_T	    *blob = tv_dest->vval.v_blob;
-	    varnumber_T nr;
-	    int	    error = FALSE;
-	    int	    len;
+	    varnumber_T	    nr;
+	    int		    error = FALSE;
+	    int		    len;
 
 	    if (blob == NULL)
 	    {
@@ -2209,6 +2209,7 @@ execute_storeindex(isn_T *iptr, ectx_T *ectx)
 	    long	    idx = (long)tv_idx->vval.v_number;
 	    object_T	    *obj = tv_dest->vval.v_object;
 	    typval_T	    *otv = (typval_T *)(obj + 1);
+	    clear_tv(&otv[idx]);
 	    otv[idx] = *tv;
 	}
 	else
@@ -3009,7 +3010,7 @@ exec_instructions(ectx_T *ectx)
 	iptr = &ectx->ec_instr[ectx->ec_iidx++];
 	switch (iptr->isn_type)
 	{
-	    // Constructor, new() method.
+	    // Constructor, first instruction in a new() method.
 	    case ISN_CONSTRUCT:
 		// "this" is always the local variable at index zero
 		tv = STACK_TV_VAR(0);
@@ -4293,10 +4294,12 @@ exec_instructions(ectx_T *ectx)
 	    // Jump if an argument with a default value was already set and not
 	    // v:none.
 	    case ISN_JUMP_IF_ARG_SET:
+	    case ISN_JUMP_IF_ARG_NOT_SET:
 		tv = STACK_TV_VAR(iptr->isn_arg.jumparg.jump_arg_off);
-		if (tv->v_type != VAR_UNKNOWN
-			&& !(tv->v_type == VAR_SPECIAL
-					    && tv->vval.v_number == VVAL_NONE))
+		int arg_set = tv->v_type != VAR_UNKNOWN
+				&& !(tv->v_type == VAR_SPECIAL
+					    && tv->vval.v_number == VVAL_NONE);
+		if (iptr->isn_type == ISN_JUMP_IF_ARG_SET ? arg_set : !arg_set)
 		    ectx->ec_iidx = iptr->isn_arg.jumparg.jump_where;
 		break;
 
@@ -5114,7 +5117,7 @@ exec_instructions(ectx_T *ectx)
 		}
 		break;
 
-	    case ISN_OBJ_MEMBER:
+	    case ISN_GET_OBJ_MEMBER:
 		{
 		    tv = STACK_TV_BOT(-1);
 		    if (tv->v_type != VAR_OBJECT)
@@ -5140,6 +5143,18 @@ exec_instructions(ectx_T *ectx)
 		    // Unreference the object after getting the member, it may
 		    // be freed.
 		    object_unref(obj);
+		}
+		break;
+
+	    case ISN_STORE_THIS:
+		{
+		    int idx = iptr->isn_arg.number;
+		    object_T *obj = STACK_TV_VAR(0)->vval.v_object;
+		    // the members are located right after the object struct
+		    typval_T *mtv = ((typval_T *)(obj + 1)) + idx;
+		    clear_tv(mtv);
+		    *mtv = *STACK_TV_BOT(-1);
+		    --ectx->ec_stack.ga_len;
 		}
 		break;
 
@@ -6621,6 +6636,12 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 						iptr->isn_arg.jump.jump_where);
 		break;
 
+	    case ISN_JUMP_IF_ARG_NOT_SET:
+		smsg("%s%4d JUMP_IF_ARG_NOT_SET arg[%d] -> %d", pfx, current,
+			 iptr->isn_arg.jumparg.jump_arg_off + STACK_FRAME_SIZE,
+						iptr->isn_arg.jump.jump_where);
+		break;
+
 	    case ISN_FOR:
 		{
 		    forloop_T *forloop = &iptr->isn_arg.forloop;
@@ -6805,7 +6826,9 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 	    case ISN_MEMBER: smsg("%s%4d MEMBER", pfx, current); break;
 	    case ISN_STRINGMEMBER: smsg("%s%4d MEMBER %s", pfx, current,
 						  iptr->isn_arg.string); break;
-	    case ISN_OBJ_MEMBER: smsg("%s%4d OBJ_MEMBER %d", pfx, current,
+	    case ISN_GET_OBJ_MEMBER: smsg("%s%4d OBJ_MEMBER %d", pfx, current,
+					     (int)iptr->isn_arg.number); break;
+	    case ISN_STORE_THIS: smsg("%s%4d STORE_THIS %d", pfx, current,
 					     (int)iptr->isn_arg.number); break;
 	    case ISN_CLEARDICT: smsg("%s%4d CLEARDICT", pfx, current); break;
 	    case ISN_USEDICT: smsg("%s%4d USEDICT", pfx, current); break;
