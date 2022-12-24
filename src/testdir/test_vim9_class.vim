@@ -111,6 +111,17 @@ def Test_class_basic()
   lines =<< trim END
       vim9script
       class Something
+        def new()
+          this.state = 0
+        enddef
+      endclass
+      var obj = Something.new()
+  END
+  v9.CheckScriptFailure(lines, 'E1089:')
+
+  lines =<< trim END
+      vim9script
+      class Something
         this.count : number
       endclass
   END
@@ -131,6 +142,7 @@ def Test_class_basic()
         this.lnum: number
         this.col: number
 
+        # make a nicely formatted string
         def ToString(): string
           return $'({this.lnum}, {this.col})'
         enddef
@@ -155,6 +167,7 @@ def Test_class_member_initializer()
         this.lnum: number = 1
         this.col: number = 1
 
+        # constructor with only the line number
         def new(lnum: number)
           this.lnum = lnum
         enddef
@@ -306,6 +319,32 @@ def Test_class_object_member_access()
       assert_fails('trip.two = 22', 'E1335')
       trip.three = 33
       assert_equal(33, trip.three)
+
+      assert_fails('trip.four = 4', 'E1334')
+  END
+  v9.CheckScriptSuccess(lines)
+enddef
+
+def Test_class_member_access()
+  var lines =<< trim END
+      vim9script
+      class TextPos
+         this.lnum = 1
+         this.col = 1
+         static counter = 0
+
+         def AddToCounter(nr: number)
+           counter += nr
+         enddef
+      endclass
+
+      assert_equal(0, TextPos.counter)
+      TextPos.AddToCounter(3)
+      assert_equal(3, TextPos.counter)
+      assert_fails('echo TextPos.noSuchMember', 'E1338:')
+
+      assert_fails('TextPos.noSuchMember = 2', 'E1337:')
+      assert_fails('TextPos.counter += 5', 'E1335')
   END
   v9.CheckScriptSuccess(lines)
 enddef
