@@ -273,7 +273,8 @@ compile_class_object_index(cctx_T *cctx, char_u **arg, type_T *type)
     class_T *cl = (class_T *)type->tt_member;
     if (*name_end == '(')
     {
-	// TODO
+	// TODO: method or function call
+	emsg("compile_class_object_index(): object/class call not handled yet");
     }
     else if (type->tt_type == VAR_OBJECT)
     {
@@ -300,7 +301,7 @@ compile_class_object_index(cctx_T *cctx, char_u **arg, type_T *type)
     else
     {
 	// TODO: class member
-	emsg("compile_class_object_index(): not handled");
+	emsg("compile_class_object_index(): class member not handled yet");
     }
 
     return FAIL;
@@ -587,7 +588,8 @@ compile_load(
 	}
 	else
 	{
-	    lvar_T lvar;
+	    lvar_T  lvar;
+	    class_T *cl = NULL;
 
 	    if (lookup_local(*arg, len, &lvar, cctx) == OK)
 	    {
@@ -601,6 +603,10 @@ compile_load(
 		}
 		else
 		    gen_load = TRUE;
+	    }
+	    else if ((idx = class_member_index(*arg, len, &cl, cctx)) >= 0)
+	    {
+		res = generate_CLASSMEMBER(cctx, TRUE, cl, idx);
 	    }
 	    else
 	    {
@@ -1312,7 +1318,7 @@ compile_dict(char_u **arg, cctx_T *cctx, ppconst_T *ppconst)
 	    item = dict_find(d, key, -1);
 	    if (item != NULL)
 	    {
-		semsg(_(e_duplicate_key_in_dictionary), key);
+		semsg(_(e_duplicate_key_in_dictionary_str), key);
 		goto failret;
 	    }
 	    item = dictitem_alloc(key);
@@ -1330,7 +1336,7 @@ compile_dict(char_u **arg, cctx_T *cctx, ppconst_T *ppconst)
 	    if (*skipwhite(*arg) == ':')
 		semsg(_(e_no_white_space_allowed_before_str_str), ":", *arg);
 	    else
-		semsg(_(e_missing_colon_in_dictionary), *arg);
+		semsg(_(e_missing_colon_in_dictionary_str), *arg);
 	    return FAIL;
 	}
 	whitep = *arg + 1;
@@ -1362,7 +1368,7 @@ compile_dict(char_u **arg, cctx_T *cctx, ppconst_T *ppconst)
 	    break;
 	if (**arg != ',')
 	{
-	    semsg(_(e_missing_comma_in_dictionary), *arg);
+	    semsg(_(e_missing_comma_in_dictionary_str), *arg);
 	    goto failret;
 	}
 	if (IS_WHITE_OR_NUL(*whitep))
@@ -1393,7 +1399,7 @@ compile_dict(char_u **arg, cctx_T *cctx, ppconst_T *ppconst)
 failret:
     if (*arg == NULL)
     {
-	semsg(_(e_missing_dict_end), _("[end of lines]"));
+	semsg(_(e_missing_dict_end_str), _("[end of lines]"));
 	*arg = (char_u *)"";
     }
     dict_unref(d);
