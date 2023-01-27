@@ -164,6 +164,24 @@ def Test_class_basic()
   v9.CheckScriptSuccess(lines)
 enddef
 
+def Test_class_interface_wrong_end()
+  var lines =<< trim END
+      vim9script
+      abstract class SomeName
+        this.member = 'text'
+      endinterface
+  END
+  v9.CheckScriptFailure(lines, 'E476: Invalid command: endinterface, expected endclass')
+
+  lines =<< trim END
+      vim9script
+      export interface AnotherName
+        this.member: string
+      endclass
+  END
+  v9.CheckScriptFailure(lines, 'E476: Invalid command: endclass, expected endinterface')
+enddef
+
 def Test_class_member_initializer()
   var lines =<< trim END
       vim9script
@@ -439,6 +457,32 @@ def Test_class_object_member_access()
       var c = MyCar.new("def")
   END
   v9.CheckScriptFailure(lines, 'E1041:')
+
+  lines =<< trim END
+      vim9script
+
+      class Foo
+        this.x: list<number> = []
+
+        def Add(n: number): any
+          this.x->add(n)
+          return this
+        enddef
+      endclass
+
+      echo Foo.new().Add(1).Add(2).x
+      echo Foo.new().Add(1).Add(2)
+            .x
+      echo Foo.new().Add(1)
+            .Add(2).x
+      echo Foo.new()
+            .Add(1).Add(2).x
+      echo Foo.new()
+            .Add(1) 
+            .Add(2)
+            .x
+  END
+  v9.CheckScriptSuccess(lines)
 enddef
 
 def Test_class_object_compare()
@@ -619,6 +663,24 @@ def Test_class_member()
   END
   v9.CheckScriptSuccess(lines)
 
+  # access private member in lambda
+  lines =<< trim END
+      vim9script
+
+      class Foo
+        this._x: number = 0
+
+        def Add(n: number): number
+          const F = (): number => this._x + n
+          return F()
+        enddef
+      endclass
+
+      var foo = Foo.new()
+      assert_equal(5, foo.Add(5))
+  END
+  v9.CheckScriptSuccess(lines)
+
   # check shadowing
   lines =<< trim END
       vim9script
@@ -778,6 +840,43 @@ def Test_interface_basics()
       endinterface
   END
   v9.CheckScriptFailure(lines, 'E1345: Not a valid command in an interface: return 5')
+
+  lines =<< trim END
+      vim9script
+      export interface EnterExit
+          def Enter(): void
+          def Exit(): void
+      endinterface
+  END
+  writefile(lines, 'XdefIntf.vim', 'D')
+
+  lines =<< trim END
+      vim9script
+      import './XdefIntf.vim' as defIntf
+      export def With(ee: defIntf.EnterExit, F: func)
+          ee.Enter()
+          try
+              F()
+          finally
+              ee.Exit()
+          endtry
+      enddef
+  END
+  v9.CheckScriptSuccess(lines)
+
+  var imported =<< trim END
+      vim9script
+      export abstract class EnterExit
+          def Enter(): void
+          enddef
+          def Exit(): void
+          enddef
+      endclass
+  END
+  writefile(imported, 'XdefIntf2.vim', 'D')
+
+  lines[1] = " import './XdefIntf2.vim' as defIntf"
+  v9.CheckScriptSuccess(lines)
 enddef
 
 def Test_class_implements_interface()
@@ -1230,6 +1329,36 @@ def Test_closure_in_class()
       assert_equal(['A'], g:result)
   END
   v9.CheckScriptSuccess(lines)
+enddef
+
+def Test_defer_with_object()
+  var lines =<< trim END
+      vim9script
+
+      class CWithEE
+        def Enter()
+          g:result ..= "entered/"
+        enddef
+        def Exit()
+          g:result ..= "exited"
+        enddef
+      endclass
+
+      def With(ee: CWithEE, F: func)
+        ee.Enter()
+        defer ee.Exit()
+        F()
+      enddef
+
+      g:result = ''
+      var obj = CWithEE.new()
+      obj->With(() => {
+        g:result ..= "called/"
+      })
+      assert_equal('entered/called/exited', g:result)
+  END
+  v9.CheckScriptSuccess(lines)
+  unlet g:result
 enddef
 
 

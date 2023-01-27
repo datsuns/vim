@@ -423,7 +423,7 @@ early_ret:
 	char *wrong_name = is_class ? "endinterface" : "endclass";
 	if (checkforcmd(&p, wrong_name, is_class ? 5 : 4))
 	{
-	    semsg(_(e_invalid_command_str), line);
+	    semsg(_(e_invalid_command_str_expected_str), line, end_name);
 	    break;
 	}
 
@@ -1385,6 +1385,19 @@ class_member_index(char_u *name, size_t len, class_T **cl_ret, cctx_T *cctx)
 	}
     }
     return -1;
+}
+
+/*
+ * Return TRUE if current context "cctx_arg" is inside class "cl".
+ * Return FALSE if not.
+ */
+    int
+inside_class(cctx_T *cctx_arg, class_T *cl)
+{
+    for (cctx_T *cctx = cctx_arg; cctx != NULL; cctx = cctx->ctx_outer)
+	if (cctx->ctx_ufunc != NULL && cctx->ctx_ufunc->uf_class == cl)
+	    return TRUE;
+    return FALSE;
 }
 
 /*

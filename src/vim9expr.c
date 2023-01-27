@@ -357,7 +357,7 @@ compile_class_object_index(cctx_T *cctx, char_u **arg, type_T *type)
 	    ocmember_T *m = &cl->class_obj_members[i];
 	    if (STRNCMP(name, m->ocm_name, len) == 0 && m->ocm_name[len] == NUL)
 	    {
-		if (*name == '_' && cctx->ctx_ufunc->uf_class != cl)
+		if (*name == '_' && !inside_class(cctx, cl))
 		{
 		    semsg(_(e_cannot_access_private_member_str), m->ocm_name);
 		    return FAIL;
@@ -368,6 +368,17 @@ compile_class_object_index(cctx_T *cctx, char_u **arg, type_T *type)
 		    return generate_GET_ITF_MEMBER(cctx, cl, i, m->ocm_type);
 		return generate_GET_OBJ_MEMBER(cctx, i, m->ocm_type);
 	    }
+	}
+
+	// Could be a function reference: "obj.Func".
+	for (int i = 0; i < cl->class_obj_method_count; ++i)
+	{
+	    ufunc_T *fp = cl->class_obj_methods[i];
+	    // Use a separate pointer to avoid that ASAN complains about
+	    // uf_name[] only being 4 characters.
+	    char_u *ufname = (char_u *)fp->uf_name;
+	    if (STRNCMP(name, ufname, len) == 0 && ufname[len] == NUL)
+		return generate_FUNCREF(cctx, fp, NULL);
 	}
 
 	semsg(_(e_member_not_found_on_object_str_str), cl->class_name, name);
