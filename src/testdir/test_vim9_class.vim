@@ -48,7 +48,7 @@ def Test_class_basic()
   lines =<< trim END
       vim9script
       class Something
-      endclass school's out 
+      endclass school's out
   END
   v9.CheckScriptFailure(lines, 'E488:')
 
@@ -623,7 +623,7 @@ def Test_class_member()
       TextPos.AddToCounter(3)
       assert_equal(3, TextPos.counter)
       assert_fails('echo TextPos.noSuchMember', 'E1338:')
-      
+
       def GetCounter(): number
         return TextPos.counter
       enddef
@@ -997,6 +997,56 @@ def Test_class_implements_interface()
       enddef
 
       Test()
+  END
+  v9.CheckScriptSuccess(lines)
+enddef
+
+def Test_call_interface_method()
+  var lines =<< trim END
+    vim9script
+    interface Base
+      def Enter(): void
+    endinterface
+
+    class Child implements Base
+      def Enter(): void
+        g:result ..= 'child'
+      enddef
+    endclass
+
+    def F(obj: Base)
+      obj.Enter()
+    enddef
+
+    g:result = ''
+    F(Child.new())
+    assert_equal('child', g:result)
+    unlet g:result
+  END
+  v9.CheckScriptSuccess(lines)
+
+  lines =<< trim END
+    vim9script
+    class Base
+      def Enter(): void
+        g:result ..= 'base'
+      enddef
+    endclass
+
+    class Child extends Base
+      def Enter(): void
+        g:result ..= 'child'
+      enddef
+    endclass
+
+    def F(obj: Base)
+      obj.Enter()
+    enddef
+
+    g:result = ''
+    F(Child.new())
+    assert_equal('child', g:result)
+    unlet g:result
   END
   v9.CheckScriptSuccess(lines)
 enddef
