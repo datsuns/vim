@@ -1,7 +1,7 @@
 " Vim support file to detect file types
 "
 " Maintainer:	Bram Moolenaar <Bram@vim.org>
-" Last Change:	2022 Dec 19
+" Last Change:	2023 Feb 02
 
 " Listen very carefully, I will say this only once
 if exists("did_load_filetypes")
@@ -670,6 +670,9 @@ autocmd BufRead,BufNewFile *.fnl		setf fennel
 
 " Fetchmail RC file
 au BufNewFile,BufRead .fetchmailrc		setf fetchmail
+
+" FIRRTL - Flexible Internal Representation for RTL
+au BufNewFile,BufRead *.fir			setf firrtl
 
 " Fish shell
 au BufNewFile,BufRead *.fish			setf fish
