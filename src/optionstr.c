@@ -487,7 +487,8 @@ set_string_option_direct_in_buf(
 set_string_option(
     int		opt_idx,
     char_u	*value,
-    int		opt_flags)	// OPT_LOCAL and/or OPT_GLOBAL
+    int		opt_flags,	// OPT_LOCAL and/or OPT_GLOBAL
+    char	*errbuf)
 {
     char_u	*s;
     char_u	**varp;
@@ -540,7 +541,7 @@ set_string_option(
 	saved_newval = vim_strsave(s);
     }
 #endif
-    if ((errmsg = did_set_string_option(opt_idx, varp, oldval, NULL,
+    if ((errmsg = did_set_string_option(opt_idx, varp, oldval, errbuf,
 		    opt_flags, &value_checked)) == NULL)
 	did_set_option(opt_idx, opt_flags, TRUE, value_checked);
 
@@ -587,7 +588,7 @@ check_stl_option(char_u *s)
 	if (!*s)
 	    break;
 	s++;
-	if (*s == '%' || *s == STL_TRUNCMARK || *s == STL_MIDDLEMARK)
+	if (*s == '%' || *s == STL_TRUNCMARK || *s == STL_SEPARATE)
 	{
 	    s++;
 	    continue;
@@ -1053,9 +1054,12 @@ did_set_encoding(char_u **varp, char_u **gvarp, int opt_flags)
 	}
 
 #if defined(MSWIN)
-	// $HOME may have characters in active code page.
+	// $HOME, $VIM and $VIMRUNTIME may have characters in active code page.
 	if (varp == &p_enc)
+	{
 	    init_homedir();
+	    init_vimdir();
+	}
 #endif
     }
 
