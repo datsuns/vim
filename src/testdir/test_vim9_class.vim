@@ -164,6 +164,45 @@ def Test_class_basic()
   v9.CheckScriptSuccess(lines)
 enddef
 
+def Test_class_defined_twice()
+  # class defined twice should fail
+  var lines =<< trim END
+      vim9script
+      class There
+      endclass
+      class There
+      endclass
+  END
+  v9.CheckScriptFailure(lines, 'E1041: Redefining script item: "There"')
+
+  # one class, reload same script twice is OK
+  lines =<< trim END
+      vim9script
+      class There
+      endclass
+  END
+  writefile(lines, 'XclassTwice.vim', 'D')
+  source XclassTwice.vim
+  source XclassTwice.vim
+enddef
+
+def Test_returning_null_object()
+  # this was causing an internal error
+  var lines =<< trim END
+      vim9script
+
+      class BufferList
+          def Current(): any
+              return null_object
+          enddef
+      endclass
+
+      var buffers = BufferList.new()
+      echo buffers.Current()
+  END
+  v9.CheckScriptSuccess(lines)
+enddef
+
 def Test_class_interface_wrong_end()
   var lines =<< trim END
       vim9script
@@ -199,6 +238,24 @@ def Test_object_not_set()
   lines =<< trim END
       vim9script
 
+      class Class
+          this.id: string
+          def Method1()
+              echo 'Method1' .. this.id
+          enddef
+      endclass
+
+      var obj: Class
+      def Func()
+          obj.Method1()
+      enddef
+      Func()
+  END
+  v9.CheckScriptFailure(lines, 'E1360:')
+
+  lines =<< trim END
+      vim9script
+
       class Background
         this.background = 'dark'
       endclass
@@ -215,6 +272,25 @@ def Test_object_not_set()
       echo Colorscheme.new(bg).GetBackground()
   END
   v9.CheckScriptFailure(lines, 'E1012: Type mismatch; expected object<Background> but got object<Unknown>')
+
+  # TODO: this should not give an error but be handled at runtime
+  lines =<< trim END
+      vim9script
+
+      class Class
+          this.id: string
+          def Method1()
+              echo 'Method1' .. this.id
+          enddef
+      endclass
+
+      var obj = null_object
+      def Func()
+          obj.Method1()
+      enddef
+      Func()
+  END
+  v9.CheckScriptFailure(lines, 'E1363:')
 enddef
 
 def Test_class_member_initializer()
@@ -842,6 +918,34 @@ def Test_class_function()
   v9.CheckScriptSuccess(lines)
 enddef
 
+def Test_class_defcompile()
+  var lines =<< trim END
+      vim9script
+
+      class C
+          def Fo(i: number): string
+              return i
+          enddef
+      endclass
+
+      defcompile C.Fo
+  END
+  v9.CheckScriptFailure(lines, 'E1012: Type mismatch; expected string but got number')
+
+  lines =<< trim END
+      vim9script
+
+      class C
+          static def Fc(): number
+            return 'x'
+          enddef
+      endclass
+
+      defcompile C.Fc
+  END
+  v9.CheckScriptFailure(lines, 'E1012: Type mismatch; expected number but got string')
+enddef
+
 def Test_class_object_to_string()
   var lines =<< trim END
       vim9script
@@ -984,14 +1088,13 @@ def Test_class_implements_interface()
         this.member: string
       endinterface
 
-      class SomeImpl implements Some, Another
+      class AnotherImpl implements Some, Another
         this.member = 'abc'
         static count: number
         def Method(nr: number)
           echo nr
         enddef
       endclass
-
   END
   v9.CheckScriptSuccess(lines)
 

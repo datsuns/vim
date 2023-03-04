@@ -515,7 +515,8 @@ normal_cmd_get_more_chars(
 	    cap->nchar = cap->extra_char;
 	    idx = find_command(cap->cmdchar);
 	}
-	else if ((cap->nchar == 'n' || cap->nchar == 'N') && cap->cmdchar == 'g')
+	else if ((cap->nchar == 'n' || cap->nchar == 'N')
+							&& cap->cmdchar == 'g')
 	    cap->oap->op_type = get_op_type(*cp, NUL);
 	else if (*cp == Ctrl_BSL)
 	{
@@ -976,14 +977,14 @@ normal_end:
 
     // Reset finish_op, in case it was set
 #ifdef CURSOR_SHAPE
-    c = finish_op;
+    int prev_finish_op = finish_op;
 #endif
     finish_op = FALSE;
     may_trigger_modechanged();
 #ifdef CURSOR_SHAPE
     // Redraw the cursor with another shape, if we were in Operator-pending
     // mode or did a replace command.
-    if (c || ca.cmdchar == 'r')
+    if (prev_finish_op || ca.cmdchar == 'r')
     {
 	ui_cursor_shape();		// may show different cursor shape
 # ifdef FEAT_MOUSESHAPE
@@ -1110,14 +1111,14 @@ call_yank_do_autocmd(int regname)
  * from do_pending_operator().
  */
     void
-end_visual_mode()
+end_visual_mode(void)
 {
     end_visual_mode_keep_button();
     reset_held_button();
 }
 
     void
-end_visual_mode_keep_button()
+end_visual_mode_keep_button(void)
 {
 #ifdef FEAT_CLIPBOARD
     // If we are using the clipboard, then remember what was selected in case
@@ -3190,7 +3191,7 @@ nv_colon(cmdarg_T *cap)
     else if (cap->oap->op_type != OP_NOP
 	    && (cap->oap->start.lnum > curbuf->b_ml.ml_line_count
 		|| cap->oap->start.col >
-		(colnr_T)STRLEN(ml_get(cap->oap->start.lnum))
+				  (colnr_T)STRLEN(ml_get(cap->oap->start.lnum))
 		|| did_emsg
 	       ))
 	// The start of the operator has become invalid by the Ex command.
@@ -5024,7 +5025,7 @@ nv_vreplace(cmdarg_T *cap)
 	return;
     }
 
-    if (checkclearopq(cap->oap))
+    if (checkclearopq(cap->oap) || cap->extra_char == ESC)
 	return;
 
     if (!curbuf->b_p_ma)
@@ -5033,6 +5034,10 @@ nv_vreplace(cmdarg_T *cap)
     {
 	if (cap->extra_char == Ctrl_V)	// get another character
 	    cap->extra_char = get_literal(FALSE);
+	if (cap->extra_char < ' ')
+	    // Prefix a control character with CTRL-V to avoid it being used as
+	    // a command.
+	    stuffcharReadbuff(Ctrl_V);
 	stuffcharReadbuff(cap->extra_char);
 	stuffcharReadbuff(ESC);
 	if (virtual_active())

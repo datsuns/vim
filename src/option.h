@@ -14,7 +14,7 @@
 #define _OPTION_H_
 
 //
-// Flags
+// Option Flags
 //
 #define P_BOOL		0x01	// the option is boolean
 #define P_NUM		0x02	// the option is numeric
@@ -299,8 +299,9 @@ typedef enum {
 #define GO_FOOTER	'F'		// add footer
 #define GO_VERTICAL	'v'		// arrange dialog buttons vertically
 #define GO_KEEPWINSIZE	'k'		// keep GUI window size
+// all possible flags for 'go'
 #define GO_NOCAPTION	'C'		// remove caption bar
-#define GO_ALL		"!aAbcCdefFghilmMprtTvk" // all possible flags for 'go'
+#define GO_ALL		"!aAbcCdefFghilLmMpPrRtTvk"
 
 // flags for 'comments' option
 #define COM_NEST	'n'		// comments strings nest

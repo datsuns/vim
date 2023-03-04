@@ -263,7 +263,7 @@ compile_class_object_index(cctx_T *cctx, char_u **arg, type_T *type)
 	return FAIL;
     }
 
-    class_T *cl = (class_T *)type->tt_member;
+    class_T *cl = type->tt_class;
     int is_super = type->tt_flags & TTFLAG_SUPER;
     if (type == &t_super)
     {
@@ -291,6 +291,13 @@ compile_class_object_index(cctx_T *cctx, char_u **arg, type_T *type)
 		vim_free(isn->isn_arg.script.scriptref);
 	    }
 	}
+    }
+
+    if (cl == NULL)
+    {
+	// TODO: this should not give an error but be handled at runtime
+	emsg(_(e_incomplete_type));
+	return FAIL;
     }
 
     ++*arg;
