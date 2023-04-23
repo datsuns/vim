@@ -98,6 +98,9 @@ struct pointer_block
 				// followed by empty space until end of page
 };
 
+// Value for pb_count_max.
+#define PB_COUNT_MAX(mfp) (short_u)(((mfp)->mf_page_size - offsetof(PTR_BL, pb_pointer)) / sizeof(PTR_EN))
+
 /*
  * A data block is a leaf in the tree.
  *
@@ -433,7 +436,7 @@ ml_set_mfp_crypt(buf_T *buf)
 	sha2_seed(buf->b_ml.ml_mfp->mf_seed, MF_SEED_LEN, NULL, 0);
     }
 #ifdef FEAT_SODIUM
-    else if (method_nr == CRYPT_M_SOD)
+    else if (crypt_method_is_sodium(method_nr))
 	crypt_sodium_randombytes_buf(buf->b_ml.ml_mfp->mf_seed,
 		MF_SEED_LEN);
 #endif
@@ -492,7 +495,7 @@ ml_set_crypt_key(
     old_method = crypt_method_nr_from_name(old_cm);
 
     // Swapfile encryption not supported by XChaCha20
-    if (crypt_get_method_nr(buf) == CRYPT_M_SOD && *buf->b_p_key != NUL)
+    if (crypt_method_is_sodium(crypt_get_method_nr(buf)) && *buf->b_p_key != NUL)
     {
 	// close the swapfile
 	mf_close_file(buf, TRUE);
@@ -1525,6 +1528,20 @@ ml_recover(int checkext)
 	    pp = (PTR_BL *)(hp->bh_data);
 	    if (pp->pb_id == PTR_ID)		// it is a pointer block
 	    {
+		int ptr_block_error = FALSE;
+		if (pp->pb_count_max != PB_COUNT_MAX(mfp))
+		{
+		    ptr_block_error = TRUE;
+		    pp->pb_count_max = PB_COUNT_MAX(mfp);
+		}
+		if (pp->pb_count > pp->pb_count_max)
+		{
+		    ptr_block_error = TRUE;
+		    pp->pb_count = pp->pb_count_max;
+		}
+		if (ptr_block_error)
+		    emsg(_(e_warning_pointer_block_corrupted));
+
 		// check line count when using pointer block first time
 		if (idx == 0 && line_count != 0)
 		{
@@ -4162,9 +4179,7 @@ ml_new_ptr(memfile_T *mfp)
     pp = (PTR_BL *)(hp->bh_data);
     pp->pb_id = PTR_ID;
     pp->pb_count = 0;
-    pp->pb_count_max =
-	(short_u)((mfp->mf_page_size - offsetof(PTR_BL, pb_pointer))
-							     / sizeof(PTR_EN));
+    pp->pb_count_max = PB_COUNT_MAX(mfp);
 
     return hp;
 }
@@ -5497,6 +5512,7 @@ ml_decrypt_data(
 /*
  * Prepare for encryption/decryption, using the key, seed and offset.
  * Return an allocated cryptstate_T *.
+ * Note: Encryption not supported for SODIUM
  */
     static cryptstate_T *
 ml_crypt_prepare(memfile_T *mfp, off_T offset, int reading)
@@ -5505,21 +5521,23 @@ ml_crypt_prepare(memfile_T *mfp, off_T offset, int reading)
     char_u	salt[50];
     int		method_nr;
     char_u	*key;
-    char_u	*seed;
+    crypt_arg_T arg;
 
+    CLEAR_FIELD(arg);
     if (reading && mfp->mf_old_key != NULL)
     {
 	// Reading back blocks with the previous key/method/seed.
 	method_nr = mfp->mf_old_cm;
 	key = mfp->mf_old_key;
-	seed = mfp->mf_old_seed;
+	arg.cat_seed = mfp->mf_old_seed;
     }
     else
     {
 	method_nr = crypt_get_method_nr(buf);
 	key = buf->b_p_key;
-	seed = mfp->mf_seed;
+	arg.cat_seed = mfp->mf_seed;
     }
+
     if (*key == NUL)
 	return NULL;
 
@@ -5528,14 +5546,24 @@ ml_crypt_prepare(memfile_T *mfp, off_T offset, int reading)
 	// For PKzip: Append the offset to the key, so that we use a different
 	// key for every block.
 	vim_snprintf((char *)salt, sizeof(salt), "%s%ld", key, (long)offset);
-	return crypt_create(method_nr, salt, NULL, 0, NULL, 0);
+	arg.cat_seed = NULL;
+	arg.cat_init_from_file = FALSE;
+
+	return crypt_create(method_nr, salt, &arg);
     }
 
     // Using blowfish or better: add salt and seed. We use the byte offset
     // of the block for the salt.
     vim_snprintf((char *)salt, sizeof(salt), "%ld", (long)offset);
-    return crypt_create(method_nr, key, salt, (int)STRLEN(salt),
-							seed, MF_SEED_LEN);
+
+    arg.cat_salt = salt;
+    arg.cat_salt_len = (int)STRLEN(salt);
+    arg.cat_seed_len = MF_SEED_LEN;
+    arg.cat_add_len = 0;
+    arg.cat_add = NULL;
+    arg.cat_init_from_file = FALSE;
+
+    return crypt_create(method_nr, key, &arg);
 }
 
 #endif
