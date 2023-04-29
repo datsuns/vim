@@ -1604,6 +1604,19 @@ utf_char2cells(int c)
     }
 #endif
 
+#ifdef USE_AMBIWIDTH_AUTO
+    if (gui.in_use && *p_ambw == 'a')
+    {
+	int cell;
+
+	/* This is required by screen.c implicitly. */
+	if (c == 0)
+	    return 1;
+	if (utf_printable(c) && (cell = gui_mch_get_charwidth(c)) > 0)
+	    return cell;
+    }
+#endif
+
     if (c >= 0x100)
     {
 #ifdef USE_WCHAR_FUNCTIONS

@@ -753,6 +753,9 @@ A jump table for the options with a short description can be found at |Q_op|.
 	"single":	Use the same width as characters in US-ASCII.  This is
 			expected by most users.
 	"double":	Use twice the width of ASCII characters.
+	"auto":		Use obtained width from system.
+			{only for Win NT/2K systems, currently}
+
 							*E834* *E835*
 	The value "double" cannot be used if 'listchars' or 'fillchars'
 	contains a character that would be double width.  These errors may
@@ -780,6 +783,10 @@ A jump table for the options with a short description can be found at |Q_op|.
 	compiled with the |+termresponse| feature and if |t_u7| is set to the
 	escape sequence to request cursor position report.  The response can
 	be found in |v:termu7resp|.
+
+	On some systems, we can use width for a character which defined by
+	font design.  If you use such a system try "auto" for this option.
+	It will give you more nice result for a font which you select.
 
 			*'antialias'* *'anti'* *'noantialias'* *'noanti'*
 'antialias' 'anti'	boolean (default: off)

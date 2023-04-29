@@ -78,6 +78,7 @@ void im_set_active(int active);
 int im_get_status(void);
 void gui_mch_draw_string(int row, int col, char_u *text, int len, int flags);
 void gui_mch_flush(void);
+int gui_mch_get_charwidth(int c);
 void gui_mch_get_screen_dimensions(int *screen_w, int *screen_h);
 void gui_mch_add_menu(vimmenu_T *menu, int pos);
 void gui_mch_show_popupmenu(vimmenu_T *menu);
