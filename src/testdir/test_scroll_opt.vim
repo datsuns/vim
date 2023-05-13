@@ -335,9 +335,12 @@ func Test_smoothscroll_wrap_long_line()
   " than one window. Note that the cursor is at the bottom this time because
   " Vim prefers to do so if we are scrolling a few lines only.
   call term_sendkeys(buf, ":call setline(1, ['one', 'two', 'Line' .. (' with lots of text'->repeat(10)) .. ' end', 'four'])\<CR>")
+  " Currently visible lines were replaced, test that the lines and cursor
+  " are correctly displayed.
+  call VerifyScreenDump(buf, 'Test_smooth_long_14', {})
   call term_sendkeys(buf, "3Gzt")
   call term_sendkeys(buf, "j")
-  call VerifyScreenDump(buf, 'Test_smooth_long_14', {})
+  call VerifyScreenDump(buf, 'Test_smooth_long_15', {})
 
   " Repeat the step but this time start it when the line is smooth-scrolled by
   " one line. This tests that the offset calculation is still correct and
@@ -345,7 +348,7 @@ func Test_smoothscroll_wrap_long_line()
   " screen.
   call term_sendkeys(buf, "3Gzt")
   call term_sendkeys(buf, "\<C-E>j")
-  call VerifyScreenDump(buf, 'Test_smooth_long_15', {})
+  call VerifyScreenDump(buf, 'Test_smooth_long_16', {})
 
   call StopVimInTerminal(buf)
 endfunc
@@ -415,6 +418,18 @@ func Test_smoothscroll_cursor_position()
   call s:check_col_calc(1, 2, 41)
   exe "normal \<C-Y>"
   call s:check_col_calc(1, 3, 41)
+
+  " Test "g0/g<Home>"
+  exe "normal gg\<C-E>"
+  norm $gkg0
+  call s:check_col_calc(1, 2, 21)
+
+  " Test moving the cursor behind the <<< display with 'virtualedit'
+  set virtualedit=all
+  exe "normal \<C-E>"
+  norm 3lgkh
+  call s:check_col_calc(3, 2, 23)
+  set virtualedit&
 
   normal gg3l
   exe "normal \<C-E>"
