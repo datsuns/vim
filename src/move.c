@@ -1479,6 +1479,9 @@ textpos2screenpos(
 	    col += off;
 	    width = wp->w_width - off + win_col_off2(wp);
 
+	    if (pos->lnum == wp->w_topline)
+		col -= wp->w_skipcol;
+
 	    // long line wrapping, adjust row
 	    if (wp->w_p_wrap
 		    && col >= (colnr_T)wp->w_width
@@ -1782,6 +1785,7 @@ scrollup(
 	int	    width2 = width1 + curwin_col_off2();
 	int	    size = 0;
 	linenr_T    prev_topline = curwin->w_topline;
+	colnr_T	    prev_skipcol = curwin->w_skipcol;
 
 	if (do_sms)
 	    size = linetabsize(curwin, curwin->w_topline);
@@ -1844,8 +1848,9 @@ scrollup(
 	    }
 	}
 
-	if (curwin->w_topline == prev_topline)
-	    // need to redraw even though w_topline didn't change
+	if (curwin->w_topline == prev_topline
+		|| curwin->w_skipcol != prev_skipcol)
+	    // need to redraw because wl_size of the topline may now be invalid
 	    redraw_later(UPD_NOT_VALID);
     }
     else
