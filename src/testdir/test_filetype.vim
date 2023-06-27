@@ -506,6 +506,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     pccts: ['file.g'],
     pcmk: ['file.pcmk'],
     pdf: ['file.pdf'],
+    pem: ['file.pem', 'file.cer', 'file.crt', 'file.csr'],
     perl: ['file.plx', 'file.al', 'file.psgi', 'gitolite.rc', '.gitolite.rc', 'example.gitolite.rc', '.latexmkrc', 'latexmkrc'],
     pf: ['pf.conf'],
     pfmain: ['main.cf', 'main.cf.proto'],
@@ -814,7 +815,7 @@ enddef
 def s:GetFilenameCaseChecks(): dict<list<string>>
   return {
     modula2: ['file.DEF'],
-    bzl: ['file.BUILD', 'BUILD'],
+    bzl: ['file.BUILD', 'BUILD', 'BUCK'],
   }
 enddef
 
