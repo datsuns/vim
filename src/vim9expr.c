@@ -407,8 +407,9 @@ compile_class_object_index(cctx_T *cctx, char_u **arg, type_T *type)
 
 		*arg = name_end;
 		if (cl->class_flags & (CLASS_INTERFACE | CLASS_EXTENDED))
-		    return generate_GET_ITF_MEMBER(cctx, cl, i, m->ocm_type);
-		return generate_GET_OBJ_MEMBER(cctx, i, m->ocm_type);
+		    return generate_GET_ITF_MEMBER(cctx, cl, i, m->ocm_type,
+									FALSE);
+		return generate_GET_OBJ_MEMBER(cctx, i, m->ocm_type, FALSE);
 	    }
 	}
 
@@ -439,6 +440,13 @@ compile_class_object_index(cctx_T *cctx, char_u **arg, type_T *type)
 	    ocmember_T *m = &cl->class_class_members[idx];
 	    if (STRNCMP(name, m->ocm_name, len) == 0 && m->ocm_name[len] == NUL)
 	    {
+		// Note: type->tt_type = VAR_CLASS
+		if ((cl->class_flags & CLASS_INTERFACE) != 0)
+		{
+		    semsg(_(e_interface_static_direct_access_str),
+						cl->class_name, m->ocm_name);
+		    return FAIL;
+		}
 		if (*name == '_' && !inside_class(cctx, cl))
 		{
 		    semsg(_(e_cannot_access_private_member_str), m->ocm_name);
@@ -767,6 +775,8 @@ compile_load(
 	    }
 	    else if ((idx = class_member_index(*arg, len, &cl, cctx)) >= 0)
 	    {
+		// Referencing a class member without the class name.  Infer
+		// the class from the def function context.
 		res = generate_CLASSMEMBER(cctx, TRUE, cl, idx);
 	    }
 	    else
@@ -1110,6 +1120,9 @@ compile_call(
     if (lookup_local(namebuf, varlen, NULL, cctx) == FAIL
 	    && arg_exists(namebuf, varlen, NULL, NULL, NULL, cctx) != OK)
     {
+	class_T		*cl = NULL;
+	int		mi = 0;
+
 	// If we can find the function by name generate the right call.
 	// Skip global functions here, a local funcref takes precedence.
 	ufunc = find_func(name, FALSE);
@@ -1127,6 +1140,16 @@ compile_call(
 		emsg_funcname(e_unknown_function_str, namebuf);
 		goto theend;
 	    }
+	}
+	else if ((mi = class_method_index(name, varlen, &cl, cctx)) >= 0)
+	{
+	    // Class method invocation without the class name.  The
+	    // generate_CALL() function expects the class type at the top of
+	    // the stack.  So push the class type to the stack.
+	    push_type_stack(cctx, &t_class);
+	    res = generate_CALL(cctx, cl->class_class_functions[mi], NULL, 0,
+							type, argcount);
+	    goto theend;
 	}
     }
 
