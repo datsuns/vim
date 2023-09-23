@@ -2466,6 +2466,12 @@ channel_get_json(
 		d = item->jq_value->vval.v_dict;
 		if (d == NULL)
 		    goto nextitem;
+		// When looking for a response message from the LSP server,
+		// ignore new LSP request and notification messages.  LSP
+		// request and notification messages have the "method" field in
+		// the header and the response messages do not have this field.
+		if (dict_has_key(d, "method"))
+		    goto nextitem;
 		di = dict_find(d, (char_u *)"id", -1);
 		if (di == NULL)
 		    goto nextitem;
