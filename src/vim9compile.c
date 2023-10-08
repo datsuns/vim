@@ -1029,7 +1029,7 @@ compile_nested_function(exarg_T *eap, cctx_T *cctx, garray_T *lines_to_free)
     ufunc_T	*ufunc;
     int		r = FAIL;
     compiletype_T   compile_type;
-    isn_T	*funcref_isn = NULL;
+    int		funcref_isn_idx = -1;
     lvar_T	*lvar = NULL;
 
     if (eap->forceit)
@@ -1101,7 +1101,7 @@ compile_nested_function(exarg_T *eap, cctx_T *cctx, garray_T *lines_to_free)
     int save_KeyTyped = KeyTyped;
     KeyTyped = FALSE;
 
-    ufunc = define_function(eap, lambda_name, lines_to_free, 0);
+    ufunc = define_function(eap, lambda_name, lines_to_free, 0, NULL, 0);
 
     KeyTyped = save_KeyTyped;
 
@@ -1148,7 +1148,7 @@ compile_nested_function(exarg_T *eap, cctx_T *cctx, garray_T *lines_to_free)
 					    ASSIGN_CONST, ufunc->uf_func_type);
 	if (lvar == NULL)
 	    goto theend;
-	if (generate_FUNCREF(cctx, ufunc, NULL, 0, &funcref_isn) == FAIL)
+	if (generate_FUNCREF(cctx, ufunc, NULL, 0, &funcref_isn_idx) == FAIL)
 	    goto theend;
 	r = generate_STORE(cctx, ISN_STORE, lvar->lv_idx, NULL);
     }
@@ -1178,8 +1178,12 @@ compile_nested_function(exarg_T *eap, cctx_T *cctx, garray_T *lines_to_free)
 #endif
 
     // If a FUNCREF instruction was generated, set the index after compiling.
-    if (funcref_isn != NULL && ufunc->uf_def_status == UF_COMPILED)
+    if (funcref_isn_idx != -1 && ufunc->uf_def_status == UF_COMPILED)
+    {
+	isn_T	*funcref_isn = ((isn_T *)cctx->ctx_instr.ga_data) +
+							funcref_isn_idx;
 	funcref_isn->isn_arg.funcref.fr_dfunc_idx = ufunc->uf_dfunc_idx;
+    }
 
 theend:
     vim_free(lambda_name);
@@ -1610,9 +1614,9 @@ lhs_class_member_modifiable(lhs_T *lhs, char_u	*var_start, cctx_T *cctx)
 	     || (!is_object && cctx->ctx_ufunc->uf_class != cl)))
     {
 	char *msg = (m->ocm_access == VIM_ACCESS_PRIVATE)
-				? e_cannot_access_private_member_str
-				: e_member_is_not_writable_str;
-	semsg(_(msg), m->ocm_name, cl->class_name);
+				? e_cannot_access_private_variable_str
+				: e_variable_is_not_writable_str;
+	emsg_var_cl_define(msg, m->ocm_name, 0, cl);
 	return FALSE;
     }
 
@@ -1733,11 +1737,14 @@ compile_lhs(
 		if (is_decl)
 		{
 		    // if we come here with what looks like an assignment like
-		    // .= but which has been reject by assignment_len() from
+		    // .= but which has been rejected by assignment_len() from
 		    // may_compile_assignment give a better error message
 		    char_u *p = skipwhite(lhs->lhs_end);
 		    if (p[0] == '.' && p[1] == '=')
 			emsg(_(e_dot_equal_not_supported_with_script_version_two));
+		    else if (p[0] == ':')
+			// type specified in a non-var assignment
+			semsg(_(e_trailing_characters_str), p);
 		    else
 			semsg(_(e_variable_already_declared_str), lhs->lhs_name);
 		    return FAIL;
@@ -1750,7 +1757,7 @@ compile_lhs(
 		{
 		    // A class variable can be accessed without the class name
 		    // only inside a class.
-		    semsg(_(e_class_member_str_accessible_only_inside_class_str),
+		    semsg(_(e_class_variable_str_accessible_only_inside_class_str),
 			    lhs->lhs_name, defcl->class_name);
 		    return FAIL;
 		}
@@ -1762,6 +1769,9 @@ compile_lhs(
 		}
 		lhs->lhs_dest = dest_class_member;
 		lhs->lhs_class = cctx->ctx_ufunc->uf_class;
+		lhs->lhs_type =
+		    class_member_type_by_idx(cctx->ctx_ufunc->uf_class,
+					FALSE, lhs->lhs_classmember_idx);
 	    }
 	    else
 	    {
@@ -2245,9 +2255,8 @@ compile_load_lhs_with_index(lhs_T *lhs, char_u *var_start, cctx_T *cctx)
 		return FAIL;
 	}
 	if (cl->class_flags & CLASS_INTERFACE)
-	    return generate_GET_ITF_MEMBER(cctx, cl, lhs->lhs_member_idx, type,
-									FALSE);
-	return generate_GET_OBJ_MEMBER(cctx, lhs->lhs_member_idx, type, FALSE);
+	    return generate_GET_ITF_MEMBER(cctx, cl, lhs->lhs_member_idx, type);
+	return generate_GET_OBJ_MEMBER(cctx, lhs->lhs_member_idx, type);
     }
 
     compile_load_lhs(lhs, var_start, NULL, cctx);
@@ -3305,7 +3314,15 @@ compile_def_function(
 		    }
 
 		    type_T	*type = get_type_on_stack(&cctx, 0);
-		    if (m->ocm_type->tt_type != type->tt_type)
+		    if (m->ocm_type->tt_type == VAR_ANY
+			    && !m->ocm_has_type
+			    && type->tt_type != VAR_SPECIAL)
+		    {
+			// If the member variable type is not yet set, then use
+			// the initialization expression type.
+			m->ocm_type = type;
+		    }
+		    else if (m->ocm_type->tt_type != type->tt_type)
 		    {
 			// The type of the member initialization expression is
 			// determined at run time.  Add a runtime type check.
