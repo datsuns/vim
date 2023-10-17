@@ -4393,6 +4393,21 @@ did_set_weirdinvert(optset_T *args)
 }
 
 /*
+ * Process the new 'wildchar' / 'wildcharm' option value.
+ */
+    char *
+did_set_wildchar(optset_T *args)
+{
+    long c = *(long *)args->os_varp;
+
+    // Don't allow key values that wouldn't work as wildchar.
+    if (c == Ctrl_C || c == '\n' || c == '\r' || c == K_KENTER)
+	return e_invalid_argument;
+
+    return NULL;
+}
+
+/*
  * Process the new 'window' option value.
  */
     char *
@@ -7451,6 +7466,8 @@ set_context_in_set_cmd(
 	    else
 		xp->xp_backslash = XP_BS_ONE;
 	}
+	if (flags & P_COMMA)
+	    xp->xp_backslash |= XP_BS_COMMA;
     }
 
     // For an option that is a list of file names, or comma/colon-separated
@@ -7469,8 +7486,12 @@ set_context_in_set_cmd(
 		s = p;
 		while (s > xp->xp_pattern && *(s - 1) == '\\')
 		    --s;
-		if ((*p == ' ' && (xp->xp_backslash == XP_BS_THREE && (p - s) < 3))
-			|| (*p == ',' && (flags & P_COMMA) && ((p - s) % 1) == 0)
+		if ((*p == ' ' && ((xp->xp_backslash & XP_BS_THREE) && (p - s) < 3))
+#if defined(BACKSLASH_IN_FILENAME)
+			|| (*p == ',' && (flags & P_COMMA) && (p - s) < 1)
+#else
+			|| (*p == ',' && (flags & P_COMMA) && (p - s) < 2)
+#endif
 			|| (*p == ':' && (flags & P_COLON)))
 		{
 		    xp->xp_pattern = p + 1;
@@ -7986,7 +8007,7 @@ ExpandSettingSubtract(
 	{
 	    // Don't suggest anything if cmdline is non-empty. Vim's set-=
 	    // behavior requires consecutive strings and it's usually
-	    // unintuitive to users if ther try to subtract multiple flags at
+	    // unintuitive to users if they try to subtract multiple flags at
 	    // once.
 	    return FAIL;
 	}

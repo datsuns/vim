@@ -1547,14 +1547,17 @@ f_screenpos(typval_T *argvars UNUSED, typval_T *rettv)
     static int
 virtcol2col(win_T *wp, linenr_T lnum, int vcol)
 {
-    int		offset = vcol2col(wp, lnum, vcol);
+    int		offset = vcol2col(wp, lnum, vcol - 1, NULL);
     char_u	*line = ml_get_buf(wp->w_buffer, lnum, FALSE);
     char_u	*p = line + offset;
 
-    // For a multibyte character, need to return the column number of the first
-    // byte.
-    MB_PTR_BACK(line, p);
-
+    if (*p == NUL)
+    {
+	if (p == line)  // empty line
+	    return 0;
+	// Move to the first byte of the last char.
+	MB_PTR_BACK(line, p);
+    }
     return (int)(p - line + 1);
 }
 
@@ -1753,7 +1756,12 @@ scrolldown(
 	    ++row;
 	}
 	if (col > width2 && width2 > 0)
+	{
 	    row += col / width2;
+	    // even so col is not used anymore,
+	    // make sure it is correct, just in case
+	    col = col % width2;
+	}
 	if (row >= curwin->w_height)
 	{
 	    curwin->w_curswant = curwin->w_virtcol
@@ -1986,7 +1994,12 @@ adjust_skipcol(void)
 	++row;
     }
     if (col > width2)
+    {
 	row += col / width2;
+	// col may no longer be used, but make
+	// sure it is correct anyhow, just in case
+	col = col % width2;
+    }
     if (row >= curwin->w_height)
     {
 	if (curwin->w_skipcol == 0)

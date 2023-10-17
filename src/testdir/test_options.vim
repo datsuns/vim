@@ -228,6 +228,11 @@ func Test_keymap_valid()
   call assert_fails(":set kmp=trunc\x00name", "trunc")
 endfunc
 
+func Test_wildchar_valid()
+  call assert_fails("set wildchar=<CR>", "E474:")
+  call assert_fails("set wildcharm=<C-C>", "E474:")
+endfunc
+
 func Check_dir_option(name)
   " Check that it's possible to set the option.
   exe 'set ' . a:name . '=/usr/share/dict/words'
@@ -314,6 +319,7 @@ func Test_set_completion()
   call feedkeys(":set cdpath=./\<C-A>\<C-B>\"\<CR>", 'tx')
   call assert_match(' ./samples/ ', @:)
   call assert_notmatch(' ./summarize.vim ', @:)
+  set cdpath&
 
   " Expand files and directories.
   call feedkeys(":set tags=./\<C-A>\<C-B>\"\<CR>", 'tx')
@@ -321,7 +327,50 @@ func Test_set_completion()
 
   call feedkeys(":set tags=./\\\\ dif\<C-A>\<C-B>\"\<CR>", 'tx')
   call assert_equal('"set tags=./\\ diff diffexpr diffopt', @:)
-  set tags&
+
+  " Expand files with spaces/commas in them. Make sure we delimit correctly.
+  "
+  " 'tags' allow for for spaces/commas to both act as delimiters, with actual
+  " spaces requiring double escape, and commas need a single escape.
+  " 'dictionary' is a normal comma-separated option where only commas act as
+  " delimiters, and both space/comma need one single escape.
+  " 'makeprg' is a non-comma-separated option. Commas don't need escape.
+  defer delete('Xfoo Xspace.txt')
+  defer delete('Xsp_dummy')
+  defer delete('Xbar,Xcomma.txt')
+  defer delete('Xcom_dummy')
+  call writefile([], 'Xfoo Xspace.txt')
+  call writefile([], 'Xsp_dummy')
+  call writefile([], 'Xbar,Xcomma.txt')
+  call writefile([], 'Xcom_dummy')
+
+  call feedkeys(':set tags=./Xfoo\ Xsp' .. "\<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"set tags=./Xfoo\ Xsp_dummy', @:)
+  call feedkeys(':set tags=./Xfoo\\\ Xsp' .. "\<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"set tags=./Xfoo\\\ Xspace.txt', @:)
+  call feedkeys(':set dictionary=./Xfoo\ Xsp' .. "\<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"set dictionary=./Xfoo\ Xspace.txt', @:)
+
+  call feedkeys(':set dictionary=./Xbar,Xcom' .. "\<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"set dictionary=./Xbar,Xcom_dummy', @:)
+  if has('win32')
+    " In Windows, '\,' is literal, see `:help filename-backslash`, so this
+    " means we treat it as one file name.
+    call feedkeys(':set dictionary=Xbar\,Xcom' .. "\<C-A>\<C-B>\"\<CR>", 'tx')
+    call assert_equal('"set dictionary=Xbar\,Xcomma.txt', @:)
+  else
+    " In other platforms, '\,' simply escape to ',', and indicate a delimiter
+    " to split into a separate file name. You need '\\,' to escape the comma
+    " as part of the file name.
+    call feedkeys(':set dictionary=Xbar\,Xcom' .. "\<C-A>\<C-B>\"\<CR>", 'tx')
+    call assert_equal('"set dictionary=Xbar\,Xcom_dummy', @:)
+
+    call feedkeys(':set dictionary=Xbar\\,Xcom' .. "\<C-A>\<C-B>\"\<CR>", 'tx')
+    call assert_equal('"set dictionary=Xbar\\,Xcomma.txt', @:)
+  endif
+  call feedkeys(":set makeprg=./Xbar,Xcom\<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"set makeprg=./Xbar,Xcomma.txt', @:)
+  set tags& dictionary& makeprg&
 
   " Expanding the option names
   call feedkeys(":set \<Tab>\<C-B>\"\<CR>", 'xt')
@@ -567,6 +616,9 @@ func Test_set_completion_string_values()
         \        {idx, val -> val != ':'}),
         \ '')
   call assert_equal([], getcompletion('set hl+=8'..hl_display_modes, 'cmdline'))
+  " Test completion in middle of the line
+  call feedkeys(":set hl=8b i\<Left>\<Left>\<Tab>\<C-B>\"\<CR>", 'xt')
+  call assert_equal("\"set hl=8bi i", @:)
 
   "
   " Test flag lists

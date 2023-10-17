@@ -144,7 +144,7 @@ alloc_type(type_T *type)
     if (ret->tt_member != NULL)
 	ret->tt_member = alloc_type(ret->tt_member);
 
-    if (type->tt_args != NULL)
+    if (type->tt_argcount > 0 && type->tt_args != NULL)
     {
 	int i;
 
@@ -153,6 +153,8 @@ alloc_type(type_T *type)
 	    for (i = 0; i < type->tt_argcount; ++i)
 		ret->tt_args[i] = alloc_type(type->tt_args[i]);
     }
+    else
+	ret->tt_args = NULL;
 
     return ret;
 }
@@ -874,8 +876,7 @@ check_type_maybe(
 		{
 		    where_T  func_where = where;
 
-		    if (where.wt_kind == WT_METHOD)
-			func_where.wt_kind = WT_METHOD_RETURN;
+		    func_where.wt_kind = WT_METHOD_RETURN;
 		    ret = check_type_maybe(expected->tt_member,
 					    actual->tt_member, FALSE,
 					    func_where);
@@ -883,6 +884,11 @@ check_type_maybe(
 		else
 		    ret = MAYBE;
 	    }
+	    if (ret != FAIL
+		    && ((expected->tt_flags & TTFLAG_VARARGS)
+			!= (actual->tt_flags & TTFLAG_VARARGS))
+		    && expected->tt_argcount != -1)
+		ret = FAIL;
 	    if (ret != FAIL && expected->tt_argcount != -1
 		    && actual->tt_min_argcount != -1
 		    && (actual->tt_argcount == -1
@@ -898,8 +904,7 @@ check_type_maybe(
 					       && i < actual->tt_argcount; ++i)
 		{
 		    where_T  func_where = where;
-		    if (where.wt_kind == WT_METHOD)
-			func_where.wt_kind = WT_METHOD_ARG;
+		    func_where.wt_kind = WT_METHOD_ARG;
 
 		    // Allow for using "any" argument type, lambda's have them.
 		    if (actual->tt_args[i] != &t_any && check_type(
