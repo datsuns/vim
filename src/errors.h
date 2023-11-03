@@ -3494,8 +3494,8 @@ EXTERN char e_duplicate_variable_str[]
 	INIT(= N_("E1369: Duplicate variable: %s"));
 EXTERN char e_cannot_define_new_method_as_static[]
 	INIT(= N_("E1370: Cannot define a \"new\" method as static"));
-EXTERN char e_abstract_must_be_followed_by_def_or_static[]
-	INIT(= N_("E1371: Abstract must be followed by \"def\" or \"static\""));
+EXTERN char e_abstract_must_be_followed_by_def[]
+	INIT(= N_("E1371: Abstract must be followed by \"def\""));
 EXTERN char e_abstract_method_in_concrete_class[]
 	INIT(= N_("E1372: Abstract method \"%s\" cannot be defined in a concrete class"));
 EXTERN char e_abstract_method_str_not_found[]
@@ -3542,8 +3542,8 @@ EXTERN char e_type_can_only_be_defined_in_vim9_script[]
 	INIT(= N_("E1393: Type can only be defined in Vim9 script"));
 EXTERN char e_type_name_must_start_with_uppercase_letter_str[]
 	INIT(= N_("E1394: Type name must start with an uppercase letter: %s"));
-EXTERN char e_using_typealias_as_variable[]
-	INIT(= N_("E1395: Type alias \"%s\" cannot be used as a variable"));
+EXTERN char e_cannot_modify_typealias[]
+	INIT(= N_("E1395: Type alias \"%s\" cannot be modified"));
 EXTERN char e_typealias_already_exists_for_str[]
 	INIT(= N_("E1396: Type alias \"%s\" already exists"));
 EXTERN char e_missing_typealias_name[]
@@ -3552,8 +3552,18 @@ EXTERN char e_missing_typealias_type[]
 	INIT(= N_("E1398: Missing type alias type"));
 EXTERN char e_type_can_only_be_used_in_script[]
 	INIT(= N_("E1399: Type can only be used in a script"));
+EXTERN char e_using_typealias_as_number[]
+	INIT(= N_("E1400: Using type alias \"%s\" as a Number"));
+EXTERN char e_using_typealias_as_float[]
+	INIT(= N_("E1401: Using type alias \"%s\" as a Float"));
+EXTERN char e_using_typealias_as_string[]
+	INIT(= N_("E1402: Using type alias \"%s\" as a String"));
+EXTERN char e_using_typealias_as_value[]
+	INIT(= N_("E1403: Type alias \"%s\" cannot be used as a value"));
+EXTERN char e_abstract_cannot_be_used_in_interface[]
+	INIT(= N_("E1404: Abstract cannot be used in an interface"));
 #endif
-// E1400 - E1499 unused (reserved for Vim9 class support)
+// E1405 - E1499 unused (reserved for Vim9 class support)
 EXTERN char e_cannot_mix_positional_and_non_positional_str[]
 	INIT(= N_("E1500: Cannot mix positional and non-positional arguments: %s"));
 EXTERN char e_fmt_arg_nr_unused_str[]
