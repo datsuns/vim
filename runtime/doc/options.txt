@@ -1,4 +1,4 @@
-*options.txt*	For Vim version 9.0.  Last change: 2023 Nov 06
+*options.txt*	For Vim version 9.0.  Last change: 2023 Nov 20
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -1431,7 +1431,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 	Some applications use the BOM to recognize the encoding of the file.
 	Often used for UCS-2 files on MS-Windows.  For other applications it
 	causes trouble, for example: "cat file1 file2" makes the BOM of file2
-	appear halfway the resulting file.  Gcc doesn't accept a BOM.
+	appear halfway through the resulting file.  Gcc doesn't accept a BOM.
 	When Vim reads a file and 'fileencodings' starts with "ucs-bom", a
 	check for the presence of the BOM is done and 'bomb' set accordingly.
 	Unless 'binary' is set, it is removed from the first line, so that you
@@ -3798,9 +3798,10 @@ A jump table for the options with a short description can be found at |Q_op|.
 'formatoptions' 'fo'	string (Vim default: "tcq", Vi default: "vt")
 			local to buffer
 	This is a sequence of letters which describes how automatic
-	formatting is to be done.  See |fo-table|.  When the 'paste' option is
-	on, no formatting is done (like 'formatoptions' is empty).  Commas can
-	be inserted for readability.
+	formatting is to be done.
+	See |fo-table| for possible values and |gq| for how to format text.
+	When the 'paste' option is on, no formatting is done (like
+	'formatoptions' is empty).  Commas can be inserted for readability.
 	To avoid problems with flags that are added in the future, use the
 	"+=" and "-=" feature of ":set" |add-option-flags|.
 	NOTE: This option is set to the Vi default value when 'compatible' is
@@ -5495,7 +5496,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 	Increasing this limit above 200 also changes the maximum for Ex
 	command recursion, see |E169|.
 	See also |:function|.
-	Also used for maximum depth of callback functions.
 
 						*'maxmapdepth'* *'mmd'* *E223*
 'maxmapdepth' 'mmd'	number	(default 1000)
@@ -9309,7 +9309,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 	uses another default.
 
 
-			*'wildignorecase'* *'wic'* *'nowildignorecase'* *'nowic'*
+		    *'wildignorecase'* *'wic'* *'nowildignorecase'* *'nowic'*
 'wildignorecase' 'wic'	boolean	(default off)
 			global
 	When set case is ignored when completing file names and directories.
