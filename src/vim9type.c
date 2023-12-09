@@ -201,6 +201,10 @@ set_tv_type_recurse(type_T *type)
     void
 set_tv_type(typval_T *tv, type_T *type)
 {
+    if (type->tt_type == VAR_ANY)
+	// If the variable type is "any", then keep the value type.
+	// e.g.  var x: any = [1, 2] or var y: any = {v: 1}
+	return;
     if (tv->v_type == VAR_DICT && tv->vval.v_dict != NULL)
     {
 	dict_T *d = tv->vval.v_dict;
@@ -1706,7 +1710,11 @@ type_name(type_T *type, char **tofree)
     if (type->tt_type == VAR_LIST || type->tt_type == VAR_DICT)
     {
 	char *member_free;
-	char *member_name = type_name(type->tt_member, &member_free);
+	char *member_name;
+	if (type->tt_member->tt_type == VAR_UNKNOWN)
+	    member_name = type_name(&t_any, &member_free);
+	else
+	    member_name = type_name(type->tt_member, &member_free);
 	size_t len = STRLEN(name) + STRLEN(member_name) + 3;
 	*tofree = alloc(len);
 	if (*tofree != NULL)
