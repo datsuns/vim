@@ -3076,6 +3076,7 @@ def Test_type_check()
     vim9script
     class A
     endclass
+    type T = number
     var N: number = 1
     var S: string = 'abc'
     var d: dict<number> = {}
@@ -3089,16 +3090,18 @@ def Test_type_check()
     assert_fails('l = N', 'E1012: Type mismatch; expected list<number> but got number')
     assert_fails('b = N', 'E1012: Type mismatch; expected blob but got number')
     assert_fails('Fn = N', 'E1012: Type mismatch; expected func(...): unknown but got number')
-    assert_fails('A = N', 'E1012: Type mismatch; expected class<A> but got number')
+    assert_fails('A = N', 'E1405: Class "A" cannot be used as a value')
     assert_fails('o = N', 'E1012: Type mismatch; expected object<A> but got number')
+    assert_fails('T = N', 'E1403: Type alias "T" cannot be used as a value')
 
     # Use a compound operator with different LHS types
     assert_fails('d += N', 'E734: Wrong variable type for +=')
     assert_fails('l += N', 'E734: Wrong variable type for +=')
     assert_fails('b += N', 'E734: Wrong variable type for +=')
     assert_fails('Fn += N', 'E734: Wrong variable type for +=')
-    assert_fails('A += N', 'E734: Wrong variable type for +=')
+    assert_fails('A += N', 'E1405: Class "A" cannot be used as a value')
     assert_fails('o += N', 'E734: Wrong variable type for +=')
+    assert_fails('T += N', 'E1403: Type alias "T" cannot be used as a value')
 
     # Assign to a number variable
     assert_fails('N = d', 'E1012: Type mismatch; expected number but got dict<number>')
@@ -3107,6 +3110,7 @@ def Test_type_check()
     assert_fails('N = Fn', 'E1012: Type mismatch; expected number but got func([unknown]): number')
     assert_fails('N = A', 'E1405: Class "A" cannot be used as a value')
     assert_fails('N = o', 'E1012: Type mismatch; expected number but got object<A>')
+    assert_fails('N = T', 'E1403: Type alias "T" cannot be used as a value')
 
     # Use a compound operator with different RHS types
     assert_fails('N += d', 'E734: Wrong variable type for +=')
@@ -3115,6 +3119,7 @@ def Test_type_check()
     assert_fails('N += Fn', 'E734: Wrong variable type for +=')
     assert_fails('N += A', 'E1405: Class "A" cannot be used as a value')
     assert_fails('N += o', 'E1320: Using an Object as a Number')
+    assert_fails('N += T', 'E1403: Type alias "T" cannot be used as a value')
 
     # Initialize multiple variables using []
     assert_fails('var [X1: number, Y: number] = [1, d]', 'E1012: Type mismatch; expected number but got dict<number>')
@@ -3123,6 +3128,7 @@ def Test_type_check()
     assert_fails('var [X4: number, Y: number] = [1, Fn]', 'E1012: Type mismatch; expected number but got func([unknown]): number')
     assert_fails('var [X7: number, Y: number] = [1, A]', 'E1405: Class "A" cannot be used as a value')
     assert_fails('var [X8: number, Y: number] = [1, o]', 'E1012: Type mismatch; expected number but got object<A>')
+    assert_fails('var [X8: number, Y: number] = [1, T]', 'E1403: Type alias "T" cannot be used as a value')
 
     # String concatenation with various LHS types
     assert_fails('S ..= d', 'E734: Wrong variable type for .=')
@@ -3131,14 +3137,16 @@ def Test_type_check()
     assert_fails('S ..= Fn', 'E734: Wrong variable type for .=')
     assert_fails('S ..= A', 'E1405: Class "A" cannot be used as a value')
     assert_fails('S ..= o', 'E1324: Using an Object as a String')
+    assert_fails('S ..= T', 'E1403: Type alias "T" cannot be used as a value')
 
     # String concatenation with various RHS types
     assert_fails('d ..= S', 'E734: Wrong variable type for .=')
     assert_fails('l ..= S', 'E734: Wrong variable type for .=')
     assert_fails('b ..= S', 'E734: Wrong variable type for .=')
     assert_fails('Fn ..= S', 'E734: Wrong variable type for .=')
-    assert_fails('A ..= S', 'E734: Wrong variable type for .=')
+    assert_fails('A ..= S', 'E1405: Class "A" cannot be used as a value')
     assert_fails('o ..= S', 'E734: Wrong variable type for .=')
+    assert_fails('T ..= S', 'E1403: Type alias "T" cannot be used as a value')
   END
   v9.CheckSourceSuccess(lines)
 
@@ -3166,6 +3174,31 @@ def Test_type_check()
     END
     v9.CheckSourceSuccess(lines)
   endif
+
+  lines =<< trim END
+    vim9script
+    class A
+    endclass
+
+    def F()
+      A += 3
+    enddef
+    F()
+  END
+  v9.CheckScriptFailure(lines, 'E1405: Class "A" cannot be used as a value')
+
+  lines =<< trim END
+    vim9script
+    class A
+    endclass
+
+    var o = A.new()
+    def F()
+      o += 4
+    enddef
+    F()
+  END
+  v9.CheckScriptFailure(lines, 'E1411: Missing dot after object "o"')
 enddef
 
 " Test for checking the argument type of a def function
@@ -3197,7 +3230,7 @@ def Test_func_argtype_check()
       assert_fails('IntArg(j)', 'E1013: Argument 1: type mismatch, expected number but got job')
       assert_fails('IntArg(ch)', 'E1013: Argument 1: type mismatch, expected number but got channel')
     endif
-    assert_fails('IntArg(A)', 'E1013: Argument 1: type mismatch, expected number but got class<A>')
+    assert_fails('IntArg(A)', 'E1405: Class "A" cannot be used as a value')
     assert_fails('IntArg(o)', 'E1013: Argument 1: type mismatch, expected number but got object<A>')
 
     # Passing a number to functions accepting different argument types
@@ -3262,7 +3295,7 @@ def Test_func_argtype_check()
     v9.CheckSourceFailure(lines, 'E1013: Argument 1: type mismatch, expected number but got channel', 2)
   endif
   lines = pre_lines + ['IntArg(A)'] + post_lines
-  v9.CheckSourceFailure(lines, 'E1013: Argument 1: type mismatch, expected number but got class<A>', 1)
+  v9.CheckSourceFailure(lines, 'E1405: Class "A" cannot be used as a value', 1)
   lines = pre_lines + ['var o: A = A.new()', 'IntArg(o)'] + post_lines
   v9.CheckSourceFailure(lines, 'E1013: Argument 1: type mismatch, expected number but got object<A>', 2)
 enddef
@@ -3359,6 +3392,96 @@ def Test_assign_to_any()
     END
     v9.CheckSourceSuccess(lines)
   endfor
+enddef
+
+def Test_assign_type_to_list_dict()
+  var lines =<< trim END
+    vim9script
+    class C
+    endclass
+
+    var x = [C]
+  END
+  v9.CheckScriptFailure(lines, 'E1405: Class "C" cannot be used as a value')
+
+  lines =<< trim END
+    vim9script
+    class C
+    endclass
+    type T = C
+
+    def F()
+      var x = [3, T, C]
+    enddef
+    F()
+  END
+  v9.CheckScriptFailure(lines, 'E1405: Class "C" cannot be used as a value')
+
+  lines =<< trim END
+    vim9script
+    type T = number
+
+    def F()
+      var x = [3, T]
+    enddef
+    F()
+  END
+  v9.CheckScriptFailure(lines, 'E1407: Cannot use a Typealias as a variable or value')
+
+  lines =<< trim END
+    vim9script
+    class C
+    endclass
+
+    var x = {e: C}
+  END
+  v9.CheckScriptFailure(lines, 'E1405: Class "C" cannot be used as a value')
+
+  lines =<< trim END
+    vim9script
+    class C
+    endclass
+
+    def F()
+      var x = {e: C}
+    enddef
+    F()
+  END
+  v9.CheckScriptFailure(lines, 'E1405: Class "C" cannot be used as a value')
+
+  lines =<< trim END
+    vim9script
+    type T = number
+
+    def F()
+      var x = {e: T}
+    enddef
+    F()
+  END
+  v9.CheckScriptFailure(lines, 'E1407: Cannot use a Typealias as a variable or value')
+
+  lines =<< trim END
+    vim9script
+    class C
+    endclass
+
+    def F()
+      var x = {e: [C]}
+    enddef
+    F()
+  END
+  v9.CheckScriptFailure(lines, 'E1405: Class "C" cannot be used as a value')
+
+  lines =<< trim END
+    vim9script
+    type T = number
+
+    def F()
+      var x = {e: [T]}
+    enddef
+    F()
+  END
+  v9.CheckScriptFailure(lines, 'E1407: Cannot use a Typealias as a variable or value')
 enddef
 
 " vim: ts=8 sw=2 sts=2 expandtab tw=80 fdm=marker

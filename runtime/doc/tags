@@ -2159,6 +2159,7 @@ $quote	eval.txt	/*$quote*
 :Stop	terminal.txt	/*:Stop*
 :TOhtml	syntax.txt	/*:TOhtml*
 :TarDiff	pi_tar.txt	/*:TarDiff*
+:Tbreak	terminal.txt	/*:Tbreak*
 :Termdebug	terminal.txt	/*:Termdebug*
 :TermdebugCommand	terminal.txt	/*:TermdebugCommand*
 :Texplore	pi_netrw.txt	/*:Texplore*
@@ -4491,8 +4492,26 @@ E139	message.txt	/*E139*
 E1390	vim9class.txt	/*E1390*
 E1391	eval.txt	/*E1391*
 E1392	eval.txt	/*E1392*
+E1393	vim9class.txt	/*E1393*
+E1394	vim9class.txt	/*E1394*
+E1395	vim9class.txt	/*E1395*
+E1396	vim9class.txt	/*E1396*
+E1397	vim9class.txt	/*E1397*
+E1398	vim9class.txt	/*E1398*
+E1399	vim9class.txt	/*E1399*
 E140	message.txt	/*E140*
+E1400	vim9class.txt	/*E1400*
+E1401	vim9class.txt	/*E1401*
+E1402	vim9class.txt	/*E1402*
+E1403	vim9class.txt	/*E1403*
+E1405	vim9class.txt	/*E1405*
+E1406	vim9class.txt	/*E1406*
+E1407	vim9class.txt	/*E1407*
+E1408	vim9class.txt	/*E1408*
+E1409	vim9class.txt	/*E1409*
 E141	message.txt	/*E141*
+E1410	vim9class.txt	/*E1410*
+E1411	vim9class.txt	/*E1411*
 E142	message.txt	/*E142*
 E143	autocmd.txt	/*E143*
 E144	various.txt	/*E144*
@@ -6142,6 +6161,7 @@ bug-fixes-6	version6.txt	/*bug-fixes-6*
 bug-fixes-7	version7.txt	/*bug-fixes-7*
 bug-fixes-8	version8.txt	/*bug-fixes-8*
 bug-fixes-9	version9.txt	/*bug-fixes-9*
+bug-fixes-9.1	version9.txt	/*bug-fixes-9.1*
 bug-reports	intro.txt	/*bug-reports*
 bugreport.vim	intro.txt	/*bugreport.vim*
 bugs	intro.txt	/*bugs*
@@ -7282,6 +7302,7 @@ ft-rego-syntax	syntax.txt	/*ft-rego-syntax*
 ft-rexx-syntax	syntax.txt	/*ft-rexx-syntax*
 ft-rmd-plugin	filetype.txt	/*ft-rmd-plugin*
 ft-rmd-syntax	syntax.txt	/*ft-rmd-syntax*
+ft-rnoweb-plugin	filetype.txt	/*ft-rnoweb-plugin*
 ft-rrst-plugin	filetype.txt	/*ft-rrst-plugin*
 ft-rrst-syntax	syntax.txt	/*ft-rrst-syntax*
 ft-rst-plugin	filetype.txt	/*ft-rst-plugin*
@@ -8665,6 +8686,7 @@ multilang	mlang.txt	/*multilang*
 multilang-menus	mlang.txt	/*multilang-menus*
 multilang-messages	mlang.txt	/*multilang-messages*
 multilang-scripts	mlang.txt	/*multilang-scripts*
+multiple-constructors	vim9class.txt	/*multiple-constructors*
 myfiletypefile	syntax.txt	/*myfiletypefile*
 myscriptsfile	syntax.txt	/*myscriptsfile*
 mysql	ft_sql.txt	/*mysql*
@@ -9061,7 +9083,11 @@ notepad	gui_w32.txt	/*notepad*
 nr2char()	builtin.txt	/*nr2char()*
 nroff.vim	syntax.txt	/*nroff.vim*
 null	vim9.txt	/*null*
+null-anomalies	vim9.txt	/*null-anomalies*
+null-compare	vim9.txt	/*null-compare*
+null-details	vim9.txt	/*null-details*
 null-variable	eval.txt	/*null-variable*
+null-variables	vim9.txt	/*null-variables*
 null_blob	vim9.txt	/*null_blob*
 null_channel	vim9.txt	/*null_channel*
 null_class	vim9.txt	/*null_class*
@@ -9083,6 +9109,8 @@ o_V	motion.txt	/*o_V*
 o_object-select	motion.txt	/*o_object-select*
 o_v	motion.txt	/*o_v*
 object	vim9class.txt	/*object*
+object-const-variable	vim9class.txt	/*object-const-variable*
+object-final-variable	vim9class.txt	/*object-final-variable*
 object-motions	motion.txt	/*object-motions*
 object-select	motion.txt	/*object-select*
 objects	index.txt	/*objects*
@@ -9170,6 +9198,7 @@ patches-8.2	version8.txt	/*patches-8.2*
 patches-9	version9.txt	/*patches-9*
 patches-9.1	version9.txt	/*patches-9.1*
 patches-after-8.2	version9.txt	/*patches-after-8.2*
+patches-after-9.0	version9.txt	/*patches-after-9.0*
 pathshorten()	builtin.txt	/*pathshorten()*
 pattern	pattern.txt	/*pattern*
 pattern-atoms	pattern.txt	/*pattern-atoms*
@@ -10285,6 +10314,7 @@ t_ti	term.txt	/*t_ti*
 t_tp	version4.txt	/*t_tp*
 t_ts	term.txt	/*t_ts*
 t_ts_old	version4.txt	/*t_ts_old*
+t_typealias-variable	eval.txt	/*t_typealias-variable*
 t_u7	term.txt	/*t_u7*
 t_ue	term.txt	/*t_ue*
 t_undo	version4.txt	/*t_undo*
@@ -10785,6 +10815,7 @@ v:t_none	eval.txt	/*v:t_none*
 v:t_number	eval.txt	/*v:t_number*
 v:t_object	eval.txt	/*v:t_object*
 v:t_string	eval.txt	/*v:t_string*
+v:t_typealias	eval.txt	/*v:t_typealias*
 v:termblinkresp	eval.txt	/*v:termblinkresp*
 v:termrbgresp	eval.txt	/*v:termrbgresp*
 v:termresponse	eval.txt	/*v:termresponse*
@@ -10919,6 +10950,7 @@ val-variable	eval.txt	/*val-variable*
 valgrind	debug.txt	/*valgrind*
 values()	builtin.txt	/*values()*
 var-functions	usr_41.txt	/*var-functions*
+variable-categories	vim9.txt	/*variable-categories*
 variable-scope	eval.txt	/*variable-scope*
 variable-types	vim9.txt	/*variable-types*
 variables	eval.txt	/*variables*
@@ -11014,6 +11046,7 @@ vim9	vim9.txt	/*vim9*
 vim9-access-modes	vim9class.txt	/*vim9-access-modes*
 vim9-autoload	vim9.txt	/*vim9-autoload*
 vim9-boolean	vim9.txt	/*vim9-boolean*
+vim9-class	vim9class.txt	/*vim9-class*
 vim9-classes	vim9.txt	/*vim9-classes*
 vim9-const	vim9.txt	/*vim9-const*
 vim9-curly	vim9.txt	/*vim9-curly*

@@ -14,9 +14,6 @@
 #include "vim.h"
 
 #if defined(FEAT_EVAL) || defined(PROTO)
-
-#define MAX_CALLBACK_DEPTH 20
-
 /*
  * All user-defined functions are found in this hashtable.
  */
@@ -198,10 +195,10 @@ get_function_line(
 {
     char_u *theline;
 
-    if (eap->getline == NULL)
+    if (eap->ea_getline == NULL)
 	theline = getcmdline(':', 0L, indent, 0);
     else
-	theline = eap->getline(':', eap->cookie, indent, getline_options);
+	theline = eap->ea_getline(':', eap->cookie, indent, getline_options);
     if (theline != NULL)
     {
 	if (lines_to_free->ga_len > 0
@@ -264,7 +261,7 @@ get_function_args(
     p = arg;
     while (*p != endchar)
     {
-	while (eap != NULL && eap->getline != NULL
+	while (eap != NULL && eap->ea_getline != NULL
 			 && (*p == NUL || (VIM_ISWHITE(*whitep) && *p == '#')))
 	{
 	    // End of the line, get the next one.
@@ -889,7 +886,7 @@ get_function_body(
 
     // Detect having skipped over comment lines to find the return
     // type.  Add NULL lines to keep the line count correct.
-    sourcing_lnum_off = get_sourced_lnum(eap->getline, eap->cookie);
+    sourcing_lnum_off = get_sourced_lnum(eap->ea_getline, eap->cookie);
     if (SOURCING_LNUM < sourcing_lnum_off)
     {
 	sourcing_lnum_off -= SOURCING_LNUM;
@@ -952,7 +949,7 @@ get_function_body(
 	}
 
 	// Detect line continuation: SOURCING_LNUM increased more than one.
-	sourcing_lnum_off = get_sourced_lnum(eap->getline, eap->cookie);
+	sourcing_lnum_off = get_sourced_lnum(eap->ea_getline, eap->cookie);
 	if (SOURCING_LNUM < sourcing_lnum_off)
 	    sourcing_lnum_off -= SOURCING_LNUM;
 	else
@@ -1349,7 +1346,7 @@ lambda_function_body(
 	fill_exarg_from_cctx(&eap, evalarg->eval_cctx);
     else
     {
-	eap.getline = evalarg->eval_getline;
+	eap.ea_getline = evalarg->eval_getline;
 	eap.cookie = evalarg->eval_cookie;
     }
 
@@ -1905,7 +1902,8 @@ get_func_arguments(
 	evalarg_T   *evalarg,
 	int	    partial_argc,
 	typval_T    *argvars,
-	int	    *argcount)
+	int	    *argcount,
+	int	    is_builtin)
 {
     char_u	*argp = *arg;
     int		ret = OK;
@@ -1920,12 +1918,20 @@ get_func_arguments(
 
 	if (*argp == ')' || *argp == ',' || *argp == NUL)
 	    break;
-	if (eval1(&argp, &argvars[*argcount], evalarg) == FAIL)
+
+	int arg_idx = *argcount;
+	if (eval1(&argp, &argvars[arg_idx], evalarg) == FAIL)
 	{
 	    ret = FAIL;
 	    break;
 	}
 	++*argcount;
+	if (!is_builtin && check_typval_is_value(&argvars[arg_idx]) == FAIL)
+	{
+	    ret = FAIL;
+	    break;
+	}
+
 	// The comma should come right after the argument, but this wasn't
 	// checked previously, thus only enforce it in Vim9 script.
 	if (vim9script)
@@ -1985,7 +1991,7 @@ get_func_tv(
     argp = *arg;
     ret = get_func_arguments(&argp, evalarg,
 	    (funcexe->fe_partial == NULL ? 0 : funcexe->fe_partial->pt_argc),
-							   argvars, &argcount);
+			       argvars, &argcount, builtin_function(name, -1));
 
     if (ret == OK)
     {
@@ -3594,7 +3600,7 @@ call_callback(
     if (callback->cb_name == NULL || *callback->cb_name == NUL)
 	return FAIL;
 
-    if (callback_depth > MAX_CALLBACK_DEPTH)
+    if (callback_depth > p_mfd)
     {
 	emsg(_(e_command_too_recursive));
 	return FAIL;
@@ -6125,8 +6131,9 @@ ex_defer_inner(
 		copy_tv(&partial->pt_argv[i], &argvars[i]);
 	}
     }
+    int is_builtin = builtin_function(name, -1);
     r = get_func_arguments(arg, evalarg, FALSE,
-					    argvars + partial_argc, &argcount);
+				argvars + partial_argc, &argcount, is_builtin);
     argcount += partial_argc;
 
     if (r == OK)
@@ -6136,7 +6143,7 @@ ex_defer_inner(
 	    // Check that the arguments are OK for the types of the funcref.
 	    r = check_argument_types(type, argvars, argcount, NULL, name);
 	}
-	else if (builtin_function(name, -1))
+	else if (is_builtin)
 	{
 	    int idx = find_internal_func(name);
 
