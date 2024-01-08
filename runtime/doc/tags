@@ -3470,6 +3470,7 @@ $quote	eval.txt	/*$quote*
 :tf	tagsrch.txt	/*:tf*
 :tfirst	tagsrch.txt	/*:tfirst*
 :th	eval.txt	/*:th*
+:this	vim9class.txt	/*:this*
 :throw	eval.txt	/*:throw*
 :tj	tagsrch.txt	/*:tj*
 :tjump	tagsrch.txt	/*:tjump*
@@ -5513,6 +5514,7 @@ InsertEnter	autocmd.txt	/*InsertEnter*
 InsertLeave	autocmd.txt	/*InsertLeave*
 InsertLeavePre	autocmd.txt	/*InsertLeavePre*
 Integer	eval.txt	/*Integer*
+Interface	vim9class.txt	/*Interface*
 J	change.txt	/*J*
 Japanese	mbyte.txt	/*Japanese*
 Job	eval.txt	/*Job*
@@ -7267,6 +7269,7 @@ ft-metapost-intro	ft_mp.txt	/*ft-metapost-intro*
 ft-metapost-mappings	ft_mp.txt	/*ft-metapost-mappings*
 ft-metapost-settings	ft_mp.txt	/*ft-metapost-settings*
 ft-mma-syntax	syntax.txt	/*ft-mma-syntax*
+ft-modula2-syntax	syntax.txt	/*ft-modula2-syntax*
 ft-moo-syntax	syntax.txt	/*ft-moo-syntax*
 ft-msql-syntax	syntax.txt	/*ft-msql-syntax*
 ft-n1ql-syntax	syntax.txt	/*ft-n1ql-syntax*
@@ -7592,6 +7595,7 @@ g:rust_conceal_mod_path	ft_rust.txt	/*g:rust_conceal_mod_path*
 g:rust_conceal_pub	ft_rust.txt	/*g:rust_conceal_pub*
 g:rust_fold	ft_rust.txt	/*g:rust_fold*
 g:rust_keep_autopairs_default	ft_rust.txt	/*g:rust_keep_autopairs_default*
+g:rust_playpen_url	ft_rust.txt	/*g:rust_playpen_url*
 g:rust_recommended_style	ft_rust.txt	/*g:rust_recommended_style*
 g:rust_shortener_url	ft_rust.txt	/*g:rust_shortener_url*
 g:rust_use_custom_ctags_defs	ft_rust.txt	/*g:rust_use_custom_ctags_defs*
@@ -8590,6 +8594,7 @@ match-parens	tips.txt	/*match-parens*
 matchadd()	builtin.txt	/*matchadd()*
 matchaddpos()	builtin.txt	/*matchaddpos()*
 matcharg()	builtin.txt	/*matcharg()*
+matchbufline()	builtin.txt	/*matchbufline()*
 matchdelete()	builtin.txt	/*matchdelete()*
 matchend()	builtin.txt	/*matchend()*
 matchfuzzy()	builtin.txt	/*matchfuzzy()*
@@ -8598,6 +8603,7 @@ matchit-install	usr_05.txt	/*matchit-install*
 matchlist()	builtin.txt	/*matchlist()*
 matchparen	pi_paren.txt	/*matchparen*
 matchstr()	builtin.txt	/*matchstr()*
+matchstrlist()	builtin.txt	/*matchstrlist()*
 matchstrpos()	builtin.txt	/*matchstrpos()*
 matlab-indent	indent.txt	/*matlab-indent*
 matlab-indenting	indent.txt	/*matlab-indenting*
@@ -8653,6 +8659,14 @@ modeline	options.txt	/*modeline*
 modeline-local	options.txt	/*modeline-local*
 modeline-version	options.txt	/*modeline-version*
 modifyOtherKeys	map.txt	/*modifyOtherKeys*
+modula2.vim	syntax.txt	/*modula2.vim*
+modula2_iso_allow_lowline	syntax.txt	/*modula2_iso_allow_lowline*
+modula2_iso_disallow_octals	syntax.txt	/*modula2_iso_disallow_octals*
+modula2_iso_disallow_synonyms	syntax.txt	/*modula2_iso_disallow_synonyms*
+modula2_pim_allow_lowline	syntax.txt	/*modula2_pim_allow_lowline*
+modula2_pim_disallow_octals	syntax.txt	/*modula2_pim_disallow_octals*
+modula2_pim_disallow_synonyms	syntax.txt	/*modula2_pim_disallow_synonyms*
+modula2_r10_allow_lowline	syntax.txt	/*modula2_r10_allow_lowline*
 moo.vim	syntax.txt	/*moo.vim*
 more-compatible	version5.txt	/*more-compatible*
 more-prompt	message.txt	/*more-prompt*
@@ -10633,6 +10647,7 @@ type-casting	vim9.txt	/*type-casting*
 type-checking	vim9.txt	/*type-checking*
 type-inference	vim9.txt	/*type-inference*
 type-mistakes	tips.txt	/*type-mistakes*
+typealias	vim9class.txt	/*typealias*
 typename()	builtin.txt	/*typename()*
 u	undo.txt	/*u*
 uganda	uganda.txt	/*uganda*
