@@ -2,8 +2,8 @@
 " Language: Vim script
 " Maintainer: Hirohito Higashi (h_east)
 " URL: https://github.com/vim-jp/syntax-vim-ex
-" Last Change: Feb 11, 2024
-" Version: 2.0.0
+" Last Change: Feb 18, 2024
+" Version: 2.0.1
 
 let s:keepcpo= &cpo
 set cpo&vim
@@ -248,6 +248,7 @@ function! s:parse_vim_command(cmd)
 		let item.syn_str = item.name
 		call add(a:cmd, copy(item))
 		let item.name = 'i'		" insert
+		let item.syn_str = item.name
 		call add(a:cmd, copy(item))
 
 		if empty(a:cmd)
@@ -272,7 +273,7 @@ function! s:get_vim_command_type(cmd_name)
 	let menu_prefix = '^\%([acinosvx]\?\|tl\)'
 	let map_prefix  = '^[acilnostvx]\?'
 	let exclude_list = [
-	\	'map',
+	\	'map', 'mapclear',
 	\	'substitute', 'smagic', 'snomagic',
 	\	'setlocal', 'setglobal', 'set', 'var',
 	\	'autocmd', 'doautocmd', 'doautoall',
@@ -280,13 +281,14 @@ function! s:get_vim_command_type(cmd_name)
 	\	'behave', 'augroup', 'normal', 'syntax',
 	\	'append', 'insert',
 	\	'Next', 'Print', 'X',
+	\	'new',
 	\ ]
 	" Required for original behavior
 	" \	'global', 'vglobal'
 
 	if index(exclude_list, a:cmd_name) != -1
 		let ret = 99
-	elseif a:cmd_name =~# '^\%(abbreviate\|noreabbrev\|\l\%(nore\)\?abbrev\)$'
+	elseif a:cmd_name =~# '^\%(\%(un\)\?abbreviate\|noreabbrev\|\l\%(nore\|un\)\?abbrev\)$'
 		let ret = 2
 	elseif a:cmd_name =~# menu_prefix . '\%(nore\|un\)\?menu$'
 		let ret = 3
@@ -443,6 +445,16 @@ function! s:parse_vim_hlgroup(li)
 
 		let item.name = 'CursorIM'
 		let item.type = 'gui'
+		call add(a:li, copy(item))
+
+		" The following highlight groups cannot be extracted from highlight.c
+		" (TODO: extract from HIGHLIGHT_INIT ?)
+		let item.name = 'LineNrAbove'
+		let item.type = 'both'
+		call add(a:li, copy(item))
+
+		let item.name = 'LineNrBelow'
+		let item.type = 'both'
 		call add(a:li, copy(item))
 
 		quit!
