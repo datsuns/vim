@@ -3444,6 +3444,7 @@ did_set_showbreak(optset_T *args)
     char *
 did_set_showcmdloc(optset_T *args UNUSED)
 {
+    comp_col();
     return did_set_opt_strings(p_sloc, p_sloc_values, FALSE);
 }
 
@@ -4534,7 +4535,7 @@ did_set_string_option(
 		|| varp == &p_guifontset	// 'guifontset'
 # endif
 		|| varp == &p_guifontwide	// 'guifontwide'
-# ifdef FEAT_GUI_GTK
+# if defined(FEAT_GUI_GTK) || defined(FEAT_GUI_MSWIN)
 		|| varp == &p_guiligatures	// 'guiligatures'
 # endif
 	    )
