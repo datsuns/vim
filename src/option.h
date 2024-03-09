@@ -1310,6 +1310,7 @@ enum
 #ifdef FEAT_STL_OPT
     , WV_STL
 #endif
+    , WV_WFB
     , WV_WFH
     , WV_WFW
     , WV_WRAP
