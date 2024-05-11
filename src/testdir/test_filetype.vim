@@ -131,7 +131,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     bst: ['file.bst'],
     bzl: ['file.bazel', 'file.bzl', 'WORKSPACE', 'WORKSPACE.bzlmod'],
     bzr: ['bzr_log.any', 'bzr_log.file'],
-    c: ['enlightenment/file.cfg', 'file.qc', 'file.c', 'some-enlightenment/file.cfg'],
+    c: ['enlightenment/file.cfg', 'file.qc', 'file.c', 'some-enlightenment/file.cfg', 'file.mdh', 'file.epro'],
     cabal: ['file.cabal'],
     cabalconfig: ['cabal.config', expand("$HOME/.config/cabal/config")] + WhenConfigHome('$XDG_CONFIG_HOME/cabal/config'),
     cabalproject: ['cabal.project', 'cabal.project.local'],
@@ -344,6 +344,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     inform: ['file.inf', 'file.INF'],
     initng: ['/etc/initng/any/file.i', 'file.ii', 'any/etc/initng/any/file.i'],
     inittab: ['inittab'],
+    inko: ['file.inko'],
     ipfilter: ['ipf.conf', 'ipf6.conf', 'ipf.rules'],
     iss: ['file.iss'],
     ist: ['file.ist', 'file.mst'],
@@ -358,6 +359,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     javascriptreact: ['file.jsx'],
     jess: ['file.clp'],
     jgraph: ['file.jgr'],
+    jj: ['file.jjdescription'],
     jq: ['file.jq'],
     jovial: ['file.jov', 'file.j73', 'file.jovial'],
     jproperties: ['file.properties', 'file.properties_xx', 'file.properties_xx_xx', 'some.properties_xx_xx_file', 'org.eclipse.xyz.prefs'],
@@ -417,7 +419,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     mail: ['snd.123', '.letter', '.letter.123', '.followup', '.article', '.article.123', 'pico.123', 'mutt-xx-xxx', 'muttng-xx-xxx', 'ae123.txt', 'file.eml', 'reportbug-file'],
     mailaliases: ['/etc/mail/aliases', '/etc/aliases', 'any/etc/aliases', 'any/etc/mail/aliases'],
     mailcap: ['.mailcap', 'mailcap'],
-    make: ['file.mk', 'file.mak', 'file.dsp', 'makefile', 'Makefile', 'makefile-file', 'Makefile-file', 'some-makefile', 'some-Makefile'],
+    make: ['file.mk', 'file.mak', 'file.dsp', 'makefile', 'Makefile', 'makefile-file', 'Makefile-file', 'some-makefile', 'some-Makefile', 'Kbuild'],
     mallard: ['file.page'],
     man: ['file.man'],
     manconf: ['/etc/man.conf', 'man.config', 'any/etc/man.conf'],
@@ -640,7 +642,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     sh: ['.bashrc', '.bash_profile', '.bash-profile', '.bash_logout', '.bash-logout', '.bash_aliases', '.bash-aliases', '.bash_history', '.bash-history',
          '/tmp/bash-fc-3Ozjlw', '/tmp/bash-fc.3Ozjlw', 'PKGBUILD', 'APKBUILD', 'file.bash', '/usr/share/doc/bash-completion/filter.sh',
          '/etc/udev/cdsymlinks.conf', 'any/etc/udev/cdsymlinks.conf', 'file.bats', '.ash_history', 'any/etc/neofetch/config.conf', '.xprofile',
-         'user-dirs.defaults', 'user-dirs.dirs', 'makepkg.conf', '.makepkg.conf'],
+         'user-dirs.defaults', 'user-dirs.dirs', 'makepkg.conf', '.makepkg.conf', 'file.mdd'],
     sieve: ['file.siv', 'file.sieve'],
     sil: ['file.sil'],
     simula: ['file.sim'],
@@ -686,6 +688,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     starlark: ['file.ipd', 'file.star', 'file.starlark'],
     stata: ['file.ado', 'file.do', 'file.imata', 'file.mata'],
     stp: ['file.stp'],
+    stylus: ['a.styl', 'file.stylus'],
     sudoers: ['any/etc/sudoers', 'sudoers.tmp', '/etc/sudoers', 'any/etc/sudoers.d/file'],
     supercollider: ['file.quark'],
     surface: ['file.sface'],
@@ -746,11 +749,12 @@ def s:GetFilenameChecks(): dict<list<string>>
     tcl: ['file.tcl', 'file.tm', 'file.tk', 'file.itcl', 'file.itk', 'file.jacl', '.tclshrc', 'tclsh.rc', '.wishrc', '.tclsh-history', '.xsctcmdhistory', '.xsdbcmdhistory'],
     tablegen: ['file.td'],
     teal: ['file.tl'],
+    templ: ['file.templ'],
     template: ['file.tmpl'],
     teraterm: ['file.ttl'],
     terminfo: ['file.ti'],
     'terraform-vars': ['file.tfvars'],
-    tex: ['file.latex', 'file.sty', 'file.dtx', 'file.ltx', 'file.bbl', 'any/.texlive/texmf-config/tex/latex/file/file.cfg', 'file.pgf', 'file.nlo', 'file.nls', 'file.out', 'file.thm', 'file.eps_tex', 'file.pygtex', 'file.pygstyle', 'file.clo', 'file.aux', 'file.brf', 'file.ind', 'file.lof', 'file.loe', 'file.nav', 'file.vrb', 'file.ins', 'file.tikz', 'file.bbx', 'file.cbx', 'file.beamer'],
+    tex: ['file.latex', 'file.sty', 'file.dtx', 'file.ltx', 'file.bbl', 'any/.texlive/texmf-config/tex/latex/file/file.cfg', 'file.pgf', 'file.nlo', 'file.nls', 'file.thm', 'file.eps_tex', 'file.pygtex', 'file.pygstyle', 'file.clo', 'file.aux', 'file.brf', 'file.ind', 'file.lof', 'file.loe', 'file.nav', 'file.vrb', 'file.ins', 'file.tikz', 'file.bbx', 'file.cbx', 'file.beamer'],
     texinfo: ['file.texinfo', 'file.texi', 'file.txi'],
     texmf: ['texmf.cnf'],
     text: ['file.text', 'file.txt', 'README', 'LICENSE', 'COPYING', 'AUTHORS', '/usr/share/doc/bash-completion/AUTHORS', '/etc/apt/apt.conf.d/README', '/etc/Muttrc.d/README'],
@@ -1684,14 +1688,14 @@ func Test_mod_file()
   call assert_equal('pim', b:modula2.dialect)
   bwipe!
 
-  " Modula-2 program MODULE with priorty (and uppercase extension)
+  " Modula-2 program MODULE with priority (and uppercase extension)
   call writefile(['MODULE Module2Mod [42];'], 'Xfile.MOD')
   split Xfile.MOD
   call assert_equal('modula2', &filetype)
   call assert_equal('pim', b:modula2.dialect)
   bwipe!
 
-  " Modula-2 implementation MODULE with priorty (and uppercase extension)
+  " Modula-2 implementation MODULE with priority (and uppercase extension)
   call writefile(['IMPLEMENTATION MODULE Module2Mod [42];'], 'Xfile.MOD')
   split Xfile.MOD
   call assert_equal('modula2', &filetype)

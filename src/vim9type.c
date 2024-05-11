@@ -1466,7 +1466,14 @@ parse_type_user_defined(
     }
 
     if (give_error && (did_emsg == did_emsg_before))
+    {
+	char_u	*p = skip_type(*arg, FALSE);
+	char	cc = *p;
+
+	*p = NUL;
 	semsg(_(e_type_not_recognized_str), *arg);
+	*p = cc;
+    }
 
     return NULL;
 }
@@ -2091,10 +2098,12 @@ check_typval_is_value(typval_T *tv)
 	case VAR_CLASS:
 	    {
 		class_T *cl = tv->vval.v_class;
-		if (IS_ENUM(cl))
-		    semsg(_(e_using_enum_as_value_str), cl->class_name);
+		char_u *class_name = (cl == NULL) ? (char_u *)""
+							: cl->class_name;
+		if (cl != NULL && IS_ENUM(cl))
+		    semsg(_(e_using_enum_as_value_str), class_name);
 		else
-		    semsg(_(e_using_class_as_value_str), cl->class_name);
+		    semsg(_(e_using_class_as_value_str), class_name);
 	    }
 	    return FAIL;
 
