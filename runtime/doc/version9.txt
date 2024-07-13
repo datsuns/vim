@@ -1,4 +1,4 @@
-*version9.txt*  For Vim version 9.1.  Last change: 2024 Jun 05
+*version9.txt*  For Vim version 9.1.  Last change: 2024 Jul 12
 
 
 		  VIM REFERENCE MANUAL    by Bram Moolenaar
@@ -31694,7 +31694,7 @@ The release 9.1 is dedicated to Vim's Benevolent dictator for life
 This release has hundreds of bug fixes, there are a few new features and there
 are many minor improvements.
 
-Vim9 classes
+Vim9 classes ~
 ------------
 Support for classes and objects in a Vim9 script are added.  This is described
 in |vim9-class|.  The following features are supported:
@@ -41554,11 +41554,17 @@ Enum support for Vim9 script |:enum|
 							*new-other-9.2*
 Other new features ~
 ------------------
-The comment plugin |comment-install| is included.
+The new plugins |comment-install| and |nohlsearch-install| are included.
 
 Support for Wayland UI.
 
 Support for the XDG Desktop Specification |xdg-base-dir|
+
+Support highlighting the matched text for insert-mode completion and
+command-line completion in |ins-completion-menu|.
+
+Support for translating messages in Vim script plugins using the |gettext()|
+and |bindtextdomain()| functions.
 
 							*changed-9.2*
 Changed~
@@ -41568,6 +41574,18 @@ Changed~
 - the default for 'commentstring' contains whitespace padding to have
   automatic comments look nicer |comment-install|
 - 'completeopt' is now a |global-local| option.
+- 'nrformat' accepts the new "blank" suboption, to determine a signed or
+  unsigned number based on whitespace in front of a minus sign.
+- allow to specify a priority when defining a new sign |:sign-define|
+- provide information about function arguments using the get(func, "arity")
+  function |get()-func|
+- |:bwipe| also wipes jumplist and tagstack data
+- moving in the buffer list using |:bnext| and similar commands, behaves as
+  documented and skips help buffers (if not run from a help buffer, else 
+  moves to the next/previous help buffer).
+- allow to complete directories from 'cdpath' for |:cd| and similar commands,
+  add the "cd_in_path" completion type for e.g. |:command-complete| and
+  |getcompletion()|
 
 							*added-9.2*
 Added ~
@@ -41576,17 +41594,23 @@ Various syntax, indent and other plugins were added.
 
 Functions: ~
 
+|bindtextdomain()|	set message lookup translation base path
 |diff()|		diff two Lists of strings
 |filecopy()|		copy a file {from} to {to}
 |foreach()|		apply function to List items
 |getregion()|		get a region of text from a buffer
 |getregionpos()|	get a list of positions for a region
+|id()|			get unique identifier for a Dict, List, Object,
+			Channel or Blob variable
 |matchbufline()|	all the matches of a pattern in a buffer
 |matchstrlist()|	all the matches of a pattern in a List of strings
+|popup_setbuf()|	switch to a different buffer in a popup
 
 
 Autocommands: ~
 
+|CursorMovedC|		after the cursor was moved in the comamnd-line
+|KeyInputPre|		process any Key event in any mode
 |SessionWritePost|	after writing the session file |:mksession|
 |TermResponseAll|	after the terminal response to |t_RV| and others is
 			received
@@ -41596,6 +41620,9 @@ Autocommands: ~
 Highlighting: ~
 
 |hl-MsgArea|		highlighting of the Command-line and messages area
+|hl-PmenuMatch|		Popup menu: highlighting of matched text
+|hl-PmenuMatchSel|	Popup menu: highlighting of matched text in selected
+			line
 
 Commands: ~
 
@@ -41605,6 +41632,7 @@ Commands: ~
 Options: ~
 
 'winfixbuf'		Keep buffer focused in a window
+'tabclose'		Which tab page to focus after closing a tab page
 't_xo'			Terminal uses XON/XOFF handshaking (e.g. vt420)
 't_CF'			Support for alternate font highlighting terminal code
 
@@ -41627,7 +41655,8 @@ Improved visual highlighting.
 
 Python3 support in OpenVMS.
 
-Support |fuzzy-matching| during |ins-completion| with "fuzzy" item for 'completeopt'
+Support for |fuzzy-matching| during |ins-completion| with the "fuzzy"
+values of the 'completeopt' setting
 
 ==============================================================================
 COMPILE TIME CHANGES					*compile-changes-9.2*
@@ -41635,6 +41664,8 @@ COMPILE TIME CHANGES					*compile-changes-9.2*
 Support for building with Ruby 3.3.
 
 Support for building Vim 9 in z/OS (MVS).
+
+Clean-up old MS-Windows code.
 
 ==============================================================================
 PATCHES						*patches-9.2* *bug-fixes-9.2*

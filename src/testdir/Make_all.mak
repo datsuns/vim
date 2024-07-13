@@ -20,7 +20,8 @@ SCRIPTS_TINY = \
 	test24 \
 	test25 \
 	test26 \
-	test27
+	test27 \
+	test28
 
 SCRIPTS_TINY_OUT = \
 	test10.out \
@@ -31,7 +32,8 @@ SCRIPTS_TINY_OUT = \
 	test24.out \
 	test25.out \
 	test26.out \
-	test27.out
+	test27.out \
+	test28.out
 
 # Tests for Vim9 script.
 TEST_VIM9 = \
@@ -161,6 +163,10 @@ NEW_TESTS = \
 	test_function_lists \
 	test_ga \
 	test_getcwd \
+	test_gettext \
+	test_gettext_cp1251 \
+	test_gettext_utf8 \
+	test_gettext_make \
 	test_getvar \
 	test_gf \
 	test_glob2regpat \
@@ -420,6 +426,10 @@ NEW_TESTS_RES = \
 	test_functions.res \
 	test_function_lists.res \
 	test_getcwd.res \
+	test_gettext.res \
+	test_gettext_cp1251.res \
+	test_gettext_utf8.res \
+	test_gettext_make.res \
 	test_getvar.res \
 	test_gf.res \
 	test_gn.res \

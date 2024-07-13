@@ -58,7 +58,7 @@ static char *ctrl_x_msgs[] =
     N_(" Command-line completion (^V^N^P)"),
     N_(" User defined completion (^U^N^P)"),
     N_(" Omni completion (^O^N^P)"),
-    N_(" Spelling suggestion (s^N^P)"),
+    N_(" Spelling suggestion (^S^N^P)"),
     N_(" Keyword Local completion (^N^P)"),
     NULL,   // CTRL_X_EVAL doesn't use msg.
     N_(" Command-line completion (^V^N^P)"),
@@ -1203,11 +1203,13 @@ trigger_complete_changed_event(int cur)
  * pumitem qsort compare func
  */
     static int
-ins_compl_fuzzy_sort(const void *a, const void *b)
+ins_compl_fuzzy_cmp(const void *a, const void *b)
 {
     const int sa = (*(pumitem_T *)a).pum_score;
     const int sb = (*(pumitem_T *)b).pum_score;
-    return sa == sb ? 0 : sa < sb ? 1 : -1;
+    const int ia = (*(pumitem_T *)a).pum_idx;
+    const int ib = (*(pumitem_T *)b).pum_idx;
+    return sa == sb ? (ia == ib ? 0 : (ia < ib ? -1 : 1)) : (sa < sb ? 1 : -1);
 }
 
 /*
@@ -1226,7 +1228,7 @@ ins_compl_build_pum(void)
     int		cur = -1;
     int		lead_len = 0;
     int		max_fuzzy_score = 0;
-    int		cur_cot_flags = get_cot_flags();
+    unsigned int cur_cot_flags = get_cot_flags();
     int		compl_no_select = (cur_cot_flags & COT_NOSELECT) != 0;
     int		compl_fuzzy_match = (cur_cot_flags & COT_FUZZY) != 0;
 
@@ -1296,6 +1298,8 @@ ins_compl_build_pum(void)
 	    }
 	    else if (compl_fuzzy_match)
 	    {
+		if (i == 0)
+		    shown_compl = compl;
 		// Update the maximum fuzzy score and the shown match
 		// if the current item's score is higher
 		if (compl->cp_score > max_fuzzy_score)
@@ -1303,6 +1307,11 @@ ins_compl_build_pum(void)
 		    did_find_shown_match = TRUE;
 		    max_fuzzy_score = compl->cp_score;
 		    compl_shown_match = compl;
+		}
+
+		if (!shown_match_ok && compl == compl_shown_match && !compl_no_select)
+		{
+		    cur = i;
 		    shown_match_ok = TRUE;
 		}
 
@@ -1314,8 +1323,8 @@ ins_compl_build_pum(void)
 			&& (max_fuzzy_score > 0
 				|| (compl_leader == NULL || lead_len == 0)))
 		{
-		    shown_match_ok = TRUE;
-		    cur = 0;
+		    if (match_at_original_text(compl_shown_match))
+		      compl_shown_match = shown_compl;
 		}
 	    }
 
@@ -1355,8 +1364,14 @@ ins_compl_build_pum(void)
     } while (compl != NULL && !is_first_match(compl));
 
     if (compl_fuzzy_match && compl_leader != NULL && lead_len > 0)
+    {
+	for (i = 0; i < compl_match_arraysize; i++)
+	    compl_match_array[i].pum_idx = i;
 	// sort by the largest score of fuzzy match
-	qsort(compl_match_array, (size_t)compl_match_arraysize, sizeof(pumitem_T), ins_compl_fuzzy_sort);
+	qsort(compl_match_array, (size_t)compl_match_arraysize,
+				       sizeof(pumitem_T), ins_compl_fuzzy_cmp);
+	shown_match_ok = TRUE;
+    }
 
     if (!shown_match_ok)    // no displayed match at all
 	cur = -1;
@@ -1430,6 +1445,15 @@ ins_compl_show_pum(void)
 
 #define DICT_FIRST	(1)	// use just first element in "dict"
 #define DICT_EXACT	(2)	// "dict" is the exact name of a file
+
+/*
+ * Get current completion leader
+ */
+    char_u *
+ins_compl_leader(void)
+{
+    return compl_leader != NULL ? compl_leader : compl_orig_text;
+}
 
 /*
  * Add any identifiers that match the given pattern "pat" in the list of
@@ -2925,7 +2949,7 @@ set_completion(colnr_T startcol, list_T *list)
     int save_w_wrow = curwin->w_wrow;
     int save_w_leftcol = curwin->w_leftcol;
     int flags = CP_ORIGINAL_TEXT;
-    int cur_cot_flags = get_cot_flags();
+    unsigned int cur_cot_flags = get_cot_flags();
     int compl_longest = (cur_cot_flags & COT_LONGEST) != 0;
     int compl_no_insert = (cur_cot_flags & COT_NOINSERT) != 0;
     int compl_no_select = (cur_cot_flags & COT_NOSELECT) != 0;
@@ -4080,10 +4104,10 @@ find_comp_when_fuzzy(void)
     int		is_backward = compl_shows_dir_backward();
     compl_T	*comp = NULL;
 
-    if (compl_match_array == NULL ||
-	    (is_forward && compl_selected_item == compl_match_arraysize - 1)
+    if ((is_forward && compl_selected_item == compl_match_arraysize - 1)
 	    || (is_backward && compl_selected_item == 0))
-	return compl_first_match;
+	return compl_first_match != compl_shown_match ? compl_first_match :
+	    (compl_first_match->cp_prev ? compl_first_match->cp_prev : NULL);
 
     if (is_forward)
 	target_idx = compl_selected_item + 1;
@@ -4126,7 +4150,7 @@ find_next_completion_match(
 {
     int	    found_end = FALSE;
     compl_T *found_compl = NULL;
-    int	    cur_cot_flags = get_cot_flags();
+    unsigned int cur_cot_flags = get_cot_flags();
     int	    compl_no_select = (cur_cot_flags & COT_NOSELECT) != 0;
     int	    compl_fuzzy_match = (cur_cot_flags & COT_FUZZY) != 0;
 
@@ -4134,8 +4158,8 @@ find_next_completion_match(
     {
 	if (compl_shows_dir_forward() && compl_shown_match->cp_next != NULL)
 	{
-	    compl_shown_match = !compl_fuzzy_match ? compl_shown_match->cp_next
-						: find_comp_when_fuzzy();
+	    compl_shown_match = compl_fuzzy_match && compl_match_array != NULL
+			? find_comp_when_fuzzy() : compl_shown_match->cp_next;
 	    found_end = (compl_first_match != NULL
 		    && (is_first_match(compl_shown_match->cp_next)
 			|| is_first_match(compl_shown_match)));
@@ -4144,8 +4168,8 @@ find_next_completion_match(
 		&& compl_shown_match->cp_prev != NULL)
 	{
 	    found_end = is_first_match(compl_shown_match);
-	    compl_shown_match = !compl_fuzzy_match ? compl_shown_match->cp_prev
-						   : find_comp_when_fuzzy();
+	    compl_shown_match = compl_fuzzy_match && compl_match_array != NULL
+			? find_comp_when_fuzzy() : compl_shown_match->cp_prev;
 	    found_end |= is_first_match(compl_shown_match);
 	}
 	else
@@ -4246,7 +4270,7 @@ ins_compl_next(
     int	    advance;
     int	    started = compl_started;
     buf_T   *orig_curbuf = curbuf;
-    int	    cur_cot_flags = get_cot_flags();
+    unsigned int cur_cot_flags = get_cot_flags();
     int	    compl_no_insert = (cur_cot_flags & COT_NOINSERT) != 0;
     int	    compl_fuzzy_match = (cur_cot_flags & COT_FUZZY) != 0;
 
@@ -4601,7 +4625,6 @@ get_normal_compl_info(char_u *line, int startcol, colnr_T curs_col)
     }
 
     compl_patternlen = STRLEN(compl_pattern);
-
     return OK;
 }
 

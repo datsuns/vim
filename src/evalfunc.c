@@ -28,6 +28,7 @@ static void f_balloon_show(typval_T *argvars, typval_T *rettv);
 static void f_balloon_split(typval_T *argvars, typval_T *rettv);
 # endif
 #endif
+static void f_bindtextdomain(typval_T *argvars, typval_T *rettv);
 static void f_byte2line(typval_T *argvars, typval_T *rettv);
 static void f_call(typval_T *argvars, typval_T *rettv);
 static void f_changenr(typval_T *argvars, typval_T *rettv);
@@ -81,6 +82,7 @@ static void f_haslocaldir(typval_T *argvars, typval_T *rettv);
 static void f_hlID(typval_T *argvars, typval_T *rettv);
 static void f_hlexists(typval_T *argvars, typval_T *rettv);
 static void f_hostname(typval_T *argvars, typval_T *rettv);
+static void f_id(typval_T *argvars, typval_T *rettv);
 static void f_index(typval_T *argvars, typval_T *rettv);
 static void f_indexof(typval_T *argvars, typval_T *rettv);
 static void f_input(typval_T *argvars, typval_T *rettv);
@@ -1133,6 +1135,7 @@ static argcheck_T arg2_number_bool[] = {arg_number, arg_bool};
 static argcheck_T arg2_number_dict_any[] = {arg_number, arg_dict_any};
 static argcheck_T arg2_number_list[] = {arg_number, arg_list_any};
 static argcheck_T arg2_number_string[] = {arg_number, arg_string};
+static argcheck_T arg2_number_buffer[] = {arg_number, arg_buffer};
 static argcheck_T arg2_number_string_or_list[] = {arg_number, arg_string_or_list_any};
 static argcheck_T arg2_str_or_nr_or_list_dict[] = {arg_str_or_nr_or_list, arg_dict_any};
 static argcheck_T arg2_string[] = {arg_string, arg_string};
@@ -1823,6 +1826,8 @@ static funcentry_T global_functions[] =
 	    NULL
 #endif
 			},
+    {"bindtextdomain",	2, 2, 0,	    arg2_string,
+			ret_bool,	    f_bindtextdomain},
     {"blob2list",	1, 1, FEARG_1,	    arg1_blob,
 			ret_list_number,    f_blob2list},
     {"browse",		4, 4, 0,	    arg4_browse,
@@ -2153,7 +2158,7 @@ static funcentry_T global_functions[] =
 			ret_any,	    f_gettabwinvar},
     {"gettagstack",	0, 1, FEARG_1,	    arg1_number,
 			ret_dict_any,	    f_gettagstack},
-    {"gettext",		1, 1, FEARG_1,	    arg1_string,
+    {"gettext",		1, 2, FEARG_1,	    arg2_string,
 			ret_string,	    f_gettext},
     {"getwininfo",	0, 1, FEARG_1,	    arg1_number,
 			ret_list_dict_any,  f_getwininfo},
@@ -2203,6 +2208,8 @@ static funcentry_T global_functions[] =
 			ret_string,	    f_hostname},
     {"iconv",		3, 3, FEARG_1,	    arg3_string,
 			ret_string,	    f_iconv},
+    {"id",		1, 1, FEARG_1,	    NULL,
+			ret_string,	    f_id},
     {"indent",		1, 1, FEARG_1,	    arg1_lnum,
 			ret_number,	    f_indent},
     {"index",		2, 4, FEARG_1,	    arg24_index,
@@ -2421,6 +2428,8 @@ static funcentry_T global_functions[] =
 			ret_void,	    PROP_FUNC(f_popup_move)},
     {"popup_notification", 2, 2, FEARG_1,   arg2_str_or_nr_or_list_dict,
 			ret_number,	    PROP_FUNC(f_popup_notification)},
+    {"popup_setbuf",	2, 2, FEARG_1,	    arg2_number_buffer,
+			ret_number_bool,    PROP_FUNC(f_popup_setbuf)},
     {"popup_setoptions", 2, 2, FEARG_1,	    arg2_number_dict_any,
 			ret_void,	    PROP_FUNC(f_popup_setoptions)},
     {"popup_settext",	2, 2, FEARG_1,	    arg2_number_string_or_list,
@@ -3471,6 +3480,33 @@ get_buf_arg(typval_T *arg)
     if (buf == NULL)
 	semsg(_(e_invalid_buffer_name_str), tv_get_string(arg));
     return buf;
+}
+
+/*
+ * "bindtextdomain(package, path)" function
+ */
+    static void
+f_bindtextdomain(typval_T *argvars, typval_T *rettv)
+{
+    rettv->v_type = VAR_BOOL;
+    rettv->vval.v_number = VVAL_TRUE;
+
+    if (check_for_nonempty_string_arg(argvars, 0) == FAIL
+	    || check_for_nonempty_string_arg(argvars, 1) == FAIL)
+	return;
+
+    if (strcmp((const char *)argvars[0].vval.v_string, VIMPACKAGE) == 0)
+	semsg(_(e_invalid_argument_str), tv_get_string(&argvars[0]));
+    else
+    {
+	if (bindtextdomain((const char *)argvars[0].vval.v_string, (const char *)argvars[1].vval.v_string) == NULL)
+	{
+	    do_outofmem_msg((long)0);
+	    rettv->vval.v_number = VVAL_FALSE;
+	}
+    }
+
+    return;
 }
 
 /*
@@ -5110,6 +5146,36 @@ f_get(typval_T *argvars, typval_T *rettv)
 			list_append_tv(rettv->vval.v_list, &pt->pt_argv[i]);
 		}
 	    }
+	    else if (STRCMP(what, "arity") == 0)
+	    {
+		int required = 0, optional = 0, varargs = FALSE;
+		char_u *name = partial_name(pt);
+
+		get_func_arity(name, &required, &optional, &varargs);
+
+		rettv->v_type = VAR_DICT;
+		if (rettv_dict_alloc(rettv) == OK)
+		{
+		    dict_T *dict = rettv->vval.v_dict;
+
+		    // Take into account the arguments of the partial, if any.
+		    // Note that it is possible to supply more arguments than the function
+		    // accepts.
+		    if (pt->pt_argc >= required + optional)
+			required = optional = 0;
+		    else if (pt->pt_argc > required)
+		    {
+			optional -= pt->pt_argc - required;
+			required = 0;
+		    }
+		    else
+			required -= pt->pt_argc;
+
+		    dict_add_number(dict, "required", required);
+		    dict_add_number(dict, "optional", optional);
+		    dict_add_bool(dict, "varargs", varargs);
+		}
+	    }
 	    else
 		semsg(_(e_invalid_argument_str), what);
 
@@ -6030,11 +6096,39 @@ f_gettagstack(typval_T *argvars, typval_T *rettv)
     static void
 f_gettext(typval_T *argvars, typval_T *rettv)
 {
-    if (check_for_nonempty_string_arg(argvars, 0) == FAIL)
+#if defined(HAVE_BIND_TEXTDOMAIN_CODESET)
+    char *prev = NULL;
+#endif
+
+    if (check_for_nonempty_string_arg(argvars, 0) == FAIL
+	|| check_for_opt_string_arg(argvars, 1) == FAIL)
 	return;
 
     rettv->v_type = VAR_STRING;
-    rettv->vval.v_string = vim_strsave((char_u *)_(argvars[0].vval.v_string));
+
+    if (argvars[1].v_type == VAR_STRING &&
+	    argvars[1].vval.v_string != NULL &&
+	    *(argvars[1].vval.v_string) != NUL)
+    {
+#if defined(HAVE_BIND_TEXTDOMAIN_CODESET)
+	prev = bind_textdomain_codeset((const char *)argvars[1].vval.v_string, (char *)p_enc);
+#endif
+
+#if defined(HAVE_DGETTEXT)
+	rettv->vval.v_string = vim_strsave((char_u *)dgettext((const char *)argvars[1].vval.v_string, (const char *)argvars[0].vval.v_string));
+#else
+	textdomain((const char *)argvars[1].vval.v_string);
+	rettv->vval.v_string = vim_strsave((char_u *)_(argvars[0].vval.v_string));
+	textdomain(VIMPACKAGE);
+#endif
+
+#if defined(HAVE_BIND_TEXTDOMAIN_CODESET)
+	if (prev != NULL)
+	    bind_textdomain_codeset((const char *)argvars[1].vval.v_string, prev);
+#endif
+    }
+    else
+	rettv->vval.v_string = vim_strsave((char_u *)_(argvars[0].vval.v_string));
 }
 
 // for VIM_VERSION_ defines
@@ -7435,6 +7529,46 @@ f_hostname(typval_T *argvars UNUSED, typval_T *rettv)
 }
 
 /*
+ * "id()" function
+ * Identity. Return address of item as a hex string, %p format.
+ * Currently only valid for object/container types.
+ * Return empty string if not an object.
+ */
+    void
+f_id(typval_T *argvars, typval_T *rettv)
+{
+    char    numbuf[NUMBUFLEN];
+    char    *p = numbuf;
+
+    switch (argvars[0].v_type)
+    {
+	case VAR_LIST:
+	case VAR_DICT:
+	case VAR_OBJECT:
+	case VAR_JOB:
+	case VAR_CHANNEL:
+	case VAR_BLOB:
+	    // Assume pointer value in typval_T vval union at common location.
+	    if (argvars[0].vval.v_object != NULL)
+	    {
+		// "v" gets the address as an integer
+		uintptr_t v = (uintptr_t)(void *)argvars[0].vval.v_object;
+		// Build a hex string from the item's address; it is in
+		// reverse order. Ignore trailing zeros.
+		for (; p < numbuf + sizeof(uintptr_t) * 2 && v != 0;
+								++p, v >>= 4)
+		    *p = "0123456789abcdef"[v & 0xf];
+	    }
+	default:
+	    break;
+    }
+    *p = NUL;
+
+    rettv->v_type = VAR_STRING;
+    rettv->vval.v_string = vim_strsave((char_u *)numbuf);
+}
+
+/*
  * "index()" function
  */
     static void
@@ -7483,7 +7617,7 @@ f_index(typval_T *argvars, typval_T *rettv)
 	{
 	    tv.v_type = VAR_NUMBER;
 	    tv.vval.v_number = blob_get(b, idx);
-	    if (tv_equal(&tv, &argvars[1], ic, FALSE))
+	    if (tv_equal(&tv, &argvars[1], ic))
 	    {
 		rettv->vval.v_number = idx;
 		return;
@@ -7516,7 +7650,7 @@ f_index(typval_T *argvars, typval_T *rettv)
     }
 
     for ( ; item != NULL; item = item->li_next, ++idx)
-	if (tv_equal(&item->li_tv, &argvars[1], ic, FALSE))
+	if (tv_equal(&item->li_tv, &argvars[1], ic))
 	{
 	    rettv->vval.v_number = idx;
 	    break;
@@ -9215,69 +9349,47 @@ f_test_srand_seed(typval_T *argvars, typval_T *rettv UNUSED)
     static void
 init_srand(UINT32_T *x)
 {
-#ifndef MSWIN
-    static int dev_urandom_state = NOTDONE;  // FAIL or OK once tried
-#endif
+    struct {
+	union {
+	    UINT32_T number;
+	    char_u   bytes[sizeof(UINT32_T)];
+	} contents;
+    } buf;
 
     if (srand_seed_for_testing_is_used)
     {
 	*x = srand_seed_for_testing;
 	return;
     }
-#ifndef MSWIN
-    if (dev_urandom_state != FAIL)
-    {
-	int  fd = open("/dev/urandom", O_RDONLY);
-	struct {
-	    union {
-		UINT32_T number;
-		char     bytes[sizeof(UINT32_T)];
-	    } contents;
-	} buf;
 
-	// Attempt reading /dev/urandom.
-	if (fd == -1)
-	    dev_urandom_state = FAIL;
-	else
-	{
-	    buf.contents.number = 0;
-	    if (read(fd, buf.contents.bytes, sizeof(UINT32_T))
-							   != sizeof(UINT32_T))
-		dev_urandom_state = FAIL;
-	    else
-	    {
-		dev_urandom_state = OK;
-		*x = buf.contents.number;
-	    }
-	    close(fd);
-	}
+    if (mch_get_random(buf.contents.bytes, sizeof(buf.contents.bytes)) == OK)
+    {
+	*x = buf.contents.number;
+	return;
     }
-    if (dev_urandom_state != OK)
+
+    // The system's random number generator doesn't work, fall back to:
+    // - randombytes_random()
+    // - reltime() or time()
+    // - XOR with process ID
+#if defined(FEAT_SODIUM)
+    if (crypt_sodium_init() >= 0)
+	*x = crypt_sodium_randombytes_random();
+    else
 #endif
     {
-	// Reading /dev/urandom doesn't work, fall back to:
-	// - randombytes_random()
-	// - reltime() or time()
-	// - XOR with process ID
-#if defined(FEAT_SODIUM)
-	if (crypt_sodium_init() >= 0)
-	    *x = crypt_sodium_randombytes_random();
-	else
-#endif
-	{
 #if defined(FEAT_RELTIME)
-	    proftime_T res;
-	    profile_start(&res);
+	proftime_T res;
+	profile_start(&res);
 #  if defined(MSWIN)
-	    *x = (UINT32_T)res.LowPart;
+	*x = (UINT32_T)res.LowPart;
 #  else
-	    *x = (UINT32_T)res.tv_fsec;
+	*x = (UINT32_T)res.tv_fsec;
 #  endif
 #else
-	    *x = vim_time();
+	*x = vim_time();
 #endif
-	    *x ^= mch_get_pid();
-	}
+	*x ^= mch_get_pid();
     }
 }
 
