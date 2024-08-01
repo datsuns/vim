@@ -41,7 +41,7 @@ converted: $(MOCONVERTED)
 
 .po.ck:
 	$(VIMPROG) -u NONE --noplugins -e -s -X --cmd "set enc=utf-8" \
-		-S check.vim -c "if error == 0 | q | else | num 2 | cq | endif" $<
+		-S check.vim -c "if error == 0 | q | else | num 2 | cq | endif" $< >/dev/null
 	touch $@
 
 check: $(CHECKFILES)
@@ -314,7 +314,7 @@ $(LANGUAGES):
 #######
 
 # Preparing the POT file of the plug-in package
-POT_PLUGPACKAGE_PATH != pwd
+POT_PLUGPACKAGE_PATH = $(PWD)
 $(PLUGPACKAGE).pot: $(PO_PLUG_INPUTLIST)
 	$(VIMPROG) -u NONE --not-a-term -S tojavascript.vim \
 		$(PLUGPACKAGE).pot $?
@@ -327,7 +327,7 @@ $(PLUGPACKAGE).pot: $(PO_PLUG_INPUTLIST)
 	rm -f *.js ./vim_to_js
 
 # Converting the PO file of the plug-in package to the binary format of the MO
-MO_PLUGPACKAGE_PATH != pwd
+MO_PLUGPACKAGE_PATH = $(PWD)
 $(PLUGPACKAGE).mo: $(PO_PLUGPACKAGE)
 	$(MSGFMTCMD) -o $(MO_PLUGPACKAGE_PATH)/$@ $<
 

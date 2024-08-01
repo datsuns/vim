@@ -3,7 +3,7 @@
 " Maintainer: This runtime file is looking for a new maintainer.
 " Date:		  May 03, 2023
 " Version:	173a
-" Last Change:
+" Last Change: {{{1
 " 	2023 Nov 21 by Vim Project: ignore wildignore when expanding $COMSPEC	(v173a)
 " 	2023 Nov 22 by Vim Project: fix handling of very long filename on longlist style	(v173a)
 "   2024 Feb 19 by Vim Project: (announce adoption)
@@ -16,6 +16,10 @@
 "   2024 Jun 04 by Vim Project: set bufhidden if buffer changed, nohidden is set and buffer shall be switched (#14915)
 "   2024 Jun 13 by Vim Project: glob() on Windows fails when a directory name contains [] (#14952)
 "   2024 Jun 23 by Vim Project: save ad restore registers when liststyle = WIDELIST (#15077, #15114)
+"   2024 Jul 22 by Vim Project: avoid endless recursion (#15318)
+"   2024 Jul 23 by Vim Project: escape filename before trying to delete it (#15330)
+"   2024 Jul 30 by Vim Project: handle mark-copy to same target directory (#12112)
+"   }}}
 " Former Maintainer:	Charles E Campbell
 " GetLatestVimScripts: 1075 1 :AutoInstall: netrw.vim
 " Copyright:    Copyright (C) 2016 Charles E. Campbell {{{1
@@ -694,12 +698,11 @@ fun! netrw#Explore(indx,dosplit,style,...)
      \ ((isdirectory(s:NetrwFile(a:1))))?  'is a directory'           : 'is not a directory',
      \ '~'.expand("<slnum>"))
    if a:1 =~ "\\\s" && !filereadable(s:NetrwFile(a:1)) && !isdirectory(s:NetrwFile(a:1))
-"    call Decho("re-trying Explore with <".substitute(a:1,'\\\(\s\)','\1','g').">",'~'.expand("<slnum>"))
-    call netrw#Explore(a:indx,a:dosplit,a:style,substitute(a:1,'\\\(\s\)','\1','g'))
-"    call Dret("netrw#Explore : returning from retry")
-    return
-"   else " Decho
-"    call Decho("retry not needed",'~'.expand("<slnum>"))
+    let a1 = substitute(a:1, '\\\(\s\)', '\1', 'g')
+    if a1 != a:1
+      call netrw#Explore(a:indx, a:dosplit, a:style, a1)
+      return
+    endif
    endif
   endif
 
@@ -7164,7 +7167,7 @@ fun! s:NetrwMarkFileCopy(islocal,...)
    endif
 
    " copy marked files while within the same directory (ie. allow renaming)
-   if simplify(s:netrwmftgt) == simplify(b:netrw_curdir)
+   if s:StripTrailingSlash(simplify(s:netrwmftgt)) == s:StripTrailingSlash(simplify(b:netrw_curdir))
     if len(s:netrwmarkfilelist_{bufnr('%')}) == 1
      " only one marked file
 "     call Decho("case: only one marked file",'~'.expand("<slnum>"))
@@ -7241,7 +7244,7 @@ fun! s:NetrwMarkFileCopy(islocal,...)
 "   call Decho("system(".copycmd." '".args."' '".tgt."')",'~'.expand("<slnum>"))
    call system(copycmd.g:netrw_localcopycmdopt." '".args."' '".tgt."'")
    if v:shell_error != 0
-    if exists("b:netrw_curdir") && b:netrw_curdir != getcwd() && !g:netrw_keepdir
+    if exists("b:netrw_curdir") && b:netrw_curdir != getcwd() && g:netrw_keepdir
      call netrw#ErrorMsg(s:ERROR,"copy failed; perhaps due to vim's current directory<".getcwd()."> not matching netrw's (".b:netrw_curdir.") (see :help netrw-cd)",101)
     else
      call netrw#ErrorMsg(s:ERROR,"tried using g:netrw_localcopycmd<".g:netrw_localcopycmd.">; it doesn't work!",80)
@@ -11452,7 +11455,7 @@ fun! s:NetrwLocalRmFile(path,fname,all)
   let all= a:all
   let ok = ""
   NetrwKeepj norm! 0
-  let rmfile= s:NetrwFile(s:ComposePath(a:path,a:fname))
+  let rmfile= s:NetrwFile(s:ComposePath(a:path,escape(a:fname, '\\')))
 "  call Decho("rmfile<".rmfile.">",'~'.expand("<slnum>"))
 
   if rmfile !~ '^"' && (rmfile =~ '@$' || rmfile !~ '[\/]$')
@@ -11461,7 +11464,7 @@ fun! s:NetrwLocalRmFile(path,fname,all)
    if !all
     echohl Statement
     call inputsave()
-    let ok= input("Confirm deletion of file<".rmfile."> ","[{y(es)},n(o),a(ll),q(uit)] ")
+    let ok= input("Confirm deletion of file <".rmfile."> ","[{y(es)},n(o),a(ll),q(uit)] ")
     call inputrestore()
     echohl NONE
     if ok == ""
@@ -11485,7 +11488,7 @@ fun! s:NetrwLocalRmFile(path,fname,all)
    if !all
     echohl Statement
     call inputsave()
-    let ok= input("Confirm *recursive* deletion of directory<".rmfile."> ","[{y(es)},n(o),a(ll),q(uit)] ")
+    let ok= input("Confirm *recursive* deletion of directory <".rmfile."> ","[{y(es)},n(o),a(ll),q(uit)] ")
     call inputrestore()
     let ok= substitute(ok,'\[{y(es)},n(o),a(ll),q(uit)]\s*','','e')
     if ok == ""
@@ -11643,6 +11646,14 @@ fun! netrw#WinPath(path)
 "  call Dret("netrw#WinPath <".path.">")
   return path
 endfun
+
+" ---------------------------------------------------------------------
+" s:StripTrailingSlash: removes trailing slashes from a path {{{2
+fun! s:StripTrailingSlash(path)
+   " remove trailing slash
+   return substitute(a:path, '[/\\]$', '', 'g')
+endfun
+
 
 " ---------------------------------------------------------------------
 " s:NetrwBadd: adds marked files to buffer list or vice versa {{{2
