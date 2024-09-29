@@ -21,6 +21,11 @@
 "   2024 Jul 30 by Vim Project: handle mark-copy to same target directory (#12112)
 "   2024 Aug 02 by Vim Project: honor g:netrw_alt{o,v} for :{S,H,V}explore (#15417)
 "   2024 Aug 15 by Vim Project: style changes, prevent E121 (#15501)
+"   2024 Aug 22 by Vim Project: fix mf-selection highlight (#15551)
+"   2024 Aug 22 by Vim Project: adjust echo output of mx command (#15550)
+"   2024 Sep 15 by Vim Project: more strict confirmation dialog (#15680)
+"   2024 Sep 19 by Vim Project: mf-selection highlight uses wrong pattern (#15700)
+"   2024 Sep 21 by Vim Project: remove extraneous closing bracket (#15718)
 "   }}}
 " Former Maintainer:	Charles E Campbell
 " GetLatestVimScripts: 1075 1 :AutoInstall: netrw.vim
@@ -4229,7 +4234,7 @@ fun! s:NetrwGetBuffer(islocal,dirname)
     endif
 "    call Decho("  NetrwTreeListing: bufnum#".bufnum,'~'.expand("<slnum>"))
     if !bufexists(bufnum)
-     call remove(s:netrwbuf,"NetrwTreeListing"])
+     call remove(s:netrwbuf,"NetrwTreeListing")
      let bufnum= -1
     endif
    elseif bufnr("NetrwTreeListing") != -1
@@ -6887,11 +6892,7 @@ fun! s:NetrwMarkFile(islocal,fname)
 
   let ykeep   = @@
   let curbufnr= bufnr("%")
-  if a:fname =~ '^\a'
-   let leader= '\<'
-  else
-   let leader= ''
-  endif
+  let leader= '\%(^\|\s\)\zs'
   if a:fname =~ '\a$'
    let trailer = '\>[@=|\/\*]\=\ze\%(  \|\t\|$\)'
   else
@@ -7500,7 +7501,13 @@ fun! s:NetrwMarkFileExe(islocal,enbloc)
        NetrwKeepj call netrw#ErrorMsg(s:ERROR,"command<".xcmd."> failed, aborting",54)
        break
       else
-       echo ret
+       if ret !=# ''
+        echo "\n"
+        " skip trailing new line
+        echo ret[0:-2]
+       else
+        echo ret
+       endif
       endif
      endfor
 
@@ -11384,7 +11391,7 @@ fun! s:NetrwLocalRm(path) range
     let ok= s:NetrwLocalRmFile(a:path,fname,all)
     if ok =~# 'q\%[uit]' || ok == "no"
      break
-    elseif ok =~# 'a\%[ll]'
+    elseif ok =~# '^a\%[ll]$'
      let all= 1
     endif
    endfor
@@ -11413,7 +11420,7 @@ fun! s:NetrwLocalRm(path) range
     let ok= s:NetrwLocalRmFile(a:path,curword,all)
     if ok =~# 'q\%[uit]' || ok == "no"
      break
-    elseif ok =~# 'a\%[ll]'
+    elseif ok =~# '^a\%[ll]$'
      let all= 1
     endif
     let ctr= ctr + 1
@@ -11460,12 +11467,12 @@ fun! s:NetrwLocalRmFile(path,fname,all)
 "    call Decho("response: ok<".ok.">",'~'.expand("<slnum>"))
     let ok= substitute(ok,'\[{y(es)},n(o),a(ll),q(uit)]\s*','','e')
 "    call Decho("response: ok<".ok."> (after sub)",'~'.expand("<slnum>"))
-    if ok =~# 'a\%[ll]'
+    if ok =~# '^a\%[ll]$'
      let all= 1
     endif
    endif
 
-   if all || ok =~# 'y\%[es]' || ok == ""
+   if all || ok =~# '^y\%[es]$' || ok == ""
     let ret= s:NetrwDelete(rmfile)
 "    call Decho("errcode=".v:shell_error." ret=".ret,'~'.expand("<slnum>"))
    endif
@@ -11481,13 +11488,13 @@ fun! s:NetrwLocalRmFile(path,fname,all)
     if ok == ""
      let ok="no"
     endif
-    if ok =~# 'a\%[ll]'
+    if ok =~# '^a\%[ll]$'
      let all= 1
     endif
    endif
    let rmfile= substitute(rmfile,'[\/]$','','e')
 
-   if all || ok =~# 'y\%[es]' || ok == ""
+   if all || ok =~# '^y\%[es]$' || ok == ""
     if delete(rmfile,"rf")
      call netrw#ErrorMsg(s:ERROR,"unable to delete directory <".rmfile.">!",103)
     endif
