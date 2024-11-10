@@ -89,7 +89,7 @@ if has('timers')
     let g:triggered = 0
     au CursorHoldI * let g:triggered += 1
     set updatetime=100
-    call job_start(has('win32') ? 'cmd /c echo:' : 'echo',
+    call job_start(has('win32') ? 'cmd /D /c echo:' : 'echo',
           \ {'exit_cb': {-> timer_start(200, 'ExitInsertMode')}})
     call feedkeys('a', 'x!')
     call assert_equal(1, g:triggered)
@@ -4881,6 +4881,25 @@ func Test_GuiEnter_Turkish_locale()
     " can't use Turkish locale
     throw 'Skipped: Turkish locale not available'
   endtry
+endfunc
+
+" This was using freed memory
+func Test_autocmd_BufWinLeave_with_vsp()
+  new
+  let fname = 'XXXBufWinLeaveUAF.txt'
+  let dummy = 'XXXDummy.txt'
+  call writefile([], fname)
+  call writefile([], dummy)
+  defer delete(fname)
+  defer delete(dummy)
+  exe "e " fname
+  vsp
+  augroup testing
+    exe "au BufWinLeave " .. fname .. " :e " dummy .. "| vsp " .. fname
+  augroup END
+  bw
+  call CleanUpTestAuGroup()
+  exe "bw! " .. dummy
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

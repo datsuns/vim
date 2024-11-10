@@ -171,7 +171,7 @@ jobs:
           normal)
             ;;
           huge)
-            echo "TEST=scripttests test_libvterm"
+            echo "TEST=scripttests test_libvterm indenttest syntaxtest"
             INTERFACE=${{ matrix.interface || 'yes' }}
             if ${{ matrix.python3 == 'stable-abi' }}; then
               PYTHON3_CONFOPT="--with-python3-stable-abi=3.8"
@@ -194,9 +194,9 @@ jobs:
             echo "TEST=unittests"
           fi
           if ${{ contains(matrix.extra, 'asan') }}; then
-            echo "SANITIZER_CFLAGS=-g -O1 -DABORT_ON_INTERNAL_ERROR -DEXITFREE -fsanitize-recover=all -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer"
-            echo "ASAN_OPTIONS=print_stacktrace=1 log_path=${LOG_DIR}/asan"
-            echo "UBSAN_OPTIONS=print_stacktrace=1 log_path=${LOG_DIR}/ubsan"
+            echo "SANITIZER_CFLAGS=-g -O0 -DABORT_ON_INTERNAL_ERROR -DEXITFREE -fsanitize-recover=all -fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer"
+            echo "ASAN_OPTIONS=print_stacktrace=1:log_path=${LOG_DIR}/asan"
+            echo "UBSAN_OPTIONS=print_stacktrace=1:log_path=${LOG_DIR}/ubsan"
             echo "LSAN_OPTIONS=suppressions=${GITHUB_WORKSPACE}/src/testdir/lsan-suppress.txt"
           fi
           if ${{ contains(matrix.extra, 'vimtags') }}; then
@@ -268,11 +268,11 @@ jobs:
       - name: Test
         timeout-minutes: 25
         run: |
-          do_test() { sg audio "sg $(id -gn) '$*'"; }
+          do_test() { echo "$*"; sg audio "sg $(id -gn) '$*'"; }
           do_test make ${SHADOWOPT} ${TEST}
 
       - if: ${{ !cancelled() }}
-        uses: ./.github/actions/screendump
+        uses: ./.github/actions/test_artifacts
 
       - name: Vim tags
         if: contains(matrix.extra, 'vimtags')
@@ -304,6 +304,7 @@ jobs:
         if: contains(matrix.extra, 'asan') && !cancelled()
         run: |
           for f in $(grep -lR '#[[:digit:]]* *0x[[:xdigit:]]*' "${LOG_DIR}"); do
+            echo "$f"
             asan_symbolize -l "$f"
             false # in order to fail a job
           done
@@ -322,7 +323,7 @@ jobs:
       fail-fast: false
       matrix:
         features: [tiny, normal, huge]
-        runner: [macos-12, macos-14]
+        runner: [macos-13, macos-14]
 
     steps:
       - name: Checkout repository from github
@@ -333,14 +334,6 @@ jobs:
         run: |
           brew install lua libtool
           echo "LUA_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
-
-      - name: Install blackhole-2ch for macos-12
-        if: matrix.features == 'huge' && matrix.runner == 'macos-12'
-        run: |
-          # Install audio device for playing sound since some of macos-12 machines have no audio device installed.
-          if system_profiler -json SPAudioDataType | jq -er '.SPAudioDataType[]._items == []'; then
-            brew install blackhole-2ch
-          fi
 
       - name: Grant microphone access for macos-14
         if: matrix.features == 'huge' && matrix.runner == 'macos-14'
@@ -396,12 +389,12 @@ jobs:
           brew install diffutils
 
       - name: Test
-        timeout-minutes: 20
+        timeout-minutes: 25
         run: |
           make ${TEST}
 
       - if: ${{ !cancelled() }}
-        uses: ./.github/actions/screendump
+        uses: ./.github/actions/test_artifacts
 
   windows:
     runs-on: windows-2022
@@ -711,7 +704,7 @@ jobs:
           )
 
       - if: ${{ !cancelled() }}
-        uses: ./.github/actions/screendump
+        uses: ./.github/actions/test_artifacts
 
       - name: Generate gcov files
         if: matrix.coverage

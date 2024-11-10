@@ -1014,6 +1014,9 @@ free_all_options(void)
     }
     free_operatorfunc_option();
     free_tagfunc_option();
+# if defined(FEAT_EVAL)
+    free_findfunc_option();
+# endif
 }
 #endif
 
@@ -2251,10 +2254,11 @@ do_set_option_numeric(
      * Different ways to set a number option:
      * &	    set to default value
      * <	    set to global value
-     * <xx>	    accept special key codes for 'wildchar'
-     * c	    accept any non-digit for 'wildchar'
-     * [-]0-9   set number
-     * other    error
+     * <xx>	    accept special key codes for 'wildchar' or 'wildcharm'
+     * ^x	    accept ctrl key codes for 'wildchar' or 'wildcharm'
+     * c	    accept any non-digit for 'wildchar' or 'wildcharm'
+     * [-]0-9	    set number
+     * other	    error
      */
     ++arg;
     if (nextchar == '&')
@@ -2281,7 +2285,7 @@ do_set_option_numeric(
 		    && !VIM_ISDIGIT(*arg))))
     {
 	value = string_to_key(arg, FALSE);
-	if (value == 0 && (long *)varp != &p_wcm)
+	if (value == 0)
 	{
 	    errmsg = e_invalid_argument;
 	    goto skip;
@@ -2793,16 +2797,21 @@ did_set_option(
 
 /*
  * Convert a key name or string into a key value.
- * Used for 'wildchar' and 'cedit' options.
+ * Used for 'cedit', 'termwinkey', 'wildchar' and 'wildcharm' options.
  * When "multi_byte" is TRUE allow for multi-byte characters.
  */
     int
 string_to_key(char_u *arg, int multi_byte)
 {
-    if (*arg == '<')
+    if (*arg == '<' && arg[1])
 	return find_key_option(arg + 1, TRUE);
-    if (*arg == '^')
-	return Ctrl_chr(arg[1]);
+    if (*arg == '^' && arg[1])
+    {
+	int key = Ctrl_chr(arg[1]);
+	if (key == 0)		// ^@ is <Nul>
+	    key = K_ZERO;
+	return key;
+    }
     if (multi_byte)
 	return PTR2CHAR(arg);
     return *arg;
@@ -2950,7 +2959,7 @@ didset_options(void)
     (void)spell_check_msm();
     (void)spell_check_sps();
     (void)compile_cap_prog(curwin->w_s);
-    (void)did_set_spell_option(TRUE);
+    (void)did_set_spell_option();
 #endif
     // set cedit_key
     (void)did_set_cedit(NULL);
@@ -3459,6 +3468,16 @@ did_set_conceallevel(optset_T *args UNUSED)
 	errmsg = e_invalid_argument;
 	curwin->w_p_cole = 3;
     }
+    if (curwin->w_allbuf_opt.wo_cole < 0)
+    {
+	errmsg = e_argument_must_be_positive;
+	curwin->w_allbuf_opt.wo_cole = 0;
+    }
+    else if (curwin->w_allbuf_opt.wo_cole > 3)
+    {
+	errmsg = e_invalid_argument;
+	curwin->w_allbuf_opt.wo_cole = 3;
+    }
 
     return errmsg;
 }
@@ -3523,6 +3542,16 @@ did_set_foldcolumn(optset_T *args UNUSED)
     {
 	errmsg = e_invalid_argument;
 	curwin->w_p_fdc = 12;
+    }
+    if (curwin->w_allbuf_opt.wo_fdc < 0)
+    {
+	errmsg = e_argument_must_be_positive;
+	curwin->w_allbuf_opt.wo_fdc = 0;
+    }
+    else if (curwin->w_allbuf_opt.wo_fdc > 12)
+    {
+	errmsg = e_invalid_argument;
+	curwin->w_allbuf_opt.wo_fdc = 12;
     }
 
     return errmsg;
@@ -3850,10 +3879,20 @@ did_set_numberwidth(optset_T *args UNUSED)
 	errmsg = e_argument_must_be_positive;
 	curwin->w_p_nuw = 1;
     }
-    if (curwin->w_p_nuw > 20)
+    else if (curwin->w_p_nuw > 20)
     {
 	errmsg = e_invalid_argument;
 	curwin->w_p_nuw = 20;
+    }
+    if (curwin->w_allbuf_opt.wo_nuw < 1)
+    {
+	errmsg = e_argument_must_be_positive;
+	curwin->w_allbuf_opt.wo_nuw = 1;
+    }
+    else if (curwin->w_allbuf_opt.wo_nuw > 20)
+    {
+	errmsg = e_invalid_argument;
+	curwin->w_allbuf_opt.wo_nuw = 20;
     }
     curwin->w_nrwidth_line_count = 0; // trigger a redraw
 
@@ -4135,6 +4174,27 @@ did_set_shiftwidth_tabstop(optset_T *args)
     long	*pp = (long *)args->os_varp;
     char	*errmsg = NULL;
 
+    if (curbuf->b_p_ts <= 0)
+    {
+	errmsg = e_argument_must_be_positive;
+	curbuf->b_p_ts = 8;
+    }
+    else if (curbuf->b_p_ts > TABSTOP_MAX)
+    {
+	errmsg = e_invalid_argument;
+	curbuf->b_p_ts = 8;
+    }
+    if (p_ts <= 0)
+    {
+	errmsg = e_argument_must_be_positive;
+	p_ts = 8;
+    }
+    else if (p_ts > TABSTOP_MAX)
+    {
+	errmsg = e_invalid_argument;
+	p_ts = 8;
+    }
+
     if (curbuf->b_p_sw < 0)
     {
 	errmsg = e_argument_must_be_positive;
@@ -4145,6 +4205,18 @@ did_set_shiftwidth_tabstop(optset_T *args)
 		       : curbuf->b_p_ts;
 #else
 	curbuf->b_p_sw = curbuf->b_p_ts;
+#endif
+    }
+    if (p_sw < 0)
+    {
+	errmsg = e_argument_must_be_positive;
+#ifdef FEAT_VARTABS
+	// Use the first 'vartabstop' value, or 'tabstop' if vts isn't in use.
+	p_sw = tabstop_count(curbuf->b_p_vts_array) > 0
+	     ? tabstop_first(curbuf->b_p_vts_array)
+	     : curbuf->b_p_ts;
+#else
+	p_sw = curbuf->b_p_ts;
 #endif
     }
 
@@ -4253,6 +4325,26 @@ did_set_termguicolors(optset_T *args UNUSED)
 }
 #endif
 
+#if defined(FEAT_TERMINAL) || defined(PROTO)
+/*
+ * Process the updated 'termwinscroll' option value.
+ */
+    char *
+did_set_termwinscroll(optset_T *args)
+{
+    long	*pp = (long *)args->os_varp;
+    char	*errmsg = NULL;
+
+    if (*pp < 1)
+    {
+	errmsg = e_argument_must_be_positive;
+	*pp = 1;
+    }
+
+    return errmsg;
+}
+#endif
+
 /*
  * Process the updated 'terse' option value.
  */
@@ -4316,13 +4408,18 @@ did_set_textwidth(optset_T *args UNUSED)
 	errmsg = e_argument_must_be_positive;
 	curbuf->b_p_tw = 0;
     }
+    if (p_tw < 0)
+    {
+	errmsg = e_argument_must_be_positive;
+	p_tw = 0;
+    }
 #ifdef FEAT_SYN_HL
     {
 	win_T	*wp;
 	tabpage_T	*tp;
 
 	FOR_ALL_TAB_WINDOWS(tp, wp)
-	    check_colorcolumn(wp);
+	    check_colorcolumn(NULL, wp);
     }
 #endif
 
@@ -4784,16 +4881,6 @@ check_num_option_bounds(
 	    p_window = Rows - 1;
     }
 
-    if (curbuf->b_p_ts <= 0)
-    {
-	errmsg = e_argument_must_be_positive;
-	curbuf->b_p_ts = 8;
-    }
-    else if (curbuf->b_p_ts > TABSTOP_MAX)
-    {
-	errmsg = e_invalid_argument;
-	curbuf->b_p_ts = 8;
-    }
     if (p_tm < 0)
     {
 	errmsg = e_argument_must_be_positive;
@@ -4926,6 +5013,10 @@ set_num_option(
     need_mouse_correct = TRUE;
 #endif
 
+    // May set global value for local option.
+    if ((opt_flags & (OPT_LOCAL | OPT_GLOBAL)) == 0)
+	*(long *)get_varp_scope(&(options[opt_idx]), OPT_GLOBAL) = value;
+
     // Invoke the option specific callback function to validate and apply the
     // new value.
     if (options[opt_idx].opt_did_set_cb != NULL)
@@ -4944,10 +5035,6 @@ set_num_option(
     // Check the bounds for numeric options here
     errmsg = check_num_option_bounds(pp, old_value, old_Rows, old_Columns,
 						errbuf, errbuflen, errmsg);
-
-    // May set global value for local option.
-    if ((opt_flags & (OPT_LOCAL | OPT_GLOBAL)) == 0)
-	*(long *)get_varp_scope(&(options[opt_idx]), OPT_GLOBAL) = *pp;
 
     options[opt_idx].flags |= P_WAS_SET;
 
@@ -5621,7 +5708,10 @@ find_key_option(char_u *arg_arg, int has_lt)
     // Don't use get_special_key_code() for t_xx, we don't want it to call
     // add_termcap_entry().
     if (arg[0] == 't' && arg[1] == '_' && arg[2] && arg[3])
-	key = TERMCAP2KEY(arg[2], arg[3]);
+    {
+	if (!has_lt || arg[4] == '>')
+	    key = TERMCAP2KEY(arg[2], arg[3]);
+    }
     else if (has_lt)
     {
 	--arg;			    // put arg at the '<'
@@ -6284,6 +6374,11 @@ unset_global_local_option(char_u *name, void *from)
 	case PV_FP:
 	    clear_string_option(&buf->b_p_fp);
 	    break;
+# ifdef FEAT_EVAL
+	case PV_FFU:
+	    clear_string_option(&buf->b_p_ffu);
+	    break;
+# endif
 # ifdef FEAT_QUICKFIX
 	case PV_EFM:
 	    clear_string_option(&buf->b_p_efm);
@@ -6362,6 +6457,9 @@ get_varp_scope(struct vimoption *p, int scope)
 	switch ((int)p->indir)
 	{
 	    case PV_FP:   return (char_u *)&(curbuf->b_p_fp);
+#ifdef FEAT_EVAL
+	    case PV_FFU: return (char_u *)&(curbuf->b_p_ffu);
+#endif
 #ifdef FEAT_QUICKFIX
 	    case PV_EFM:  return (char_u *)&(curbuf->b_p_efm);
 	    case PV_GP:   return (char_u *)&(curbuf->b_p_gp);
@@ -6472,6 +6570,10 @@ get_varp(struct vimoption *p)
 #endif
 	case PV_FP:	return *curbuf->b_p_fp != NUL
 				    ? (char_u *)&(curbuf->b_p_fp) : p->var;
+#ifdef FEAT_EVAL
+	case PV_FFU:	return *curbuf->b_p_ffu != NUL
+				    ? (char_u *)&(curbuf->b_p_ffu) : p->var;
+#endif
 #ifdef FEAT_QUICKFIX
 	case PV_EFM:	return *curbuf->b_p_efm != NUL
 				    ? (char_u *)&(curbuf->b_p_efm) : p->var;
@@ -6719,6 +6821,21 @@ get_equalprg(void)
 }
 
 /*
+ * Get the value of 'findfunc', either the buffer-local one or the global one.
+ */
+    char_u *
+get_findfunc(void)
+{
+#ifdef FEAT_EVAL
+    if (*curbuf->b_p_ffu == NUL)
+	return p_ffu;
+    return curbuf->b_p_ffu;
+#else
+    return (char_u *)"";
+#endif
+}
+
+/*
  * Copy options from one window to another.
  * Used when splitting a window.
  */
@@ -6736,12 +6853,17 @@ win_copy_options(win_T *wp_from, win_T *wp_to)
     void
 after_copy_winopt(win_T *wp)
 {
+    // Set w_leftcol or w_skipcol to zero.
+    if (wp->w_p_wrap)
+	wp->w_leftcol = 0;
+    else
+	wp->w_skipcol = 0;
 #ifdef FEAT_LINEBREAK
-    briopt_check(wp);
+    briopt_check(NULL, wp);
 #endif
 #ifdef FEAT_SYN_HL
     fill_culopt_flags(NULL, wp);
-    check_colorcolumn(wp);
+    check_colorcolumn(NULL, wp);
 #endif
     set_listchars_option(wp, wp->w_p_lcs, TRUE, NULL, 0);
     set_fillchars_option(wp, wp->w_p_fcs, TRUE, NULL, 0);
@@ -7241,6 +7363,9 @@ buf_copy_options(buf_T *buf, int flags)
 	    buf->b_p_efm = empty_option;
 #endif
 	    buf->b_p_ep = empty_option;
+#if defined(FEAT_EVAL)
+	    buf->b_p_ffu = empty_option;
+#endif
 	    buf->b_p_kp = empty_option;
 	    buf->b_p_path = empty_option;
 	    buf->b_p_tags = empty_option;
@@ -8626,6 +8751,7 @@ option_set_callback_func(char_u *optval UNUSED, callback_T *optcb UNUSED)
 #ifdef FEAT_EVAL
     typval_T	*tv;
     callback_T	cb;
+    int		funcname = FALSE;
 
     if (optval == NULL || *optval == NUL)
     {
@@ -8639,8 +8765,11 @@ option_set_callback_func(char_u *optval UNUSED, callback_T *optcb UNUSED)
 	// Lambda expression or a funcref
 	tv = eval_expr(optval, NULL);
     else
+    {
 	// treat everything else as a function name string
 	tv = alloc_string_tv(vim_strsave(optval));
+	funcname = TRUE;
+    }
     if (tv == NULL)
 	return FAIL;
 
@@ -8657,6 +8786,16 @@ option_set_callback_func(char_u *optval UNUSED, callback_T *optcb UNUSED)
 	vim_free(cb.cb_name);
     free_tv(tv);
 
+    if (in_vim9script() && funcname && (vim_strchr(optval, '.') != NULL))
+    {
+	// When a Vim9 imported function name is used, it is expanded by the
+	// call to get_callback() above to <SNR>_funcname.   Revert the name to
+	// back to "import.funcname".
+	if (optcb->cb_free_name)
+	    vim_free(optcb->cb_name);
+	optcb->cb_name = vim_strsave(optval);
+	optcb->cb_free_name = TRUE;
+    }
     // when using Vim9 style "import.funcname" it needs to be expanded to
     // "import#funcname".
     expand_autload_callback(optcb);

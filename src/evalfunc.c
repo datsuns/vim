@@ -2091,6 +2091,8 @@ static funcentry_T global_functions[] =
 			ret_dict_any,	    f_getcharsearch},
     {"getcharstr",	0, 1, 0,	    arg1_bool,
 			ret_string,	    f_getcharstr},
+    {"getcmdcomplpat",	0, 0, 0,	    NULL,
+			ret_string,	    f_getcmdcomplpat},
     {"getcmdcompltype",	0, 0, 0,	    NULL,
 			ret_string,	    f_getcmdcompltype},
     {"getcmdline",	0, 0, 0,	    NULL,
@@ -2485,7 +2487,7 @@ static funcentry_T global_functions[] =
 			ret_dict_number,    f_pum_getpos},
     {"pumvisible",	0, 0, 0,	    NULL,
 			ret_number_bool,    f_pumvisible},
-    {"py3eval",		1, 1, FEARG_1,	    arg1_string,
+    {"py3eval",		1, 2, FEARG_1,	    arg2_string_dict,
 			ret_any,
 #ifdef FEAT_PYTHON3
 	    f_py3eval
@@ -2493,7 +2495,7 @@ static funcentry_T global_functions[] =
 	    NULL
 #endif
 	    },
-    {"pyeval",		1, 1, FEARG_1,	    arg1_string,
+    {"pyeval",		1, 2, FEARG_1,	    arg2_string_dict,
 			ret_any,
 #ifdef FEAT_PYTHON
 	    f_pyeval
@@ -2501,7 +2503,7 @@ static funcentry_T global_functions[] =
 	    NULL
 #endif
 			},
-    {"pyxeval",		1, 1, FEARG_1,	    arg1_string,
+    {"pyxeval",		1, 2, FEARG_1,	    arg2_string_dict,
 			ret_any,
 #if defined(FEAT_PYTHON) || defined(FEAT_PYTHON3)
 	    f_pyxeval
@@ -8357,9 +8359,19 @@ f_line(typval_T *argvars, typval_T *rettv)
 	{
 	    if (switch_win_noblock(&switchwin, wp, tp, TRUE) == OK)
 	    {
+#ifdef FEAT_DIFF
+		// in diff mode, prevent that the window scrolls
+		// and keep the topline
+		if (curwin->w_p_diff && switchwin.sw_curwin->w_p_diff)
+		    skip_update_topline = TRUE;
+#endif
 		check_cursor();
 		fp = var2fpos(&argvars[0], TRUE, &fnum, FALSE);
 	    }
+#ifdef FEAT_DIFF
+	    if (curwin->w_p_diff && switchwin.sw_curwin->w_p_diff)
+		skip_update_topline = FALSE;
+#endif
 	    restore_win_noblock(&switchwin, TRUE);
 	}
     }
@@ -9279,18 +9291,35 @@ f_py3eval(typval_T *argvars, typval_T *rettv)
 {
     char_u	*str;
     char_u	buf[NUMBUFLEN];
+    dict_T	*locals;
 
     if (check_restricted() || check_secure())
 	return;
 
-    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_opt_dict_arg(argvars, 1) == FAIL))
 	return;
 
     if (p_pyx == 0)
 	p_pyx = 3;
 
+    if (argvars[1].v_type == VAR_DICT)
+    {
+	locals = argvars[1].vval.v_dict;
+    }
+    else if (argvars[1].v_type != VAR_UNKNOWN)
+    {
+	emsg(_(e_dictionary_required));
+	return;
+    }
+    else
+    {
+	locals = NULL;
+    }
+
     str = tv_get_string_buf(&argvars[0], buf);
-    do_py3eval(str, rettv);
+    do_py3eval(str, locals, rettv);
 }
 #endif
 
@@ -9303,18 +9332,35 @@ f_pyeval(typval_T *argvars, typval_T *rettv)
 {
     char_u	*str;
     char_u	buf[NUMBUFLEN];
+    dict_T	*locals;
 
     if (check_restricted() || check_secure())
 	return;
 
-    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+    if (in_vim9script() && (
+	    check_for_string_arg(argvars, 0) == FAIL ||
+	    check_for_opt_dict_arg(argvars, 1) == FAIL ) )
 	return;
 
     if (p_pyx == 0)
 	p_pyx = 2;
 
+    if (argvars[1].v_type == VAR_DICT)
+    {
+	locals = argvars[1].vval.v_dict;
+    }
+    else if (argvars[1].v_type != VAR_UNKNOWN)
+    {
+	emsg( "Invalid argument: must be dict" );
+	return;
+    }
+    else
+    {
+	locals = NULL;
+    }
+
     str = tv_get_string_buf(&argvars[0], buf);
-    do_pyeval(str, rettv);
+    do_pyeval(str, locals, rettv);
 }
 #endif
 
@@ -9328,7 +9374,9 @@ f_pyxeval(typval_T *argvars, typval_T *rettv)
     if (check_restricted() || check_secure())
 	return;
 
-    if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
+    if (in_vim9script()
+	    && (check_for_string_arg(argvars, 0) == FAIL
+		|| check_for_opt_dict_arg(argvars, 1) == FAIL))
 	return;
 
 # if defined(FEAT_PYTHON) && defined(FEAT_PYTHON3)

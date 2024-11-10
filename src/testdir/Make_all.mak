@@ -47,6 +47,7 @@ TEST_VIM9 = \
 	test_vim9_fails \
 	test_vim9_func \
 	test_vim9_import \
+	test_vim9_python3 \
 	test_vim9_script \
 	test_vim9_typealias
 
@@ -61,6 +62,7 @@ TEST_VIM9_RES = \
 	test_vim9_fails.res \
 	test_vim9_func.res \
 	test_vim9_import.res \
+	test_vim9_python3.res \
 	test_vim9_script.res \
 	test_vim9_typealias.res
 
@@ -232,6 +234,7 @@ NEW_TESTS = \
 	test_normal \
 	test_number \
 	test_options \
+	test_options_all \
 	test_packadd \
 	test_partial \
 	test_paste \
@@ -492,6 +495,7 @@ NEW_TESTS_RES = \
 	test_normal.res \
 	test_number.res \
 	test_options.res \
+	test_options_all.res \
 	test_packadd.res \
 	test_partial.res \
 	test_paste.res \

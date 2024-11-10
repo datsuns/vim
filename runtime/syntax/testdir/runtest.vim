@@ -2,6 +2,9 @@
 "
 " Current directory must be runtime/syntax.
 
+" needed because of line-continuation lines
+set cpo&vim
+
 " Only do this with the +eval feature
 if 1
 
@@ -115,13 +118,26 @@ func RunTest()
   " Create a map of setup configuration filenames with their basenames as keys.
   let setup = glob('input/setup/*.vim', 1, 1)
     \ ->reduce({d, f -> extend(d, {fnamemodify(f, ':t:r'): f})}, {})
+  " Turn a subset of filenames etc. requested for testing into a pattern.
+  let filter = filereadable('../testdir/Xfilter')
+    \ ? readfile('../testdir/Xfilter')
+	\ ->map({_, v -> (v =~ '\.' ? '^' : '\.') .. v .. '$'})
+	\ ->join('\|')
+    \ : ''
 
-  if exists("$VIM_SYNTAX_SELF_TESTING")
+  " Treat "\.self-testing$" as a string NOT as a regexp.
+  if filter ==# '\.self-testing$'
     let dirpath = 'input/selftestdir/'
     let fnames = readdir(dirpath, {fname -> fname !~ '^README\.txt$'})
   else
     let dirpath = 'input/'
-    let fnames = readdir(dirpath, {fname -> fname !~ '\~$' && fname =~ '^.\+\..\+$'})
+    let filter ..= exists("$VIM_SYNTAX_TEST_FILTER") &&
+		\ !empty($VIM_SYNTAX_TEST_FILTER)
+      \ ? (empty(filter) ? '' : '\|') .. $VIM_SYNTAX_TEST_FILTER
+      \ : ''
+    let fnames = readdir(dirpath,
+	\ {subset -> {fname -> fname !~ '\~$' && fname =~# subset}}(
+		\ empty(filter) ? '^.\+\..\+$' : filter))
   endif
 
   for fname in fnames
@@ -415,7 +431,7 @@ func RunTest()
     call Message('View generated screendumps with "../../src/vim --clean -S testdir/viewdumps.vim"')
   endif
 
-  call AppendMessages('== SUMMARY ==')
+  call AppendMessages('== SUMMARY SYNTAX TESTS ==')
 
   if len(failed_tests) > 0
     " have make report an error
