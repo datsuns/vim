@@ -16,7 +16,11 @@
 static char_u shm_buf[SHM_LEN];
 static int set_shm_recursive = 0;
 
-static char *(p_ambw_values[]) = {"single", "double", NULL};
+static char *(p_ambw_values[]) = {"single", "double",
+# ifdef USE_AMBIWIDTH_AUTO
+    "auto",
+# endif
+    NULL};
 static char *(p_bg_values[]) = {"light", "dark", NULL};
 static char *(p_bkc_values[]) = {"yes", "auto", "no", "breaksymlink", "breakhardlink", NULL};
 static char *(p_bo_values[]) = {"all", "backspace", "cursor", "complete",

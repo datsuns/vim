@@ -1389,6 +1389,55 @@ _OnSizeTextArea(
 #endif
 }
 
+    static int
+has_caption(void)
+{
+    return GetWindowLong(s_hwnd, GWL_STYLE) & WS_CAPTION;
+}
+
+    static int
+get_caption_height(void)
+{
+    // A window's caption includes extra 1 dot margin.  When caption is
+    // removed the margin also be removed.  So we must return -1 when
+    // caption is diabled.
+    return has_caption() ? GetSystemMetrics(SM_CYCAPTION) : -1;
+}
+
+    static int
+get_caption_width_adjustment(void)
+{
+    return has_caption() ? 0 : -2;
+}
+
+    void
+gui_mch_show_caption(int show)
+{
+    const static LONG flags_on = WS_CAPTION;
+    const static LONG flags_off = 0;
+    LONG style, newstyle;
+
+    // Remove caption when title is null
+    style = newstyle = GetWindowLong(s_hwnd, GWL_STYLE);
+    if (show)
+    {
+	newstyle &= ~flags_off;
+	newstyle |= flags_on;
+    }
+    else
+    {
+	newstyle &= ~flags_on;
+	newstyle |= flags_off;
+    }
+    if (newstyle != style)
+    {
+	SetWindowLong(s_hwnd, GWL_STYLE, newstyle);
+	SetWindowPos(s_hwnd, NULL, 0, 0, 0, 0,
+		SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER);
+	gui_set_shellsize(FALSE, FALSE, RESIZE_BOTH);
+    }
+}
+
 #ifdef FEAT_MENU
 /*
  * Find the vimmenu_T with the given id
@@ -3438,11 +3487,13 @@ gui_mswin_get_valid_dimensions(
 
     base_width = gui_get_base_width()
 	+ (pGetSystemMetricsForDpi(SM_CXFRAME, s_dpi) +
-	   pGetSystemMetricsForDpi(SM_CXPADDEDBORDER, s_dpi)) * 2;
+	   pGetSystemMetricsForDpi(SM_CXPADDEDBORDER, s_dpi)) * 2
+	+ get_caption_width_adjustment();
     base_height = gui_get_base_height()
 	+ (pGetSystemMetricsForDpi(SM_CYFRAME, s_dpi) +
 	   pGetSystemMetricsForDpi(SM_CXPADDEDBORDER, s_dpi)) * 2
 	+ pGetSystemMetricsForDpi(SM_CYCAPTION, s_dpi)
+	+ get_caption_height()
 	+ gui_mswin_get_menu_height(FALSE);
     *cols = (w - base_width) / gui.char_width;
     *rows = (h - base_height) / gui.char_height;
@@ -3917,12 +3968,14 @@ gui_mch_newfont(void)
     if (win_socket_id == 0)
     {
 	gui_resize_shell(rect.right - rect.left
+	    - get_caption_width_adjustment()
 	    - (pGetSystemMetricsForDpi(SM_CXFRAME, s_dpi) +
 	       pGetSystemMetricsForDpi(SM_CXPADDEDBORDER, s_dpi)) * 2,
 	    rect.bottom - rect.top
 	    - (pGetSystemMetricsForDpi(SM_CYFRAME, s_dpi) +
 	       pGetSystemMetricsForDpi(SM_CXPADDEDBORDER, s_dpi)) * 2
 	    - pGetSystemMetricsForDpi(SM_CYCAPTION, s_dpi)
+	    - get_caption_height()
 	    - gui_mswin_get_menu_height(FALSE));
     }
     else
@@ -5456,6 +5509,56 @@ error:
 }
 #endif
 
+#ifdef USE_AMBIWIDTH_AUTO
+#define CHARWIDE_CACHESIZE 0x20000
+static GuiFont last_font = 0;
+
+    int
+gui_mch_get_charwidth(int c)
+{
+    static int cache[CHARWIDE_CACHESIZE];
+    GuiFont usingfont = gui.wide_font ? gui.wide_font : gui.norm_font;
+
+    // Check validity of charwide cache
+    if (last_font != usingfont)
+    {
+	// Update cache. -1 is mark for uninitialized cell
+	int i;
+
+	TRACE("Charwide cache will be updated (base=%d)\n", gui.char_width);
+	last_font = usingfont;
+	for (i = 0; i < CHARWIDE_CACHESIZE; ++i)
+	    cache[i] = -1;
+    }
+    if (usingfont && 0 <= c && c < CHARWIDE_CACHESIZE)
+    {
+	if (cache[c] >= 0)
+	    return cache[c]; // Use cached value
+	else
+	{
+	    // Get true character width in dot, convert to cells and save it.
+	    int	    len;
+	    ABC	    fontABC;
+	    HFONT   hfntOld = SelectFont(s_hdc, usingfont);
+
+	    if (!GetCharABCWidthsW(s_hdc, c, c, &fontABC) ||
+		    (len = fontABC.abcA + fontABC.abcB + fontABC.abcC) <= 0)
+	    {
+		TRACE("GetCharABCWidthsW() failed for %08X\n", c);
+		cache[c] = 0;
+	    }
+	    else
+		cache[c] = ((len + (gui.char_width >> 1)) / gui.char_width);
+	    SelectFont(s_hdc, hfntOld);
+
+	    return cache[c];
+	}
+    }
+    else
+	return 0;
+}
+#endif
+
 /*
  * Parse the GUI related command-line arguments.  Any arguments used are
  * deleted from argv, and *argc is decremented accordingly.  This is called
@@ -5916,10 +6019,12 @@ gui_mch_set_shellsize(
 
     // compute the size of the outside of the window
     win_width = width + (pGetSystemMetricsForDpi(SM_CXFRAME, s_dpi) +
-		     pGetSystemMetricsForDpi(SM_CXPADDEDBORDER, s_dpi)) * 2;
+		     pGetSystemMetricsForDpi(SM_CXPADDEDBORDER, s_dpi)) * 2
+			+ get_caption_width_adjustment();
     win_height = height + (pGetSystemMetricsForDpi(SM_CYFRAME, s_dpi) +
 		       pGetSystemMetricsForDpi(SM_CXPADDEDBORDER, s_dpi)) * 2
 			+ pGetSystemMetricsForDpi(SM_CYCAPTION, s_dpi)
+			+ get_caption_height()
 			+ gui_mswin_get_menu_height(FALSE);
 
     // The following should take care of keeping Vim on the same monitor, no
@@ -6763,7 +6868,8 @@ gui_mch_get_screen_dimensions(int *screen_w, int *screen_h)
 
     *screen_w = workarea_rect.right - workarea_rect.left
 		- (pGetSystemMetricsForDpi(SM_CXFRAME, s_dpi) +
-		   pGetSystemMetricsForDpi(SM_CXPADDEDBORDER, s_dpi)) * 2;
+		   pGetSystemMetricsForDpi(SM_CXPADDEDBORDER, s_dpi)) * 2
+		- get_caption_width_adjustment();
 
     // FIXME: dirty trick: Because the gui_get_base_height() doesn't include
     // the menubar for MSwin, we subtract it from the screen height, so that
@@ -6772,6 +6878,7 @@ gui_mch_get_screen_dimensions(int *screen_w, int *screen_h)
 		- (pGetSystemMetricsForDpi(SM_CYFRAME, s_dpi) +
 		   pGetSystemMetricsForDpi(SM_CXPADDEDBORDER, s_dpi)) * 2
 		- pGetSystemMetricsForDpi(SM_CYCAPTION, s_dpi)
+		- get_caption_height()
 		- gui_mswin_get_menu_height(FALSE);
 }
 

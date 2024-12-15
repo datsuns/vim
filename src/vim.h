@@ -545,6 +545,13 @@ typedef long long vimlong_T;
 #endif
 
 /*
+ * Whether 'ambiwidth' supports "auto".  Currently, only for Win32.
+ */
+#if defined(FEAT_GUI) && defined(FEAT_GUI_MSWIN)
+# define USE_AMBIWIDTH_AUTO
+#endif
+
+/*
  * For dynamically loaded gettext library.  Currently, only for Win32.
  */
 #ifdef DYNAMIC_GETTEXT

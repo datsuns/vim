@@ -307,7 +307,8 @@ typedef enum {
 #define GO_VERTICAL	'v'		// arrange dialog buttons vertically
 #define GO_KEEPWINSIZE	'k'		// keep GUI window size
 // all possible flags for 'go'
-#define GO_ALL		"!aAbcdefFghilLmMpPrRtTvk"
+#define GO_NOCAPTION	'C'		// remove caption bar
+#define GO_ALL		"!aAbcCdefFghilLmMpPrRtTvk"
 
 // flags for 'comments' option
 #define COM_NEST	'n'		// comments strings nest
