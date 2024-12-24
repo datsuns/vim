@@ -107,12 +107,14 @@ def s:GetFilenameChecks(): dict<list<string>>
       '/etc/httpd/sites-some/file', '/etc/httpd/conf.file/conf'],
     apachestyle: ['/etc/proftpd/file.config,/etc/proftpd/conf.file/file', '/etc/proftpd/conf.file/file', '/etc/proftpd/file.conf', '/etc/proftpd/file.conf-file',
       'any/etc/proftpd/conf.file/file', 'any/etc/proftpd/file.conf', 'any/etc/proftpd/file.conf-file', 'proftpd.conf', 'proftpd.conf-file'],
+    apkbuild: ['APKBUILD'],
     applescript: ['file.scpt'],
     aptconf: ['apt.conf', '/.aptitude/config', 'any/.aptitude/config'],
     arch: ['.arch-inventory', '=tagging-method'],
     arduino: ['file.ino', 'file.pde'],
     art: ['file.art'],
     asciidoc: ['file.asciidoc', 'file.adoc'],
+    asm: ['file.s', 'file.S', 'file.a', 'file.A'],
     asn: ['file.asn', 'file.asn1'],
     asterisk: ['asterisk/file.conf', 'asterisk/file.conf-file', 'some-asterisk/file.conf', 'some-asterisk/file.conf-file'],
     astro: ['file.astro'],
@@ -144,6 +146,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     bzl: ['file.bazel', 'file.bzl', 'WORKSPACE', 'WORKSPACE.bzlmod'],
     bzr: ['bzr_log.any', 'bzr_log.file'],
     c: ['enlightenment/file.cfg', 'file.qc', 'file.c', 'some-enlightenment/file.cfg', 'file.mdh', 'file.epro'],
+    c3: ['file.c3', 'file.c3i', 'file.c3t'],
     cabal: ['file.cabal'],
     cabalconfig: ['cabal.config', expand("$HOME/.config/cabal/config")] + WhenConfigHome('$XDG_CONFIG_HOME/cabal/config'),
     cabalproject: ['cabal.project', 'cabal.project.local'],
@@ -210,7 +213,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     datascript: ['file.ds'],
     dcd: ['file.dcd'],
     debchangelog: ['changelog.Debian', 'changelog.dch', 'NEWS.Debian', 'NEWS.dch', '/debian/changelog'],
-    debcontrol: ['/debian/control', 'any/debian/control'],
+    debcontrol: ['/debian/control', 'any/debian/control', 'any/DEBIAN/control'],
     debcopyright: ['/debian/copyright', 'any/debian/copyright'],
     debsources: ['/etc/apt/sources.list', '/etc/apt/sources.list.d/file.list', 'any/etc/apt/sources.list', 'any/etc/apt/sources.list.d/file.list'],
     deb822sources: ['/etc/apt/sources.list.d/file.sources', 'any/etc/apt/sources.list.d/file.sources'],
@@ -271,7 +274,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     falcon: ['file.fal'],
     fan: ['file.fan', 'file.fwt'],
     faust: ['file.dsp', 'file.lib'],
-    fennel: ['file.fnl'],
+    fennel: ['file.fnl', '.fennelrc', 'fennelrc'],
     fetchmail: ['.fetchmailrc'],
     fgl: ['file.4gl', 'file.4gh', 'file.m4gl'],
     firrtl: ['file.fir'],
@@ -354,7 +357,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     htmlm4: ['file.html.m4'],
     httest: ['file.htt', 'file.htb'],
     hurl: ['file.hurl'],
-    hyprlang: ['hyprlock.conf', 'hyprland.conf', 'hypridle.conf', 'hyprpaper.conf'],
+    hyprlang: ['hyprlock.conf', 'hyprland.conf', 'hypridle.conf', 'hyprpaper.conf', '/hypr/foo.conf'],
     i3config: ['/home/user/.i3/config', '/home/user/.config/i3/config', '/etc/i3/config', '/etc/xdg/i3/config'],
     ibasic: ['file.iba', 'file.ibi'],
     icemenu: ['/.icewm/menu', 'any/.icewm/menu'],
@@ -373,7 +376,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     jal: ['file.jal', 'file.JAL'],
     jam: ['file.jpl', 'file.jpr', 'JAM-file.file', 'JAM.file', 'Prl-file.file', 'Prl.file'],
     janet: ['file.janet'],
-    java: ['file.java', 'file.jav'],
+    java: ['file.java', 'file.jav', 'file.jsh'],
     javacc: ['file.jj', 'file.jjt'],
     javascript: ['file.js', 'file.jsm', 'file.javascript', 'file.es', 'file.mjs', 'file.cjs', '.node_repl_history', '.bun_repl_history', 'deno_history.txt'],
     'javascript.glimmer': ['file.gjs'],
@@ -395,6 +398,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     jsp: ['file.jsp'],
     julia: ['file.jl'],
     just: ['justfile', 'Justfile', '.justfile', 'config.just'],
+    karel: ['file.kl', 'file.KL'],
     kconfig: ['Kconfig', 'Kconfig.debug', 'Kconfig.file', 'Config.in', 'Config.in.host'],
     kdl: ['file.kdl'],
     kivy: ['file.kv'],
@@ -404,6 +408,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     kscript: ['file.ks'],
     kwt: ['file.k'],
     lace: ['file.ace', 'file.ACE'],
+    lalrpop: ['file.lalrpop'],
     latte: ['file.latte', 'file.lte'],
     ld: ['file.ld', 'any/usr/lib/aarch64-xilinx-linux/ldscripts/aarch64elf32b.x'],
     ldapconf: ['ldap.conf', '.ldaprc', 'ldaprc'],
@@ -424,7 +429,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     limits: ['/etc/limits', '/etc/anylimits.conf', '/etc/anylimits.d/file.conf', '/etc/limits.conf', '/etc/limits.d/file.conf', '/etc/some-limits.conf', '/etc/some-limits.d/file.conf', 'any/etc/limits', 'any/etc/limits.conf', 'any/etc/limits.d/file.conf', 'any/etc/some-limits.conf', 'any/etc/some-limits.d/file.conf'],
     liquidsoap: ['file.liq'],
     liquid: ['file.liquid'],
-    lisp: ['file.lsp', 'file.lisp', 'file.asd', 'file.el', 'file.cl', '.emacs', '.sawfishrc', 'sbclrc', '.sbclrc', 'file.stsg', 'any/local/share/supertux2/config'],
+    lisp: ['file.lsp', 'file.lisp', 'file.asd', 'file.el', '.emacs', '.sawfishrc', 'sbclrc', '.sbclrc'],
     lite: ['file.lite', 'file.lt'],
     litestep: ['/LiteStep/any/file.rc', 'any/LiteStep/any/file.rc'],
     logcheck: ['/etc/logcheck/file.d-some/file', '/etc/logcheck/file.d/file', 'any/etc/logcheck/file.d-some/file', 'any/etc/logcheck/file.d/file'],
@@ -454,6 +459,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     map: ['file.map'],
     maple: ['file.mv', 'file.mpl', 'file.mws'],
     markdown: ['file.markdown', 'file.mdown', 'file.mkd', 'file.mkdn', 'file.mdwn', 'file.md'],
+    masm: ['file.masm'],
     mason: ['file.mason', 'file.mhtml'],
     master: ['file.mas', 'file.master'],
     matlab: ['file.m'],
@@ -507,6 +513,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     mplayerconf: ['mplayer.conf', '/.mplayer/config', 'any/.mplayer/config'],
     mrxvtrc: ['mrxvtrc', '.mrxvtrc'],
     msidl: ['file.odl', 'file.mof'],
+    mss: ['file.mss'],
     msql: ['file.msql'],
     mojo: ['file.mojo', 'file.🔥'],
     msmtp: ['.msmtprc'],
@@ -529,6 +536,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     n1ql: ['file.n1ql', 'file.nql'],
     named: ['namedfile.conf', 'rndcfile.conf', 'named-file.conf', 'named.conf', 'rndc-file.conf', 'rndc-file.key', 'rndc.conf', 'rndc.key'],
     nanorc: ['/etc/nanorc', 'file.nanorc', 'any/etc/nanorc'],
+    nasm: ['file.nasm'],
     natural: ['file.NSA', 'file.NSC', 'file.NSG', 'file.NSL', 'file.NSM', 'file.NSN', 'file.NSP', 'file.NSS'],
     ncf: ['file.ncf'],
     neomuttlog: ['/home/user/.neomuttdebug1'],
@@ -605,12 +613,13 @@ def s:GetFilenameChecks(): dict<list<string>>
     ps1xml: ['file.ps1xml'],
     psf: ['file.psf'],
     psl: ['file.psl'],
+    ptx: ['file.ptx'],
     pug: ['file.pug'],
     puppet: ['file.pp'],
     purescript: ['file.purs'],
     pymanifest: ['MANIFEST.in'],
     pyret: ['file.arr'],
-    pyrex: ['file.pyx', 'file.pxd'],
+    pyrex: ['file.pyx', 'file.pxd', 'file.pxi', 'file.pyx+'],
     python: ['file.py', 'file.pyw', '.pythonstartup', '.pythonrc', '.python_history', '.jline-jython.history', 'file.ptl', 'file.pyi', 'SConstruct'],
     ql: ['file.ql', 'file.qll'],
     qml: ['file.qml', 'file.qbs'],
@@ -662,7 +671,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     sather: ['file.sa'],
     sbt: ['file.sbt'],
     scala: ['file.scala'],
-    scheme: ['file.scm', 'file.ss', 'file.sld'],
+    scheme: ['file.scm', 'file.ss', 'file.sld', 'file.stsg', 'any/local/share/supertux2/config'],
     scilab: ['file.sci', 'file.sce'],
     screen: ['.screenrc', 'screenrc'],
     scss: ['file.scss'],
@@ -675,7 +684,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     setserial: ['/etc/serial.conf', 'any/etc/serial.conf'],
     sexplib: ['file.sexp'],
     sh: ['.bashrc', '.bash_profile', '.bash-profile', '.bash_logout', '.bash-logout', '.bash_aliases', '.bash-aliases', '.bash_history', '.bash-history',
-         '/tmp/bash-fc-3Ozjlw', '/tmp/bash-fc.3Ozjlw', 'PKGBUILD', 'APKBUILD', 'file.bash', '/usr/share/doc/bash-completion/filter.sh',
+         '/tmp/bash-fc-3Ozjlw', '/tmp/bash-fc.3Ozjlw', 'PKGBUILD', 'file.bash', '/usr/share/doc/bash-completion/filter.sh',
          '/etc/udev/cdsymlinks.conf', 'any/etc/udev/cdsymlinks.conf', 'file.bats', '.ash_history', 'any/etc/neofetch/config.conf', '.xprofile',
          'user-dirs.defaults', 'user-dirs.dirs', 'makepkg.conf', '.makepkg.conf', 'file.mdd', 'file.cygport', '.env', '.envrc', 'devscripts.conf',
          '.devscripts', 'file.lo', 'file.la', 'file.lai'],
@@ -885,7 +894,8 @@ def s:GetFilenameChecks(): dict<list<string>>
     xsd: ['file.xsd'],
     xslt: ['file.xsl', 'file.xslt'],
     yacc: ['file.yy', 'file.yxx', 'file.y++'],
-    yaml: ['file.yaml', 'file.yml', 'file.eyaml', 'any/.bundle/config', '.clangd', '.clang-format', '.clang-tidy', 'file.mplstyle', 'matplotlibrc', 'yarn.lock'],
+    yaml: ['file.yaml', 'file.yml', 'file.eyaml', 'any/.bundle/config', '.clangd', '.clang-format', '.clang-tidy', 'file.mplstyle', 'matplotlibrc', 'yarn.lock',
+           '/home/user/.kube/config', '.condarc', 'condarc', 'pixi.lock'],
     yang: ['file.yang'],
     yuck: ['file.yuck'],
     z8a: ['file.z8a'],
@@ -1192,6 +1202,22 @@ func Test_cfg_file()
   endfor
 
   " clean up
+  filetype off
+endfunc
+
+func Test_cl_file()
+  filetype on
+
+  call writefile(['/*', ' * Xfile.cl', ' */', 'int f() {}'], 'Xfile.cl')
+  split Xfile.cl
+  call assert_equal('opencl', &filetype)
+  bwipe!
+
+  call writefile(['()'], 'Xfile.cl')
+  split Xfile.cl
+  call assert_equal('lisp', &filetype)
+  bwipe!
+
   filetype off
 endfunc
 
@@ -2445,6 +2471,24 @@ func Test_inc_file()
   filetype off
 endfunc
 
+func Test_ll_file()
+  filetype on
+
+  " LLVM IR
+  call writefile(['target triple = "nvptx64-nvidia-cuda"'], 'Xfile.ll', 'D')
+  split Xfile.ll
+  call assert_equal('llvm', &filetype)
+  bwipe!
+
+  " lifelines
+  call writefile(['proc main() {}'], 'Xfile.ll', 'D')
+  split Xfile.ll
+  call assert_equal('lifelines', &filetype)
+  bwipe!
+
+  filetype off
+endfunc
+
 func Test_lsl_file()
   filetype on
 
@@ -2719,6 +2763,16 @@ func Test_make_file()
   split XMakefile.mak
   call assert_equal(0, get(b:, 'make_microsoft', 0))
   bwipe!
+
+  filetype off
+endfunc
+
+func Test_org_file()
+  filetype on
+
+  call writefile(['* org Headline', '*some bold text*', '/some italic text/'], 'Xfile.org', 'D')
+  split Xfile.org
+  call assert_equal('org', &filetype)
 
   filetype off
 endfunc

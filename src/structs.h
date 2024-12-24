@@ -573,6 +573,7 @@ typedef struct buffheader buffheader_T;
 struct buffblock
 {
     buffblock_T	*b_next;	// pointer to next buffblock
+    size_t	b_strlen;	// length of b_str, excluding the NUL
     char_u	b_str[1];	// contents (actually longer)
 };
 
@@ -585,6 +586,7 @@ struct buffheader
     buffblock_T	*bh_curr;	// buffblock for appending
     int		bh_index;	// index for reading
     int		bh_space;	// space in bh_curr for appending
+    int		bh_create_newblock;	// create a new block?
 };
 
 typedef struct
@@ -4690,6 +4692,7 @@ typedef struct lval_S
     int		ll_oi;		// The object/class member index
     int		ll_is_root;	// TRUE if ll_tv is the lval_root, like a
 				// plain object/class. ll_tv is variable.
+    garray_T	ll_type_list;   // list of pointers to allocated types
 } lval_T;
 
 /**
@@ -5097,3 +5100,11 @@ typedef struct
 
 #define KEYVALUE_ENTRY(k, v) \
     {(k), {((char_u *)v), STRLEN_LITERAL(v)}}
+
+#if defined(UNIX) || defined(MSWIN)
+// Defined as signed, to return -1 on error
+struct cellsize {
+    int cs_xpixel;
+    int cs_ypixel;
+};
+#endif
