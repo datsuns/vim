@@ -3026,6 +3026,8 @@ $quote	eval.txt	/*$quote*
 :packadd	repeat.txt	/*:packadd*
 :packl	repeat.txt	/*:packl*
 :packloadall	repeat.txt	/*:packloadall*
+:pb	windows.txt	/*:pb*
+:pbuffer	windows.txt	/*:pbuffer*
 :pc	windows.txt	/*:pc*
 :pclose	windows.txt	/*:pclose*
 :pe	if_perl.txt	/*:pe*
@@ -3056,9 +3058,9 @@ $quote	eval.txt	/*$quote*
 :promptrepl	change.txt	/*:promptrepl*
 :ps	windows.txt	/*:ps*
 :psearch	windows.txt	/*:psearch*
+:pt	windows.txt	/*:pt*
 :ptN	tagsrch.txt	/*:ptN*
 :ptNext	tagsrch.txt	/*:ptNext*
-:pta	windows.txt	/*:pta*
 :ptag	windows.txt	/*:ptag*
 :ptf	tagsrch.txt	/*:ptf*
 :ptfirst	tagsrch.txt	/*:ptfirst*
@@ -4290,7 +4292,7 @@ E1179	options.txt	/*E1179*
 E118	eval.txt	/*E118*
 E1180	vim9.txt	/*E1180*
 E1181	vim9.txt	/*E1181*
-E1182	eval.txt	/*E1182*
+E1182	vim9.txt	/*E1182*
 E1183	eval.txt	/*E1183*
 E1184	eval.txt	/*E1184*
 E1185	various.txt	/*E1185*
@@ -6162,6 +6164,8 @@ balloon_show()	builtin.txt	/*balloon_show()*
 balloon_split()	builtin.txt	/*balloon_split()*
 bar	motion.txt	/*bar*
 bars	help.txt	/*bars*
+base64_decode()	builtin.txt	/*base64_decode()*
+base64_encode()	builtin.txt	/*base64_encode()*
 base_font_name_list	mbyte.txt	/*base_font_name_list*
 basic.vim	syntax.txt	/*basic.vim*
 beep	options.txt	/*beep*
@@ -7218,6 +7222,7 @@ fold-create-marker	fold.txt	/*fold-create-marker*
 fold-delete-marker	fold.txt	/*fold-delete-marker*
 fold-diff	fold.txt	/*fold-diff*
 fold-expr	fold.txt	/*fold-expr*
+fold-expr-slow	fold.txt	/*fold-expr-slow*
 fold-foldcolumn	fold.txt	/*fold-foldcolumn*
 fold-foldlevel	fold.txt	/*fold-foldlevel*
 fold-foldtext	fold.txt	/*fold-foldtext*
@@ -7580,6 +7585,7 @@ g:gzip_exec	pi_gzip.txt	/*g:gzip_exec*
 g:hare_recommended_style	ft_hare.txt	/*g:hare_recommended_style*
 g:hare_space_error	ft_hare.txt	/*g:hare_space_error*
 g:haredoc_search_depth	ft_hare.txt	/*g:haredoc_search_depth*
+g:help_example_languages	helphelp.txt	/*g:help_example_languages*
 g:html_charset_override	syntax.txt	/*g:html_charset_override*
 g:html_diff_one_file	syntax.txt	/*g:html_diff_one_file*
 g:html_dynamic_folds	syntax.txt	/*g:html_dynamic_folds*
@@ -7902,6 +7908,7 @@ getscript-history	pi_getscript.txt	/*getscript-history*
 getscript-plugins	pi_getscript.txt	/*getscript-plugins*
 getscript-start	pi_getscript.txt	/*getscript-start*
 getscriptinfo()	builtin.txt	/*getscriptinfo()*
+getstacktrace()	builtin.txt	/*getstacktrace()*
 gettabinfo()	builtin.txt	/*gettabinfo()*
 gettabvar()	builtin.txt	/*gettabvar()*
 gettabwinvar()	builtin.txt	/*gettabwinvar()*
@@ -8083,6 +8090,7 @@ help-TOC	helphelp.txt	/*help-TOC*
 help-buffer-options	helphelp.txt	/*help-buffer-options*
 help-context	help.txt	/*help-context*
 help-curwin	tips.txt	/*help-curwin*
+help-notation	helphelp.txt	/*help-notation*
 help-summary	usr_02.txt	/*help-summary*
 help-tags	tags	1
 help-toc-install	helphelp.txt	/*help-toc-install*
@@ -8133,6 +8141,7 @@ hit-return	message.txt	/*hit-return*
 hitest.vim	syntax.txt	/*hitest.vim*
 hjkl	usr_02.txt	/*hjkl*
 hl-ColorColumn	syntax.txt	/*hl-ColorColumn*
+hl-ComplMatchIns	syntax.txt	/*hl-ComplMatchIns*
 hl-Conceal	syntax.txt	/*hl-Conceal*
 hl-CurSearch	syntax.txt	/*hl-CurSearch*
 hl-Cursor	syntax.txt	/*hl-Cursor*
@@ -10210,6 +10219,7 @@ sqrt()	builtin.txt	/*sqrt()*
 squirrel.vim	syntax.txt	/*squirrel.vim*
 srand()	builtin.txt	/*srand()*
 sscanf	eval.txt	/*sscanf*
+stacktrace-variable	eval.txt	/*stacktrace-variable*
 standard-plugin	usr_05.txt	/*standard-plugin*
 standard-plugin-list	help.txt	/*standard-plugin-list*
 standout	syntax.txt	/*standout*
@@ -10262,6 +10272,7 @@ strutf16len()	builtin.txt	/*strutf16len()*
 strwidth()	builtin.txt	/*strwidth()*
 style-braces	develop.txt	/*style-braces*
 style-changes	develop.txt	/*style-changes*
+style-clang-format	develop.txt	/*style-clang-format*
 style-comments	develop.txt	/*style-comments*
 style-common-functions	develop.txt	/*style-common-functions*
 style-compiler	develop.txt	/*style-compiler*
@@ -11029,6 +11040,7 @@ v:shell_error	eval.txt	/*v:shell_error*
 v:sizeofint	eval.txt	/*v:sizeofint*
 v:sizeoflong	eval.txt	/*v:sizeoflong*
 v:sizeofpointer	eval.txt	/*v:sizeofpointer*
+v:stacktrace	eval.txt	/*v:stacktrace*
 v:statusmsg	eval.txt	/*v:statusmsg*
 v:swapchoice	eval.txt	/*v:swapchoice*
 v:swapcommand	eval.txt	/*v:swapcommand*

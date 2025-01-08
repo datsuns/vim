@@ -215,21 +215,6 @@ jobs:
           sudo usermod -a -G audio "${USER}"
           sudo bash ci/setup-xvfb.sh
 
-      - name: Set up snd-dummy
-        if: (!(contains(matrix.extra, 'unittests') || contains(matrix.extra, 'vimtags')))
-        env:
-          DEST_DIR: ${{ env.TMPDIR }}/linux-modules-extra-${{ env.LINUX_VERSION }}
-        uses: tecolicom/actions-use-apt-tools@main
-        with:
-          tools: linux-modules-extra-${{ env.LINUX_VERSION }}
-          path: "${DEST_DIR}"
-
-      - name: modprobe snd-dummy
-        if: (!(contains(matrix.extra, 'unittests') || contains(matrix.extra, 'vimtags')))
-        run: |
-          sudo depmod --verbose
-          sudo modprobe --verbose snd-dummy || true
-
       - name: Check autoconf
         if: contains(matrix.extra, 'unittests')
         run: |
@@ -323,7 +308,7 @@ jobs:
       fail-fast: false
       matrix:
         features: [tiny, normal, huge]
-        runner: [macos-13, macos-14]
+        runner: [macos-13, macos-15]
 
     steps:
       - name: Checkout repository from github
@@ -335,11 +320,11 @@ jobs:
           brew install lua libtool
           echo "LUA_PREFIX=$(brew --prefix)" >> $GITHUB_ENV
 
-      - name: Grant microphone access for macos-14
-        if: matrix.features == 'huge' && matrix.runner == 'macos-14'
+      - name: Set up Xcode
+        if: matrix.runner == 'macos-15'
         run: |
-          # Temporary fix to fix microphone permission issues for macos-14 when playing sound.
-          sqlite3 $HOME/Library/Application\ Support/com.apple.TCC/TCC.db "INSERT OR IGNORE INTO access VALUES ('kTCCServiceMicrophone','/usr/local/opt/runner/provisioner/provisioner',1,2,4,1,NULL,NULL,0,'UNUSED',NULL,0,1687786159,NULL,NULL,'UNUSED',1687786159);"
+          # Xcode 16 has compiler bugs which are fixed in 16.2+
+          sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
 
       - name: Set up environment
         run: |
