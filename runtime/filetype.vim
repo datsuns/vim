@@ -1,7 +1,7 @@
 " Vim support file to detect file types
 "
 " Maintainer:	The Vim Project <https://github.com/vim/vim>
-" Last Change:	2024 Dec 12
+" Last Change:	2025 Jan 08
 " Former Maintainer:	Bram Moolenaar <Bram@vim.org>
 
 " Listen very carefully, I will say this only once
@@ -240,9 +240,17 @@ au BufNewFile,BufRead *.fb			setf freebasic
 
 " Batch file for MSDOS. See dist#ft#FTsys for *.sys
 au BufNewFile,BufRead *.bat			setf dosbatch
-" *.cmd is close to a Batch file, but on OS/2 Rexx files also use *.cmd.
+" *.cmd is close to a Batch file, but on OS/2 Rexx files and TI linker command files also use *.cmd.
+" lnk: `/* comment */`, `// comment`, and `--linker-option=value`
+" rexx: `/* comment */`, `-- comment`
 au BufNewFile,BufRead *.cmd
-	\ if getline(1) =~ '^/\*' | setf rexx | else | setf dosbatch | endif
+	\  if join(getline(1, 20), "\n") =~ 'MEMORY\|SECTIONS\|\%(^\|\n\)--\S\|\%(^\|\n\)//'
+	\|   setf lnk
+	\| elseif getline(1) =~ '^/\*'
+	\|   setf rexx
+	\| else
+	\|   setf dosbatch
+	\| endif
 " ABB RAPID or Batch file for MSDOS.
 au BufNewFile,BufRead *.sys			call dist#ft#FTsys()
 if has("fname_case")
@@ -334,7 +342,7 @@ au BufNewFile,BufRead *.capnp			setf capnp
 au BufNewFile,BufRead cgdbrc			setf cgdbrc
 
 " C#
-au BufNewFile,BufRead *.cs,*.csx		setf cs
+au BufNewFile,BufRead *.cs,*.csx,*.cake		setf cs
 
 " CSDL
 au BufNewFile,BufRead *.csdl			setf csdl
@@ -1078,6 +1086,9 @@ au BufRead,BufNewFile *.hws			setf hollywood
 " Hoon
 au BufRead,BufNewFile *.hoon			setf hoon
 
+" TI Code Composer Studio General Extension Language
+au BufNewFile,BufRead *.gel			setf gel
+
 " Tilde (must be before HTML)
 au BufNewFile,BufRead *.t.html			setf tilde
 
@@ -1108,6 +1119,9 @@ au BufNewFile,BufRead */etc/hosts.allow,*/etc/hosts.deny  setf hostsaccess
 
 " Hurl
 au BufRead,BufNewFile *.hurl			setf hurl
+
+" Hy
+au BufRead,BufNewFile *.hy,.hy-history		setf hy
 
 " Hyper Builder
 au BufNewFile,BufRead *.hb			setf hb
@@ -1230,7 +1244,7 @@ au BufNewFile,BufRead *.jgr			setf jgraph
 au BufNewFile,BufRead *.jinja			setf jinja
 
 " Jujutsu
-au BufNewFile,BufRead *.jjdescription		setf jj
+au BufNewFile,BufRead *.jjdescription		setf jjdescription
 
 " Jovial
 au BufNewFile,BufRead *.jov,*.j73,*.jovial	setf jovial
@@ -1257,7 +1271,7 @@ au BufNewFile,BufRead *.sublime-project,*.sublime-settings,*.sublime-workspace	s
 au BufNewFile,BufRead .prettierrc,.firebaserc,.stylelintrc,.lintstagedrc,flake.lock,deno.lock	setf json
 
 " JSONC (JSON with comments)
-au BufNewFile,BufRead *.jsonc,.babelrc,.eslintrc,.jsfmtrc	setf jsonc
+au BufNewFile,BufRead *.jsonc,.babelrc,.eslintrc,.jsfmtrc,bun.lock	setf jsonc
 au BufNewFile,BufRead .jshintrc,.jscsrc,.vsconfig,.hintrc,.swrc,[jt]sconfig*.json	setf jsonc
 
 " JSON
@@ -1487,7 +1501,12 @@ au BufNewFile,BufRead */etc/man.conf,man.config	setf manconf
 au BufNewFile,BufRead *.mv,*.mpl,*.mws		setf maple
 
 " Map (UMN mapserver config file)
-au BufNewFile,BufRead *.map			setf map
+au BufNewFile,BufRead *.map
+	\ if getline(1) =~ '^\*\+$' |
+	\   setf lnkmap |
+	\ else |
+	\   setf map |
+	\ endif
 
 " Markdown
 au BufNewFile,BufRead *.markdown,*.mdown,*.mkd,*.mkdn,*.mdwn,*.md
@@ -2166,7 +2185,7 @@ au BufNewFile,BufRead [rR]antfile,*.rant,[rR]akefile,*.rake	setf ruby
 au BufNewFile,BufRead *.rs			setf rust
 au BufNewFile,BufRead Cargo.lock,*/.cargo/config,*/.cargo/credentials	setf toml
 
-" S-lang (or shader language, or SmallLisp)
+" S-lang
 au BufNewFile,BufRead *.sl			setf slang
 
 " Sage
@@ -2181,14 +2200,17 @@ au BufNewFile,BufRead *.sas			setf sas
 " Sass
 au BufNewFile,BufRead *.sass			setf sass
 
-" Sather
-au BufNewFile,BufRead *.sa			setf sather
+" Sather, TI linear assembly
+au BufNewFile,BufRead *.sa			call dist#ft#FTsa()
 
 " Scala
 au BufNewFile,BufRead *.scala			setf scala
 
 " SBT - Scala Build Tool
 au BufNewFile,BufRead *.sbt			setf sbt
+
+" Slang Shading Language
+au BufNewFile,BufRead *.slang			setf shaderslang
 
 " Slint
 au BufNewFile,BufRead *.slint			setf slint
@@ -2314,8 +2336,8 @@ au BufNewFile,BufRead *.zsh,*.zsh-theme,*.zunit		setf zsh
 " Salt state files
 au BufNewFile,BufRead *.sls			setf salt
 
-" Scheme, Supertux configuration ("racket" patterns are now separate, see above)
-au BufNewFile,BufRead *.scm,*.ss,*.sld,*.stsg,*/supertux2/config	setf scheme
+" Scheme, Supertux configuration, Lips.js history ("racket" patterns are now separate, see above)
+au BufNewFile,BufRead *.scm,*.ss,*.sld,*.stsg,*/supertux2/config,.lips_repl_history	setf scheme
 
 " Screen RC
 au BufNewFile,BufRead .screenrc,screenrc	setf screen
@@ -2408,6 +2430,7 @@ au BufNewFile,BufRead *.ice			setf slice
 " Microsoft Visual Studio Solution
 au BufNewFile,BufRead *.sln			setf solution
 au BufNewFile,BufRead *.slnf			setf json
+au BufNewFile,BufRead *.slnx			setf xml
 
 " Spice
 au BufNewFile,BufRead *.sp,*.spice		setf spice
@@ -2903,6 +2926,9 @@ au BufNewFile,BufRead *.fsproj,*.fsproj.user	setf xml
 
 " VBPROJ files are Visual Studio.NET's XML-based Visual Basic project config files
 au BufNewFile,BufRead *.vbproj,*.vbproj.user	setf xml
+
+" MSBUILD configuration files are also XML
+au BufNewFile,BufRead Directory.Packages.props,Directory.Build.targets,Directory.Build.props	setf xml
 
 " Unison Language
 au BufNewFile,BufRead *.u,*.uu				setf unison
