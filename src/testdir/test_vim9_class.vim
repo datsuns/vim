@@ -3507,7 +3507,73 @@ def Test_extend_imported_class()
   v9.CheckScriptSuccess(lines)
 enddef
 
-def Test_abstract_class()
+" Test for multi level import
+def Test_multi_level_import_normal()
+  var lines =<< trim END
+    vim9script
+    export class Property
+      public var value: string
+    endclass
+  END
+  writefile(lines, 'aa.vim', 'D')
+
+  lines =<< trim END
+    vim9script
+    import './aa.vim'
+    export class View
+      var content = aa.Property.new('')
+    endclass
+  END
+  writefile(lines, 'bb.vim', 'D')
+
+  lines =<< trim END
+    vim9script
+    import './bb.vim'
+    class MyView extends bb.View
+      def new(value: string)
+        this.content.value = value
+      enddef
+    endclass
+    var myView = MyView.new('This should be ok')
+  END
+  v9.CheckScriptSuccess(lines)
+enddef
+
+" Test for multi level import
+def Test_multi_level_import_nest_over()
+  var lines =<< trim END
+    vim9script
+    import './xbb.vim'
+    export class Property
+      public var value: string
+    endclass
+  END
+  writefile(lines, 'xaa.vim', 'D')
+
+  lines =<< trim END
+    vim9script
+    import './xaa.vim'
+    export class View
+      var content = aa.Property.new('')
+    endclass
+  END
+  writefile(lines, 'xbb.vim', 'D')
+
+  lines =<< trim END
+    vim9script
+    set maxfuncdepth=100
+    import './xbb.vim'
+    class MyView extends bb.View
+      def new(value: string)
+        this.content.value = value
+      enddef
+    endclass
+    var myView = MyView.new('This should be ok')
+  END
+  v9.CheckSourceFailure(lines, 'E1045: Import nesting too deep', 3)
+enddef
+
+def Test_abtstract_class()
   var lines =<< trim END
     vim9script
     abstract class Base
@@ -6096,44 +6162,151 @@ enddef
 
 " Test for using an interface method using a child object when it is overridden
 " by the child class.
-" FIXME: This test fails.
-" def Test_interface_overridden_method_from_child()
-"   var lines =<< trim END
-"     vim9script
-"
-"     interface A
-"       def Foo(): string
-"     endinterface
-"
-"     class B implements A
-"       def Foo(): string
-"         return 'b-foo'
-"       enddef
-"     endclass
-"
-"     class C extends B
-"       def Bar(): string
-"         return 'bar'
-"       enddef
-"       def Foo(): string
-"         return 'c-foo'
-"       enddef
-"     endclass
-"
-"     def T1(a: A)
-"       assert_equal('c-foo', a.Foo())
-"     enddef
-"
-"     def T2(b: B)
-"       assert_equal('c-foo', b.Foo())
-"     enddef
-"
-"     var c = C.new()
-"     T1(c)
-"     T2(c)
-"   END
-"   v9.CheckSourceSuccess(lines)
-" enddef
+def Test_interface_overridden_method_from_child()
+  var lines =<< trim END
+    vim9script
+
+    interface A
+      def Foo(): string
+    endinterface
+
+    class B implements A
+      def Foo(): string
+        return 'b-foo'
+      enddef
+    endclass
+
+    class C extends B
+      def Bar(): string
+        return 'bar'
+      enddef
+      def Foo(): string
+        return 'c-foo'
+      enddef
+    endclass
+
+    def T1(a: A)
+      assert_equal('c-foo', a.Foo())
+    enddef
+
+    def T2(b: B)
+      assert_equal('c-foo', b.Foo())
+    enddef
+
+    var c = C.new()
+    T1(c)
+    T2(c)
+  END
+  v9.CheckSourceSuccess(lines)
+enddef
+
+" Test for interface inheritance
+def Test_interface_inheritance()
+  var lines =<< trim END
+    vim9script
+
+    interface A
+      def A_Fn(): string
+    endinterface
+
+    interface B
+      def B_Fn(): string
+    endinterface
+
+    interface C
+      def C_Fn(): string
+    endinterface
+
+    class C1 implements A
+      def A_Fn(): string
+        return 'c1-a'
+      enddef
+    endclass
+
+    class C2 extends C1 implements B
+      def B_Fn(): string
+        return 'c2-b'
+      enddef
+      def A_Fn(): string
+        return 'c2-a'
+      enddef
+    endclass
+
+    class C3 extends C2 implements C
+      def C_Fn(): string
+        return 'c3-c'
+      enddef
+      def A_Fn(): string
+        return 'c3-a'
+      enddef
+      def B_Fn(): string
+        return 'c3-b'
+      enddef
+    endclass
+
+    def T1(a: A, s: string)
+      assert_equal(s, a.A_Fn())
+    enddef
+
+    def T2(b: B, s: string)
+      assert_equal(s, b.B_Fn())
+    enddef
+
+    def T3(c: C, s: string)
+      assert_equal(s, c.C_Fn())
+    enddef
+
+    def T4(c1: C1)
+      T1(c1, 'c3-a')
+    enddef
+
+    def T5(c2: C2)
+      T1(c2, 'c3-a')
+      T2(c2, 'c3-b')
+    enddef
+
+    def T6(c3: C3)
+      T1(c3, 'c3-a')
+      T2(c3, 'c3-b')
+      T3(c3, 'c3-c')
+    enddef
+
+    var o3 = C3.new()
+    T4(o3)
+    T5(o3)
+    T6(o3)
+  END
+  v9.CheckSourceSuccess(lines)
+
+  # Both the parent and child classes implement the same interface
+  lines =<< trim END
+    vim9script
+
+    interface I
+      def Foo(): string
+    endinterface
+
+    class A implements I
+      def Foo(): string
+        return 'A-foo'
+      enddef
+    endclass
+
+    class B implements I
+      def Foo(): string
+        return 'B-foo'
+      enddef
+    endclass
+
+    def Bar(i1: I): string
+      return i1.Foo()
+    enddef
+
+    var b = B.new()
+    assert_equal('B-foo', Bar(b))
+  END
+  v9.CheckSourceSuccess(lines)
+enddef
 
 " Test for abstract methods
 def Test_abstract_method()
@@ -7253,6 +7426,69 @@ def Test_interface_extends_with_dup_members()
     var c = C.new()
     T1(c)
     T2(c)
+  END
+  v9.CheckSourceSuccess(lines)
+enddef
+
+" Test for implementing an interface with different ordering for the interface
+" member variables.
+def Test_implement_interface_with_different_variable_order()
+  var lines =<< trim END
+    vim9script
+
+    interface IX
+      var F: func(): string
+    endinterface
+
+    class X implements IX
+      var x: number
+      var F: func(): string = () => 'ok'
+    endclass
+
+    def Foo(ix: IX): string
+      return ix.F()
+    enddef
+
+    var x0 = X.new(0)
+    assert_equal('ok', Foo(x0))
+  END
+  v9.CheckSourceSuccess(lines)
+enddef
+
+" Test for inheriting interfaces from an imported super class
+def Test_interface_inheritance_with_imported_super()
+  var lines =<< trim END
+    vim9script
+
+    export interface I
+      def F(): string
+    endinterface
+
+    export class A implements I
+      def F(): string
+        return 'A'
+      enddef
+    endclass
+  END
+  writefile(lines, 'Xinheritintfimportclass.vim', 'D')
+
+  lines =<< trim END
+    vim9script
+
+    import './Xinheritintfimportclass.vim' as i_imp
+
+    # class C extends i_imp.A
+    class C extends i_imp.A implements i_imp.I
+      def F(): string
+        return 'C'
+      enddef
+    endclass
+
+    def TestI(i: i_imp.I): string
+        return i.F()
+    enddef
+
+    assert_equal('C', TestI(C.new()))
   END
   v9.CheckSourceSuccess(lines)
 enddef
