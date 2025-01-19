@@ -4282,6 +4282,9 @@ func Test_str2blob()
     call assert_equal(0zABBB0AABBB, str2blob(['«»', '«»'], {'encoding': 'latin1'}))
     call assert_equal(0zC2ABC2BB, str2blob(['«»'], {'encoding': 'utf8'}))
 
+    call assert_equal(0z62, str2blob(["b"], test_null_dict()))
+    call assert_equal(0z63, str2blob(["c"], {'encoding': test_null_string()}))
+
     call assert_fails("call str2blob(['abc'], [])", 'E1206: Dictionary required for argument 2')
     call assert_fails("call str2blob(['abc'], {'encoding': []})", 'E730: Using a List as a String')
     call assert_fails("call str2blob(['abc'], {'encoding': 'ab12xy'})", 'E1515: Unable to convert to ''ab12xy'' encoding')
@@ -4308,6 +4311,10 @@ func Test_blob2str()
     call assert_equal(["🁰🁳"], blob2str(0zF09F81B0.F09F81B3))
     call assert_equal(['«»'], blob2str(0zABBB, {'encoding': 'latin1'}))
     call assert_equal(['«»'], blob2str(0zC2ABC2BB, {'encoding': 'utf8'}))
+    call assert_equal(['«»'], blob2str(0zC2ABC2BB, {'encoding': 'utf-8'}))
+
+    call assert_equal(['a'], blob2str(0z61, test_null_dict()))
+    call assert_equal(['a'], blob2str(0z61, {'encoding': test_null_string()}))
 
     #" Invalid encoding
     call assert_fails("call blob2str(0z80)", "E1515: Unable to convert from 'utf-8' encoding")

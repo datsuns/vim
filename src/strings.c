@@ -1265,7 +1265,7 @@ string_from_blob(blob_T *blob, long *start_idx)
 {
     garray_T	str_ga;
     long	blen;
-    long	idx;
+    int		idx;
 
     ga_init2(&str_ga, sizeof(char), 80);
 
@@ -1366,9 +1366,10 @@ f_blob2str(typval_T *argvars, typval_T *rettv)
 	    }
 	}
 
-	if (list_append_string(rettv->vval.v_list, converted_str, -1) == FAIL)
-	    break;
+	int ret = list_append_string(rettv->vval.v_list, converted_str, -1);
 	vim_free(converted_str);
+	if (ret == FAIL)
+	    break;
     }
 
 done:
