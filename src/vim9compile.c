@@ -778,7 +778,6 @@ get_script_item_idx(
     static imported_T *
 find_imported_in_script(char_u *name, size_t len, int sid)
 {
-    static int	    nesting = 0;
     scriptitem_T    *si;
     int		    idx;
 
@@ -793,19 +792,6 @@ find_imported_in_script(char_u *name, size_t len, int sid)
 		     : STRLEN(import->imp_name) == len
 				  && STRNCMP(name, import->imp_name, len) == 0)
 	    return import;
-	else
-	{
-	    if (nesting >= p_mfd)
-	    {
-		emsg(_(e_import_nesting_too_deep));
-		return NULL;
-	    }
-	    ++nesting;
-	    import = find_imported_in_script(name, len, import->imp_sid);
-	    --nesting;
-	    if (import != NULL)
-		return import;
-	}
     }
     return NULL;
 }
@@ -1048,6 +1034,7 @@ compile_nested_function(exarg_T *eap, cctx_T *cctx, garray_T *lines_to_free)
     int		off;
     char_u	*func_name;
     char_u	*lambda_name;
+    size_t	lambda_namelen;
     ufunc_T	*ufunc;
     int		r = FAIL;
     compiletype_T   compile_type;
@@ -1106,7 +1093,9 @@ compile_nested_function(exarg_T *eap, cctx_T *cctx, garray_T *lines_to_free)
 
     eap->forceit = FALSE;
     // We use the special <Lamba>99 name, but it's not really a lambda.
-    lambda_name = vim_strsave(get_lambda_name());
+    lambda_name = get_lambda_name();
+    lambda_namelen = get_lambda_name_len();
+    lambda_name = vim_strnsave(lambda_name, lambda_namelen);
     if (lambda_name == NULL)
 	return NULL;
 
@@ -3898,7 +3887,7 @@ add_def_function(ufunc_T *ufunc)
     dfunc->df_idx = def_functions.ga_len;
     ufunc->uf_dfunc_idx = dfunc->df_idx;
     dfunc->df_ufunc = ufunc;
-    dfunc->df_name = vim_strsave(ufunc->uf_name);
+    dfunc->df_name = vim_strnsave(ufunc->uf_name, ufunc->uf_namelen);
     ga_init2(&dfunc->df_var_names, sizeof(char_u *), 10);
     ++dfunc->df_refcount;
     ++def_functions.ga_len;
@@ -4917,9 +4906,10 @@ compile_def_function(
 	    goto erret;
     ufunc->uf_args_visible = ufunc->uf_args.ga_len;
 
-    // Compiling a function in an interface is done to get the function type.
-    // No code is actually compiled.
-    if (ufunc->uf_class != NULL && IS_INTERFACE(ufunc->uf_class))
+    // Compiling an abstract method or a function in an interface is done to
+    // get the function type.  No code is actually compiled.
+    if (ufunc->uf_class != NULL && (IS_INTERFACE(ufunc->uf_class)
+						|| IS_ABSTRACT_METHOD(ufunc)))
     {
 	ufunc->uf_def_status = UF_NOT_COMPILED;
 	ret = OK;

@@ -13,7 +13,7 @@
  * Vim originated from Stevie version 3.6 (Fish disk 217) by GRWalter (Fred)
  * It has been changed beyond recognition since then.
  *
- * Differences between version 8.2 and 9.0 can be found with ":help version9".
+ * Differences between version 8.2 and 9.1 can be found with ":help version9".
  * Differences between version 7.4 and 8.x can be found with ":help version8".
  * Differences between version 6.4 and 7.x can be found with ":help version7".
  * Differences between version 5.8 and 6.x can be found with ":help version6".
@@ -704,6 +704,90 @@ static char *(features[]) =
 
 static int included_patches[] =
 {   /* Add new patch number below this line */
+/**/
+    1071,
+/**/
+    1070,
+/**/
+    1069,
+/**/
+    1068,
+/**/
+    1067,
+/**/
+    1066,
+/**/
+    1065,
+/**/
+    1064,
+/**/
+    1063,
+/**/
+    1062,
+/**/
+    1061,
+/**/
+    1060,
+/**/
+    1059,
+/**/
+    1058,
+/**/
+    1057,
+/**/
+    1056,
+/**/
+    1055,
+/**/
+    1054,
+/**/
+    1053,
+/**/
+    1052,
+/**/
+    1051,
+/**/
+    1050,
+/**/
+    1049,
+/**/
+    1048,
+/**/
+    1047,
+/**/
+    1046,
+/**/
+    1045,
+/**/
+    1044,
+/**/
+    1043,
+/**/
+    1042,
+/**/
+    1041,
+/**/
+    1040,
+/**/
+    1039,
+/**/
+    1038,
+/**/
+    1037,
+/**/
+    1036,
+/**/
+    1035,
+/**/
+    1034,
+/**/
+    1033,
+/**/
+    1032,
+/**/
+    1031,
+/**/
+    1030,
 /**/
     1029,
 /**/
