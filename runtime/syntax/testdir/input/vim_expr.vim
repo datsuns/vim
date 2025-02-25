@@ -85,7 +85,77 @@ echo 0zFF00ED015DAF
 echo 0zFF00.ED01.5DAF
 echo 0zFF.00.ED.01.5D.AF
 
+" List
+
+echo []
+echo [42]
+echo [[11, 12], [21, 22], [31, 32]]
+echo [1,
+      \ 2,
+      \ 3,
+      \ 4
+      \]
+echo [1, 'two', 1 + 2, "fo" .. "ur"]
+
+" Issue #5830 (Incorrect syntax highlighting in Vim script when omitting space in list of string)
+let l = ['a','b','c']
+
+" Register
+
+echo @" 
+echo @0 @1 @2 @3 @4 @5 @6 @7 @8 @9
+echo @-
+echo @a @b @c @d @e @f @g @h @i @j @k @l @m @n @o @p @q @r @s @t @u @v @w @x @y @z
+echo @A @B @C @D @E @F @G @H @I @J @K @L @M @N @O @P @Q @R @S @T @U @V @W @X @Y @Z
+echo @: @. @% @# @= @* @+ @~ @_ @/
+
 " Operators
+
+" Ternary
+echo expr ? expr : expr
+
+echo lnum == 1 ? "top" : lnum
+echo lnum == 1 ? "top" : lnum == 1000 ? "last" : lnum
+
+echo lnum == 1
+      \	? "top"
+      \	: lnum == 1000
+      \		? "last"
+      \		: lnum
+echo lnum == 1 ?
+      \	"top" :
+      \	lnum == 1000 ?
+      \		"last" :
+      \		lnum
+
+echo 1 ? 1 : 0
+echo "foo" ? "foo" : "bar"
+echo foo ? foo : bar
+echo g:foo ? g:foo : g:bar
+echo $FOO ? $FOO : $BAR
+echo True() ? True() : False()
+echo @a ? @a : @b
+echo (1) ? (1) : (0)
+
+" Falsy
+echo expr ?? expr
+
+echo theList ?? 'list is empty'
+echo GetName() ?? 'unknown'
+
+echo theList
+      \ ?? 'list is empty'
+echo theList ??
+      \ 'list is empty'
+
+echo 1 ?? 1
+echo "foo" ?? "foo"
+echo foo ?? foo
+echo g:foo ?? g:foo
+echo $FOO ?? $FOO
+echo True() ?? True()
+echo @a ?? @a
+echo (1) ?? (1)
 
 " Comparison - using 'ignorcase'
 echo expr ==     expr
@@ -123,9 +193,52 @@ echo expr !~?    expr
 echo expr is?    expr
 echo expr isnot? expr
 
-" Unreported issue (incorrectly matches as "echo vimNumber *vimCommand* vimNumber")
+" Unreported issue ("is" incorrectly matches as "echo vimNumber *vimCommand* vimNumber")
 echo 42 is 42
+
+" Line continuation
+let foo = foo +
+      \
+      "\ comment
+      \
+      "\ comment
+      \ bar +
+      \ "baz"
+
+let foo = foo +
+      "\ comment
+      \
+      "\ comment
+      \
+      \ bar +
+      \ "baz"
+
+" Function calls
+
+call Foo(v:true, v:false, v:null)
+
 
 " Issue #16221 (vimString becomes vimVar when preceded by !)
 let bar = !'g:bar'->exists()
+
+
+" Issue #14423 (vim.vim: Opt out of vimSearch*)
+
+?truthy
+let truthy = 0
+\   ? (0
+\   )
+\   : (1
+\   )
+echo truthy
+
+function Foo()
+  ?truthy
+  let truthy = 0
+  \   ? (0
+  \   )
+  \   : (1
+  \   )
+  echo truthy
+endfunction
 

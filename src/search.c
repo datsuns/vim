@@ -42,7 +42,7 @@ static void find_mps_values(int *initc, int *findc, int *backwards, int switchit
 static int is_zero_width(char_u *pattern, size_t patternlen, int move, pos_T *cur, int direction);
 static void cmdline_search_stat(int dirc, pos_T *pos, pos_T *cursor_pos, int show_top_bot_msg, char_u *msgbuf, size_t msgbuflen, int recompute, int maxcount, long timeout);
 static void update_search_stat(int dirc, pos_T *pos, pos_T *cursor_pos, searchstat_T *stat, int recompute, int maxcount, long timeout);
-static int fuzzy_match_compute_score(char_u *str, int strSz, int_u *matches, int numMatches);
+static int fuzzy_match_compute_score(char_u *fuzpat, char_u *str, int strSz, int_u *matches, int numMatches);
 static int fuzzy_match_recursive(char_u *fuzpat, char_u *str, int_u strIdx, int *outScore, char_u *strBegin, int strLen, int_u *srcMatches, int_u *matches, int maxMatches, int nextMatch, int *recursionCount);
 #if defined(FEAT_EVAL) || defined(FEAT_PROTO)
 static int fuzzy_match_item_compare(const void *s1, const void *s2);
@@ -3269,6 +3269,7 @@ update_search_stat(
     static int	    last_maxcount = SEARCH_STAT_DEF_MAX_COUNT;
     static int	    chgtick = 0;
     static char_u   *lastpat = NULL;
+    static size_t   lastpatlen = 0;
     static buf_T    *lbuf = NULL;
 #ifdef FEAT_RELTIME
     proftime_T  start;
@@ -3295,8 +3296,10 @@ update_search_stat(
     // Unfortunately, there is no MB_STRNICMP function.
     // XXX: above comment should be "no MB_STRCMP function" ?
     if (!(chgtick == CHANGEDTICK(curbuf)
-	&& MB_STRNICMP(lastpat, spats[last_idx].pat, STRLEN(lastpat)) == 0
-	&& STRLEN(lastpat) == STRLEN(spats[last_idx].pat)
+	&& (lastpat != NULL
+	    && MB_STRNICMP(lastpat, spats[last_idx].pat, lastpatlen) == 0
+	    && lastpatlen == spats[last_idx].patlen
+	)
 	&& EQUAL_POS(lastpos, *cursor_pos)
 	&& lbuf == curbuf) || wraparound || cur < 0
 	    || (maxcount > 0 && cur > maxcount) || recompute)
@@ -3355,7 +3358,11 @@ update_search_stat(
 	if (done_search)
 	{
 	    vim_free(lastpat);
-	    lastpat = vim_strsave(spats[last_idx].pat);
+	    lastpat = vim_strnsave(spats[last_idx].pat, spats[last_idx].patlen);
+	    if (lastpat == NULL)
+		lastpatlen = 0;
+	    else
+		lastpatlen = spats[last_idx].patlen;
 	    chgtick = CHANGEDTICK(curbuf);
 	    lbuf = curbuf;
 	    lastpos = p;
@@ -4355,6 +4362,10 @@ typedef struct
 #define CAMEL_BONUS 30
 // bonus if the first letter is matched
 #define FIRST_LETTER_BONUS 15
+// bonus if exact match
+#define EXACT_MATCH_BONUS 100
+// bonus if case match when no ignorecase
+#define CASE_MATCH_BONUS 25
 // penalty applied for every letter in str before the first match
 #define LEADING_LETTER_PENALTY (-5)
 // maximum penalty for leading letters
@@ -4374,6 +4385,7 @@ typedef struct
  */
     static int
 fuzzy_match_compute_score(
+	char_u		*fuzpat,
 	char_u		*str,
 	int		strSz,
 	int_u		*matches,
@@ -4386,6 +4398,11 @@ fuzzy_match_compute_score(
     char_u	*p = str;
     int_u	sidx = 0;
     int		is_exact_match = TRUE;
+    char_u	*orig_fuzpat = fuzpat - numMatches;
+    char_u	*curpat = orig_fuzpat;
+    int		pat_idx = 0;
+    // Track consecutive camel case matches
+    int		consecutive_camel = 0;
 
     // Initialize score
     score = 100;
@@ -4404,6 +4421,8 @@ fuzzy_match_compute_score(
     for (i = 0; i < numMatches; ++i)
     {
 	int_u	currIdx = matches[i];
+	int	curr;
+	int	is_camel = FALSE;
 
 	if (i > 0)
 	{
@@ -4413,15 +4432,18 @@ fuzzy_match_compute_score(
 	    if (currIdx == (prevIdx + 1))
 		score += SEQUENTIAL_BONUS;
 	    else
+	    {
 		score += GAP_PENALTY * (currIdx - prevIdx);
+		// Reset consecutive camel count on gap
+		consecutive_camel = 0;
+	    }
 	}
 
 	// Check for bonuses based on neighbor character value
 	if (currIdx > 0)
 	{
 	    // Camel case
-	    int	neighbor = ' ';
-	    int	curr;
+	    int neighbor = ' ';
 
 	    if (has_mbyte)
 	    {
@@ -4439,8 +4461,18 @@ fuzzy_match_compute_score(
 		curr = str[currIdx];
 	    }
 
+	    // Enhanced camel case scoring
 	    if (vim_islower(neighbor) && vim_isupper(curr))
-		score += CAMEL_BONUS;
+	    {
+		score += CAMEL_BONUS * 2;  // Double the camel case bonus
+		is_camel = TRUE;
+		consecutive_camel++;
+		// Additional bonus for consecutive camel
+		if (consecutive_camel > 1)
+		    score += CAMEL_BONUS;
+	    }
+	    else
+		consecutive_camel = 0;
 
 	    // Bonus if the match follows a separator character
 	    if (neighbor == '/' || neighbor == '\\')
@@ -4452,14 +4484,47 @@ fuzzy_match_compute_score(
 	{
 	    // First letter
 	    score += FIRST_LETTER_BONUS;
+	    curr = has_mbyte ? (*mb_ptr2char)(p) : str[currIdx];
 	}
+
+	// Case matching bonus
+	if (vim_isalpha(curr))
+	{
+	    while (pat_idx < i && *curpat)
+	    {
+		if (has_mbyte)
+		    MB_PTR_ADV(curpat);
+		else
+		    curpat++;
+		pat_idx++;
+	    }
+
+	    if (has_mbyte)
+	    {
+		if (curr == (*mb_ptr2char)(curpat))
+		{
+		    score += CASE_MATCH_BONUS;
+		    // Extra bonus for exact case match in camel
+		    if (is_camel)
+			score += CASE_MATCH_BONUS / 2;
+		}
+	    }
+	    else if (curr == *curpat)
+	    {
+		score += CASE_MATCH_BONUS;
+		if (is_camel)
+		    score += CASE_MATCH_BONUS / 2;
+	    }
+	}
+
 	// Check exact match condition
         if (currIdx != (int_u)i)
 	    is_exact_match = FALSE;
     }
+
     // Boost score for exact matches
     if (is_exact_match && numMatches == strSz)
-        score += 100;
+        score += EXACT_MATCH_BONUS;
 
     return score;
 }
@@ -4563,7 +4628,7 @@ fuzzy_match_recursive(
 
     // Calculate score
     if (matched)
-	*outScore = fuzzy_match_compute_score(strBegin, strLen, matches,
+	*outScore = fuzzy_match_compute_score(fuzpat, strBegin, strLen, matches,
 		nextMatch);
 
     // Return best result
@@ -5233,8 +5298,6 @@ search_for_fuzzy_match(
     pos_T	circly_end;
     int		found_new_match = FALSE;
     int		looped_around = FALSE;
-    char_u	*next_word_end = NULL;
-    char_u	*match_word = NULL;
 
     if (whole_line)
 	current_pos.lnum += dir;
@@ -5272,10 +5335,9 @@ search_for_fuzzy_match(
 		    {
 			if (ctrl_x_mode_normal())
 			{
-			    match_word = vim_strnsave(*ptr, *len);
-			    if (STRCMP(match_word, pattern) == 0)
+			    if (STRNCMP(*ptr, pattern, *len) == 0 && pattern[*len] == NUL)
 			    {
-				next_word_end = find_word_start(*ptr + *len);
+				char_u	*next_word_end = find_word_start(*ptr + *len);
 				if (*next_word_end != NUL && *next_word_end != NL)
 				{
 				    // Find end of the word.
@@ -5297,7 +5359,6 @@ search_for_fuzzy_match(
 				*len = next_word_end - *ptr;
 				current_pos.col = *len;
 			    }
-			    vim_free(match_word);
 			}
 			*pos = current_pos;
 			break;
@@ -5311,7 +5372,7 @@ search_for_fuzzy_match(
 		    {
 			found_new_match = TRUE;
 			*pos = current_pos;
-			*len = (int)STRLEN(*ptr);
+			*len = (int)ml_get_buf_len(buf, current_pos.lnum);
 			break;
 		    }
 		}

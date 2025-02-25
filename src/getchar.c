@@ -88,6 +88,11 @@ static char_u	noremapbuf_init[TYPELEN_INIT];	// initial typebuf.tb_noremap
 
 static size_t	last_recorded_len = 0;	// number of last recorded chars
 
+static size_t	last_get_recorded_len = 0;	// length of the string returned from the
+						// last call to get_recorded()
+static size_t	last_get_inserted_len = 0;	// length of the string returned from the
+						// last call to get_inserted()
+
 #ifdef FEAT_EVAL
 mapblock_T	*last_used_map = NULL;
 int		last_used_sid = -1;
@@ -168,29 +173,44 @@ get_buffcont(
 get_recorded(void)
 {
     char_u	*p;
-    size_t	len;
 
-    p = get_buffcont(&recordbuff, TRUE, &len);
+    p = get_buffcont(&recordbuff, TRUE, &last_get_recorded_len);
+    if (p == NULL)
+	return NULL;
+
     free_buff(&recordbuff);
 
     /*
      * Remove the characters that were added the last time, these must be the
      * (possibly mapped) characters that stopped the recording.
      */
-    if (len >= last_recorded_len)
+    if (last_get_recorded_len >= last_recorded_len)
     {
-	len -= last_recorded_len;
-	p[len] = NUL;
+	last_get_recorded_len -= last_recorded_len;
+	p[last_get_recorded_len] = NUL;
     }
 
     /*
      * When stopping recording from Insert mode with CTRL-O q, also remove the
      * CTRL-O.
      */
-    if (len > 0 && restart_edit != 0 && p[len - 1] == Ctrl_O)
-	p[len - 1] = NUL;
+    if (last_get_recorded_len > 0 && restart_edit != 0
+				    && p[last_get_recorded_len - 1] == Ctrl_O)
+    {
+	--last_get_recorded_len;
+	p[last_get_recorded_len] = NUL;
+    }
 
     return (p);
+}
+
+/*
+ * Return the length of string returned from the last call of get_recorded().
+ */
+    size_t
+get_recorded_len(void)
+{
+    return last_get_recorded_len;
 }
 
 /*
@@ -200,7 +220,16 @@ get_recorded(void)
     char_u *
 get_inserted(void)
 {
-    return get_buffcont(&redobuff, FALSE, NULL);
+    return get_buffcont(&redobuff, FALSE, &last_get_inserted_len);
+}
+
+/*
+ * Return the length of string returned from the last call of get_inserted().
+ */
+    size_t
+get_inserted_len(void)
+{
+    return last_get_inserted_len;
 }
 
 /*
@@ -2384,12 +2413,46 @@ char_avail(void)
  * "getchar()" and "getcharstr()" functions
  */
     static void
-getchar_common(typval_T *argvars, typval_T *rettv)
+getchar_common(typval_T *argvars, typval_T *rettv, int allow_number)
 {
-    varnumber_T		n;
+    varnumber_T		n = 0;
+    int			called_emsg_start = called_emsg;
     int			error = FALSE;
+    int			simplify = TRUE;
+    char_u		cursor_flag = 'm';
 
-    if (in_vim9script() && check_for_opt_bool_arg(argvars, 0) == FAIL)
+    if ((in_vim9script()
+		&& check_for_opt_bool_or_number_arg(argvars, 0) == FAIL)
+	    || (argvars[0].v_type != VAR_UNKNOWN
+		    && check_for_opt_dict_arg(argvars, 1) == FAIL))
+	return;
+
+    if (argvars[0].v_type != VAR_UNKNOWN && argvars[1].v_type == VAR_DICT)
+    {
+	dict_T		*d = argvars[1].vval.v_dict;
+	char_u		*cursor_str;
+
+	if (allow_number)
+	    allow_number = dict_get_bool(d, "number", TRUE);
+	else if (dict_has_key(d, "number"))
+	    semsg(_(e_invalid_argument_str), "number");
+
+	simplify = dict_get_bool(d, "simplify", TRUE);
+
+	cursor_str = dict_get_string(d, "cursor", FALSE);
+	if (cursor_str != NULL)
+	{
+	    if (STRCMP(cursor_str, "hide") != 0
+		    && STRCMP(cursor_str, "keep") != 0
+		    && STRCMP(cursor_str, "msg") != 0)
+		semsg(_(e_invalid_value_for_argument_str_str), "cursor",
+								   cursor_str);
+	    else
+		cursor_flag = cursor_str[0];
+	}
+    }
+
+    if (called_emsg != called_emsg_start)
 	return;
 
 #ifdef MESSAGE_QUEUE
@@ -2399,14 +2462,20 @@ getchar_common(typval_T *argvars, typval_T *rettv)
     parse_queued_messages();
 #endif
 
-    // Position the cursor.  Needed after a message that ends in a space.
-    windgoto(msg_row, msg_col);
+    if (cursor_flag == 'h')
+	cursor_sleep();
+    else if (cursor_flag == 'm')
+	windgoto(msg_row, msg_col);
 
     ++no_mapping;
     ++allow_keys;
+    if (!simplify)
+	++no_reduce_keys;
     for (;;)
     {
-	if (argvars[0].v_type == VAR_UNKNOWN)
+	if (argvars[0].v_type == VAR_UNKNOWN
+		|| (argvars[0].v_type == VAR_NUMBER
+			&& argvars[0].vval.v_number == -1))
 	    // getchar(): blocking wait.
 	    n = plain_vgetc_nopaste();
 	else if (tv_get_bool_chk(&argvars[0], &error))
@@ -2427,14 +2496,18 @@ getchar_common(typval_T *argvars, typval_T *rettv)
     }
     --no_mapping;
     --allow_keys;
+    if (!simplify)
+	--no_reduce_keys;
+
+    if (cursor_flag == 'h')
+	cursor_unsleep();
 
     set_vim_var_nr(VV_MOUSE_WIN, 0);
     set_vim_var_nr(VV_MOUSE_WINID, 0);
     set_vim_var_nr(VV_MOUSE_LNUM, 0);
     set_vim_var_nr(VV_MOUSE_COL, 0);
 
-    rettv->vval.v_number = n;
-    if (n != 0 && (IS_SPECIAL(n) || mod_mask != 0))
+    if (n != 0 && (!allow_number || IS_SPECIAL(n) || mod_mask != 0))
     {
 	char_u		temp[10];   // modifier: 3, mbyte-char: 6, NUL: 1
 	int		i = 0;
@@ -2492,6 +2565,10 @@ getchar_common(typval_T *argvars, typval_T *rettv)
 	    }
 	}
     }
+    else if (!allow_number)
+	rettv->v_type = VAR_STRING;
+    else
+	rettv->vval.v_number = n;
 }
 
 /*
@@ -2500,7 +2577,7 @@ getchar_common(typval_T *argvars, typval_T *rettv)
     void
 f_getchar(typval_T *argvars, typval_T *rettv)
 {
-    getchar_common(argvars, rettv);
+    getchar_common(argvars, rettv, TRUE);
 }
 
 /*
@@ -2509,25 +2586,7 @@ f_getchar(typval_T *argvars, typval_T *rettv)
     void
 f_getcharstr(typval_T *argvars, typval_T *rettv)
 {
-    getchar_common(argvars, rettv);
-
-    if (rettv->v_type != VAR_NUMBER)
-	return;
-
-    char_u		temp[7];   // mbyte-char: 6, NUL: 1
-    varnumber_T	n = rettv->vval.v_number;
-    int		i = 0;
-
-    if (n != 0)
-    {
-	if (has_mbyte)
-	    i += (*mb_char2bytes)(n, temp + i);
-	else
-	    temp[i++] = n;
-    }
-    temp[i] = NUL;
-    rettv->v_type = VAR_STRING;
-    rettv->vval.v_string = vim_strnsave(temp, i);
+    getchar_common(argvars, rettv, FALSE);
 }
 
 /*
