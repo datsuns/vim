@@ -1374,7 +1374,7 @@ generate_loadvar(cctx_T *cctx, lhs_T *lhs)
 	case dest_script:
 	case dest_script_v9:
 	    res = compile_load_scriptvar(cctx,
-				  name + (name[1] == ':' ? 2 : 0), NULL, NULL);
+			    name + (name[1] == ':' ? 2 : 0), NULL, NULL, NULL);
 	    break;
 	case dest_env:
 	    // Include $ in the name here
@@ -2496,9 +2496,10 @@ compile_load_lhs(
 	lhs->lhs_type = cctx->ctx_type_stack.ga_len == 0 ? &t_void
 						  : get_type_on_stack(cctx, 0);
 
-	if (lhs->lhs_type->tt_type == VAR_OBJECT)
+	if (lhs->lhs_type->tt_type == VAR_CLASS
+		|| lhs->lhs_type->tt_type == VAR_OBJECT)
 	{
-	    // Check whether the object variable is modifiable
+	    // Check whether the class or object variable is modifiable
 	    if (!lhs_class_member_modifiable(lhs, var_start, cctx))
 		return FAIL;
 	}
@@ -3970,9 +3971,34 @@ obj_constructor_prologue(ufunc_T *ufunc, cctx_T *cctx)
 
 	if (m->ocm_init != NULL)
 	{
-	    char_u *expr = m->ocm_init;
+	    char_u	*expr = m->ocm_init;
+	    sctx_T	save_current_sctx;
+	    int		change_sctx = FALSE;
 
-	    if (compile_expr0(&expr, cctx) == FAIL)
+	    // If the member variable initialization script context is
+	    // different from the current script context, then change it.
+	    if (current_sctx.sc_sid != m->ocm_init_sctx.sc_sid)
+		change_sctx = TRUE;
+
+	    if (change_sctx)
+	    {
+		// generate an instruction to change the script context to the
+		// member variable initialization script context.
+		save_current_sctx = current_sctx;
+		current_sctx = m->ocm_init_sctx;
+		generate_SCRIPTCTX_SET(cctx, current_sctx);
+	    }
+
+	    int r = compile_expr0(&expr, cctx);
+
+	    if (change_sctx)
+	    {
+		// restore the previous script context
+		current_sctx = save_current_sctx;
+		generate_SCRIPTCTX_SET(cctx, current_sctx);
+	    }
+
+	    if (r == FAIL)
 		return FAIL;
 
 	    if (!ends_excmd2(m->ocm_init, expr))

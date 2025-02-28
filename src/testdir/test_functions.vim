@@ -2244,6 +2244,11 @@ func Test_input_func()
 
   call assert_fails("call input('F:', '', 'invalid')", 'E180:')
   call assert_fails("call input('F:', '', [])", 'E730:')
+
+  " Test for using 'command' as the completion function
+  call feedkeys(":let c = input('Command? ', '', 'command')\<CR>"
+        \ .. "echo bufnam\<C-A>\<CR>", 'xt')
+  call assert_equal('echo bufname(', c)
 endfunc
 
 " Test for the inputdialog() function
@@ -2888,6 +2893,7 @@ func Test_platform_name()
   " Is Unix?
   call assert_equal(has('bsd'), has('bsd') && has('unix'))
   call assert_equal(has('hpux'), has('hpux') && has('unix'))
+  call assert_equal(has('hurd'), has('hurd') && has('unix'))
   call assert_equal(has('linux'), has('linux') && has('unix'))
   call assert_equal(has('mac'), has('mac') && has('unix'))
   call assert_equal(has('qnx'), has('qnx') && has('unix'))
@@ -2905,6 +2911,7 @@ func Test_platform_name()
     call assert_equal(uname =~? 'QNX', has('qnx'))
     call assert_equal(uname =~? 'SunOS', has('sun'))
     call assert_equal(uname =~? 'CYGWIN\|MSYS', has('win32unix'))
+    call assert_equal(uname =~? 'GNU', has('hurd'))
   endif
 endfunc
 
@@ -4443,6 +4450,9 @@ func Test_blob2str()
 
     call assert_equal(['a'], blob2str(0z61, test_null_dict()))
     call assert_equal(['a'], blob2str(0z61, {'encoding': test_null_string()}))
+
+    call assert_equal(["\x80"], blob2str(0z80, {'encoding': 'none'}))
+    call assert_equal(['a', "\x80"], blob2str(0z610A80, {'encoding': 'none'}))
 
     #" Invalid encoding
     call assert_fails("call blob2str(0z80)", "E1515: Unable to convert from 'utf-8' encoding")

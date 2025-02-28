@@ -3508,7 +3508,7 @@ EXTERN char e_abstract_must_be_followed_by_def[]
 	INIT(= N_("E1371: Abstract must be followed by \"def\""));
 EXTERN char e_abstract_method_in_concrete_class[]
 	INIT(= N_("E1372: Abstract method \"%s\" cannot be defined in a concrete class"));
-EXTERN char e_abstract_method_str_not_found[]
+EXTERN char e_abstract_method_str_not_implemented[]
 	INIT(= N_("E1373: Abstract method \"%s\" is not implemented"));
 EXTERN char e_class_variable_str_accessible_only_inside_class_str[]
 	INIT(= N_("E1374: Class variable \"%s\" accessible only inside class \"%s\""));
@@ -3552,7 +3552,8 @@ EXTERN char e_type_can_only_be_defined_in_vim9_script[]
 	INIT(= N_("E1393: Type can only be defined in Vim9 script"));
 EXTERN char e_type_name_must_start_with_uppercase_letter_str[]
 	INIT(= N_("E1394: Type name must start with an uppercase letter: %s"));
-// E1395 unused
+EXTERN char e_using_null_class[]
+	INIT(= N_("E1395: Using a null class"));
 EXTERN char e_typealias_already_exists_for_str[]
 	INIT(= N_("E1396: Type alias \"%s\" already exists"));
 EXTERN char e_missing_typealias_name[]

@@ -674,22 +674,6 @@ vim_strchr(char_u *string, int c)
     return NULL;
 }
 
-// Sized version of strchr that can handle embedded NULs.
-// Adjusts n to the new size.
-    char *
-vim_strnchr(const char *p, size_t *n, int c)
-{
-    while (*n > 0)
-    {
-	if (*p == c)
-	    return (char *)p;
-	p++;
-	(*n)--;
-    }
-
-    return NULL;
-}
-
 /*
  * Version of strchr() that only works for bytes and handles unsigned char
  * strings with characters above 128 correctly. It also doesn't return a
@@ -1305,7 +1289,7 @@ f_blob2str(typval_T *argvars, typval_T *rettv)
     blob_T	*blob;
     int		blen;
     long	idx;
-    int		utf8_inuse = FALSE;
+    int		validate_utf8 = FALSE;
 
     if (check_for_blob_arg(argvars, 0) == FAIL
 	    || check_for_opt_dict_arg(argvars, 1) == FAIL)
@@ -1332,7 +1316,14 @@ f_blob2str(typval_T *argvars, typval_T *rettv)
     }
 
     if (STRCMP(p_enc, "utf-8") == 0 || STRCMP(p_enc, "utf8") == 0)
-	utf8_inuse = TRUE;
+	validate_utf8 = TRUE;
+
+    if (from_encoding != NULL && STRCMP(from_encoding, "none") == 0)
+    {
+	validate_utf8 = FALSE;
+	vim_free(from_encoding);
+	from_encoding = NULL;
+    }
 
     idx = 0;
     while (idx < blen)
@@ -1356,7 +1347,7 @@ f_blob2str(typval_T *argvars, typval_T *rettv)
 	    }
 	}
 
-	if (utf8_inuse)
+	if (validate_utf8)
 	{
 	    if (!utf_valid_string(converted_str, NULL))
 	    {
@@ -3558,8 +3549,6 @@ vim_vsnprintf_typval(
 			str_arg_l = 0;
 		    else
 		    {
-			// Don't put the #if inside memchr(), it can be a
-			// macro.
 			// memchr on HP does not like n > 2^31  !!!
 			char *q = memchr(str_arg, '\0',
 				  precision <= (size_t)0x7fffffffL ? precision
