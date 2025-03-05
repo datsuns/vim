@@ -1179,8 +1179,8 @@ func Test_complete_cmdline()
   call assert_equal('abcxyz(', getline(3))
   com! -buffer TestCommand1 echo 'TestCommand1'
   com! -buffer TestCommand2 echo 'TestCommand2'
-  write TestCommand1Test
-  write TestCommand2Test
+  write! TestCommand1Test
+  write! TestCommand2Test
   " Test repeating <CTRL-X> <CTRL-V> and switching to another CTRL-X mode
   exe "normal oT\<C-X>\<C-V>\<C-X>\<C-V>\<C-X>\<C-F>\<Esc>"
   call assert_equal('TestCommand2Test', getline(4))
@@ -3217,10 +3217,16 @@ function Test_completeopt_preinsert()
   call assert_equal("fobar", getline('.'))
   call assert_equal(5, col('.'))
 
+  " When the pum is not visible, the preinsert has no effect
   set cot=preinsert
   call feedkeys("Sfoo1 foo2\<CR>f\<C-X>\<C-N>bar", 'tx')
-  call assert_equal("fbar", getline('.'))
-  call assert_equal(4, col('.'))
+  call assert_equal("foo1bar", getline('.'))
+  call assert_equal(7, col('.'))
+
+  set cot=preinsert,menuone
+  call feedkeys("Sfoo1 foo2\<CR>f\<C-X>\<C-N>", 'tx')
+  call assert_equal("foo1", getline('.'))
+  call assert_equal(1, col('.'))
 
   bw!
   set cot&
