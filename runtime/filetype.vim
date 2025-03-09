@@ -1,7 +1,7 @@
 " Vim support file to detect file types
 "
 " Maintainer:	The Vim Project <https://github.com/vim/vim>
-" Last Change:	2025 Feb 23
+" Last Change:	2025 Mar 08
 " Former Maintainer:	Bram Moolenaar <Bram@vim.org>
 
 " Listen very carefully, I will say this only once
@@ -51,8 +51,11 @@ func s:StarSetf(ft)
   endif
 endfunc
 
-" Vim help file
-au BufNewFile,BufRead $VIMRUNTIME/doc/*.txt	setf help
+" Vim help file, set ft explicitly, because 'modeline' might be off
+au BufNewFile,BufRead */doc/*.txt
+	\  if getline('$') =~ 'vim:.*\<\(ft\|filetype\)=help\>'
+	\|   setf help
+	\| endif
 
 " Abaqus or Trasys
 au BufNewFile,BufRead *.inp			call dist#ft#Check_inp()
@@ -74,6 +77,9 @@ au BufNewFile,BufRead *.abc			setf abc
 
 " ABEL
 au BufNewFile,BufRead *.abl			setf abel
+
+" ABNF
+au BufNewFile,BufRead *.abnf			setf abnf
 
 " AceDB
 au BufNewFile,BufRead *.wrm			setf acedb
@@ -2600,6 +2606,9 @@ au BufRead,BufNewFile *.ttl
 
 " Terminfo
 au BufNewFile,BufRead *.ti			setf terminfo
+
+" Tera
+au BufRead,BufNewFile *.tera			setf tera
 
 " Terraform variables
 au BufRead,BufNewFile *.tfvars			setf terraform-vars
