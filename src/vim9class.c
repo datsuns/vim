@@ -3650,7 +3650,7 @@ class_free_nonref(int copyID)
 set_ref_in_classes(int copyID)
 {
     for (class_T *cl = first_class; cl != NULL; cl = cl->class_next_used)
-	set_ref_in_item_class(cl, copyID, NULL, NULL);
+	set_ref_in_item_class(cl, copyID, NULL, NULL, NULL);
 
     return FALSE;
 }
@@ -4132,7 +4132,12 @@ f_instanceof(typval_T *argvars, typval_T *rettv)
 	return;
 
     if (object_tv->vval.v_object == NULL)
+    {
+	if (classinfo_tv->vval.v_class == NULL)
+	    // consider null_object as an instance of null_class
+	    rettv->vval.v_number = VVAL_TRUE;
 	return;
+    }
 
     for (; classinfo_tv->v_type != VAR_UNKNOWN; ++classinfo_tv)
     {

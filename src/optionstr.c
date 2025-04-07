@@ -34,8 +34,9 @@ static char *(p_briopt_values[]) = {"shift:", "min:", "sbr", "list:", "column:",
 #endif
 #if defined(FEAT_DIFF)
 // Note: Keep this in sync with diffopt_changed()
-static char *(p_dip_values[]) = {"filler", "context:", "iblank", "icase", "iwhite", "iwhiteall", "iwhiteeol", "horizontal", "vertical", "closeoff", "hiddenoff", "foldcolumn:", "followwrap", "internal", "indent-heuristic", "algorithm:", "linematch:", NULL};
+static char *(p_dip_values[]) = {"filler", "context:", "iblank", "icase", "iwhite", "iwhiteall", "iwhiteeol", "horizontal", "vertical", "closeoff", "hiddenoff", "foldcolumn:", "followwrap", "internal", "indent-heuristic", "algorithm:", "inline:", "linematch:", NULL};
 static char *(p_dip_algorithm_values[]) = {"myers", "minimal", "patience", "histogram", NULL};
+static char *(p_dip_inline_values[]) = {"none", "simple", "char", "word", NULL};
 #endif
 static char *(p_nf_values[]) = {"bin", "octal", "hex", "alpha", "unsigned", "blank", NULL};
 static char *(p_ff_values[]) = {FF_UNIX, FF_DOS, FF_MAC, NULL};
@@ -124,6 +125,7 @@ static char *(p_fdm_values[]) = {"manual", "expr", "marker", "indent", "syntax",
 				NULL};
 static char *(p_fcl_values[]) = {"all", NULL};
 #endif
+static char *(p_cfc_values[]) = {"keyword", "files", "whole_line", NULL};
 static char *(p_cot_values[]) = {"menu", "menuone", "longest", "preview", "popup", "popuphidden", "noinsert", "noselect", "fuzzy", "nosort", "preinsert", NULL};
 #ifdef BACKSLASH_IN_FILENAME
 static char *(p_csl_values[]) = {"slash", "backslash", NULL};
@@ -150,6 +152,7 @@ didset_string_options(void)
     (void)opt_strings_flags(p_cmp, p_cmp_values, &cmp_flags, TRUE);
     (void)opt_strings_flags(p_bkc, p_bkc_values, &bkc_flags, TRUE);
     (void)opt_strings_flags(p_bo, p_bo_values, &bo_flags, TRUE);
+    (void)opt_strings_flags(p_cfc, p_cfc_values, &cfc_flags, TRUE);
     (void)opt_strings_flags(p_cot, p_cot_values, &cot_flags, TRUE);
 #ifdef FEAT_SESSION
     (void)opt_strings_flags(p_ssop, p_ssop_values, &ssop_flags, TRUE);
@@ -1651,6 +1654,31 @@ expand_set_completeopt(optexpand_T *args, int *numMatches, char_u ***matches)
 }
 
 /*
+ * The 'completefuzzycollect' option is changed.
+ */
+    char *
+did_set_completefuzzycollect(optset_T *args UNUSED)
+{
+    if (opt_strings_flags(p_cfc, p_cfc_values, &cfc_flags, TRUE) != OK)
+	return e_invalid_argument;
+    return NULL;
+}
+
+    int
+expand_set_completefuzzycollect(
+	optexpand_T *args,
+	int *numMatches,
+	char_u ***matches)
+{
+    return expand_set_opt_string(
+	    args,
+	    p_cfc_values,
+	    ARRAY_LENGTH(p_cfc_values) - 1,
+	    numMatches,
+	    matches);
+}
+
+/*
  * The 'completeitemalign' option is changed.
  */
     char *
@@ -1991,6 +2019,18 @@ expand_set_diffopt(optexpand_T *args, int *numMatches, char_u ***matches)
 		    args,
 		    p_dip_algorithm_values,
 		    ARRAY_LENGTH(p_dip_algorithm_values) - 1,
+		    numMatches,
+		    matches);
+	}
+	// Within "inline:", we have a subgroup of possible options.
+	int inline_len = (int)STRLEN("inline:");
+	if (xp->xp_pattern - args->oe_set_arg >= inline_len &&
+		STRNCMP(xp->xp_pattern - inline_len, "inline:", inline_len) == 0)
+	{
+	    return expand_set_opt_string(
+		    args,
+		    p_dip_inline_values,
+		    ARRAY_LENGTH(p_dip_inline_values) - 1,
 		    numMatches,
 		    matches);
 	}

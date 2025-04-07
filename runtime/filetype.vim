@@ -1,7 +1,7 @@
 " Vim support file to detect file types
 "
 " Maintainer:	The Vim Project <https://github.com/vim/vim>
-" Last Change:	2025 Mar 05
+" Last Change:	2025 Mar 18
 " Former Maintainer:	Bram Moolenaar <Bram@vim.org>
 
 " Listen very carefully, I will say this only once
@@ -51,8 +51,11 @@ func s:StarSetf(ft)
   endif
 endfunc
 
-" Vim help file
-au BufNewFile,BufRead $VIMRUNTIME/doc/*.txt	setf help
+" Vim help file, set ft explicitly, because 'modeline' might be off
+au BufNewFile,BufRead */doc/*.txt
+	\  if getline('$') =~ '\%(^\|\s\)vim:\%(.*\%(:\|\s\)\)\?\%(ft\|filetype\)=help\%(:\|\s\|$\)'
+	\|   setf help
+	\| endif
 
 " Abaqus or Trasys
 au BufNewFile,BufRead *.inp			call dist#ft#Check_inp()
@@ -392,6 +395,12 @@ au BufNewFile,BufRead *.cdl			setf cdl
 " Conary Recipe
 au BufNewFile,BufRead *.recipe			setf conaryrecipe
 
+" Containers config files
+au BufNewFile,BufRead */containers/containers.conf{,.d/*.conf}		setf toml
+au BufNewFile,BufRead */containers/containers.conf.modules/*.conf	setf toml
+au BufNewFile,BufRead */containers/registries.conf{,.d/*.conf}		setf toml
+au BufNewFile,BufRead */containers/storage.conf				setf toml
+
 " Corn config file
 au BufNewFile,BufRead *.corn			setf corn
 
@@ -551,6 +560,9 @@ au BufNewFile,BufRead *.cu,*.cuh		setf cuda
 
 " Cue
 au BufNewFile,BufRead *.cue			setf cue
+
+" DAX
+au BufNewFile,BufRead *.dax			setf dax
 
 " Debian devscripts
 au BufNewFile,BufRead devscripts.conf,.devscripts	setf sh
@@ -960,7 +972,7 @@ au BufNewFile,BufRead */etc/gitattributes			setf gitattributes
 au BufNewFile,BufRead .gitignore,*.git/info/exclude		setf gitignore
 au BufNewFile,BufRead */.config/git/ignore,*.prettierignore	setf gitignore
 au BufNewFile,BufRead */.config/fd/ignore,.fdignore,.ignore	setf gitignore
-au BufNewFile,BufRead .rgignore,.dockerignore			setf gitignore
+au BufNewFile,BufRead .rgignore,.dockerignore,.containerignore	setf gitignore
 au BufNewFile,BufRead .npmignore,.vscodeignore			setf gitignore
 au BufNewFile,BufRead git-rebase-todo				setf gitrebase
 au BufRead,BufNewFile .gitsendemail.msg.??????			setf gitsendemail
@@ -1805,7 +1817,7 @@ au BufNewFile,BufRead *.hook
 au BufNewFile,BufRead {.,}makepkg.conf			setf sh
 
 " Pacman log
-au BufNewFile,BufRead pacman.log			setf pacmanlog
+au BufRead pacman.log*					call s:StarSetf('pacmanlog')
 
 " Pam conf
 au BufNewFile,BufRead */etc/pam.conf			setf pamconf
@@ -1954,6 +1966,9 @@ au BufNewFile,BufRead *.inc			call dist#ft#FTinc()
 au BufNewFile,BufRead	*.ps1,*.psd1,*.psm1,*.pssc	setf ps1
 au BufNewFile,BufRead	*.ps1xml			setf ps1xml
 au BufNewFile,BufRead	*.cdxml,*.psc1			setf xml
+
+" Power Query M
+au BufNewFile,BufRead *.pq			setf pq
 
 " Printcap and Termcap
 au BufNewFile,BufRead *printcap
@@ -2506,6 +2521,10 @@ au BufNewFile,BufRead *.class
 " SMCL
 au BufNewFile,BufRead *.hlp,*.ihlp,*.smcl	setf smcl
 
+" SPA JSON
+au BufNewFile,BufRead */pipewire/*.conf		setf spajson
+au BufNewFile,BufRead */wireplumber/*.conf	setf spajson
+
 " Stored Procedures
 au BufNewFile,BufRead *.stp			setf stp
 
@@ -2604,6 +2623,9 @@ au BufRead,BufNewFile *.ttl
 " Terminfo
 au BufNewFile,BufRead *.ti			setf terminfo
 
+" Tera
+au BufRead,BufNewFile *.tera			setf tera
+
 " Terraform variables
 au BufRead,BufNewFile *.tfvars			setf terraform-vars
 
@@ -2648,7 +2670,7 @@ au BufNewFile,BufRead *.tla			setf tla
 au BufNewFile,BufRead {.,}tmux*.conf		setf tmux
 
 " TOML
-au BufNewFile,BufRead *.toml			setf toml
+au BufNewFile,BufRead *.toml,uv.lock		setf toml
 
 " TPP - Text Presentation Program
 au BufNewFile,BufRead *.tpp			setf tpp

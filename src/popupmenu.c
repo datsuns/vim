@@ -115,6 +115,8 @@ pum_display(
     do
     {
 	def_width = p_pw;
+	if (p_pmw > 0 && def_width > p_pmw)
+	    def_width = p_pmw;
 	above_row = 0;
 	below_row = cmdline_row;
 
@@ -226,6 +228,8 @@ pum_display(
 	pum_size = size;
 	pum_compute_size();
 	max_width = pum_base_width;
+        if (p_pmw > 0 && max_width > p_pmw)
+	    max_width = p_pmw;
 
 	// Calculate column
 	if (State == MODE_CMDLINE)
@@ -275,8 +279,12 @@ pum_display(
 
 	    content_width = max_width + pum_kind_width + pum_extra_width + 1;
 	    if (pum_width > content_width && pum_width > p_pw)
+	    {
 		// Reduce width to fit item
-		pum_width = MAX(content_width , p_pw);
+		pum_width = MAX(content_width, p_pw);
+		if (p_pmw > 0 && pum_width > p_pmw)
+		    pum_width = p_pmw;
+	    }
 	    else if (((cursor_col > p_pw || cursor_col > max_width)
 #ifdef FEAT_RIGHTLEFT
 			&& !pum_rl)
@@ -313,6 +321,8 @@ pum_display(
 		if (pum_width < p_pw)
 		{
 		    pum_width = p_pw;
+		    if (p_pmw > 0 && pum_width > p_pmw)
+			pum_width = p_pmw;
 #ifdef FEAT_RIGHTLEFT
 		    if (pum_rl)
 		    {
@@ -327,7 +337,15 @@ pum_display(
 		    }
 		}
 		else if (pum_width > content_width && pum_width > p_pw)
+		{
 		    pum_width = MAX(content_width, p_pw);
+		    if (p_pmw > 0 && pum_width > p_pmw)
+			pum_width = p_pmw;
+		}
+		else if (p_pmw > 0 && pum_width > p_pmw)
+		{
+		    pum_width = p_pmw;
+		}
 	    }
 
 	}
@@ -341,11 +359,15 @@ pum_display(
 #endif
 		pum_col = 0;
 	    pum_width = Columns - 1;
+	    if (p_pmw > 0 && pum_width > p_pmw)
+		pum_width = p_pmw;
 	}
 	else
 	{
 	    if (max_width > p_pw)
 		max_width = p_pw;	// truncate
+	    if (p_pmw > 0 && max_width > p_pmw)
+		max_width = p_pmw;
 #ifdef FEAT_RIGHTLEFT
 	    if (pum_rl)
 		pum_col = max_width - 1;
@@ -456,7 +478,7 @@ pum_compute_text_attrs(char_u *text, hlf_T hlf, int user_hlattr)
 	else
 	{
 	    if (matched_len < 0 && MB_STRNICMP(ptr, leader, leader_len) == 0)
-		matched_len = leader_len;
+		matched_len = (int)leader_len;
 	    if (matched_len > 0)
 	    {
 		new_attr = highlight_attr[is_select ? HLF_PMSI : HLF_PMNI];
@@ -582,6 +604,10 @@ pum_redraw(void)
     int		last_isabbr = FALSE;
     int		orig_attr = -1;
     int		scroll_range = pum_size - pum_height;
+    char_u	*new_str = NULL;
+    char_u	*ptr = NULL;
+    int		remaining = 0;
+    int		fcs_trunc = curwin->w_fill_chars.trunc;
 
     hlf_T	hlfsNorm[3];
     hlf_T	hlfsSel[3];
@@ -699,7 +725,7 @@ pum_redraw(void)
 				char_u		*rt_start = rt;
 				int		cells;
 
-				cells = vim_strsize(rt);
+				cells = mb_string2cells(rt , -1);
 				if (cells > pum_width)
 				{
 				    do
@@ -718,6 +744,50 @@ pum_redraw(void)
 					*(--rt) = '<';
 					cells++;
 				    }
+				}
+
+				// truncated
+				if (pum_width == p_pmw
+					&& totwidth + 1 + cells >= pum_width)
+				{
+				    char_u  *orig_rt = rt;
+				    char_u  *old_rt = NULL;
+				    int	    over_cell = 0;
+				    int	    size = 0;
+
+				    remaining = pum_width - totwidth - 1;
+				    cells = mb_string2cells(rt, -1);
+				    if (cells > remaining)
+				    {
+					while (cells > remaining)
+					{
+					    MB_PTR_ADV(orig_rt);
+					    cells -= has_mbyte ? (*mb_ptr2cells)(orig_rt) : 1;
+					}
+				    }
+				    size = (int)STRLEN(orig_rt);
+				    if (cells < remaining)
+					over_cell =  remaining - cells;
+				    new_str = alloc(size + over_cell + 1 + utf_char2len(fcs_trunc));
+				    if (!new_str)
+					return;
+				    ptr = new_str;
+				    if (fcs_trunc != NUL && fcs_trunc != '>')
+					ptr += (*mb_char2bytes)(fcs_trunc, ptr);
+				    else
+					*ptr++ = '<';
+				    if (over_cell)
+				    {
+					vim_memset(ptr, ' ', over_cell);
+					ptr += over_cell;
+				    }
+				    memcpy(ptr, orig_rt, size);
+				    ptr[size] = NUL;
+				    old_rt = rt_start;
+				    rt = rt_start = new_str;
+				    vim_free(old_rt);
+				    cells = mb_string2cells(rt, -1);
+				    width = cells;
 				}
 
 				if (attrs == NULL)
@@ -741,6 +811,8 @@ pum_redraw(void)
 			{
 			    int size = (int)STRLEN(st);
 			    int cells = (*mb_string2cells)(st, size);
+			    char_u *st_end = NULL;
+			    int over_cell = 0;
 
 			    // only draw the text that fits
 			    while (size > 0
@@ -754,6 +826,48 @@ pum_redraw(void)
 				}
 				else
 				    --cells;
+			    }
+
+			    // truncated
+			    if (pum_width == p_pmw
+				    && totwidth + 1 + cells >= pum_width)
+			    {
+				remaining = pum_width - totwidth - 1;
+				if (cells > remaining)
+				{
+				    st_end = st + size;
+				    while (st_end > st && cells > remaining)
+				    {
+					MB_PTR_BACK(st, st_end);
+					cells -= has_mbyte ? (*mb_ptr2cells)(st_end) : 1;
+				    }
+				    size = st_end - st;
+				}
+
+				if (cells < remaining)
+				    over_cell =  remaining - cells;
+				new_str = alloc(size + over_cell + 1 + utf_char2len(fcs_trunc));
+				if (!new_str)
+				    return;
+				memcpy(new_str, st, size);
+				ptr = new_str + size;
+				if (over_cell > 0)
+				{
+				    vim_memset(ptr, ' ', over_cell);
+				    ptr += over_cell;
+				}
+
+				if (fcs_trunc != NUL)
+				    ptr += (*mb_char2bytes)(fcs_trunc, ptr);
+				else
+				    *ptr++ = '>';
+
+				*ptr = NUL;
+				vim_free(st);
+				st = new_str;
+				cells = mb_string2cells(st, -1);
+				size = (int)STRLEN(st);
+				width = cells;
 			    }
 
 			    if (attrs == NULL)

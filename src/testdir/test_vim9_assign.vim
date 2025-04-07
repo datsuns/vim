@@ -326,6 +326,8 @@ def Test_reserved_name()
                'null_list',
                'null_partial',
                'null_string',
+               'null_object',
+               'null_class',
                ] + more_names
     v9.CheckDefExecAndScriptFailure(['var ' .. name .. ' =  0'], 'E1034:')
     v9.CheckDefExecAndScriptFailure(['var ' .. name .. ': bool'], 'E1034:')
@@ -538,7 +540,7 @@ def Test_assign_unpack()
       var v2: number
       [v1, v2] = ''
   END
-  v9.CheckDefFailure(lines, 'E1012: Type mismatch; expected list<any> but got string', 3)
+  v9.CheckDefFailure(lines, 'E1535: List or Tuple required', 3)
 
   lines =<< trim END
     g:values = [false, 0]

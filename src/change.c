@@ -476,7 +476,10 @@ changed_common(
 #endif
 #ifdef FEAT_DIFF
     if (curwin->w_p_diff && diff_internal())
+    {
 	curtab->tp_diff_update = TRUE;
+	diff_update_line(lnum);
+    }
 #endif
 
     // set the '. mark
@@ -1200,8 +1203,8 @@ ins_str(char_u *s, size_t slen)
     mch_memmove(newp + col, s, slen);
     mch_memmove(newp + col + slen, oldp + col, (size_t)(oldlen - col + 1));
     ml_replace(lnum, newp, FALSE);
-    inserted_bytes(lnum, col, slen);
-    curwin->w_cursor.col += slen;
+    inserted_bytes(lnum, col, (int)slen);
+    curwin->w_cursor.col += (colnr_T)slen;
 }
 
 /*
@@ -2235,7 +2238,7 @@ open_line(
 	    saved_line[curwin->w_cursor.col] = NUL;
 	    // Remove trailing white space, unless OPENLINE_KEEPTRAIL used.
 	    if (trunc_line && !(flags & OPENLINE_KEEPTRAIL))
-		truncate_spaces(saved_line);
+		truncate_spaces(saved_line, curwin->w_cursor.col);
 	    ml_replace(curwin->w_cursor.lnum, saved_line, FALSE);
 	    saved_line = NULL;
 	    if (did_append)

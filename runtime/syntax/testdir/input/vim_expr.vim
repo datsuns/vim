@@ -100,6 +100,94 @@ echo [1, 'two', 1 + 2, "fo" .. "ur"]
 " Issue #5830 (Incorrect syntax highlighting in Vim script when omitting space in list of string)
 let l = ['a','b','c']
 
+" Dictionary
+
+echo {}
+echo { 'foo': 21 * 2 }
+echo { "foo": 21 * 2 }
+echo {    42: 21 * 2 }
+
+echo { "foo":  { 'bar': 21 * 2 } }
+echo { "foo":  { "bar": 21 * 2 } }
+echo { "foo":  {    42: 21 * 2 } }
+echo { "foo": #{   bar: 21 * 2 } }
+echo { "foo": #{ -bar-: 21 * 2 } }
+echo { "foo": #{    42: 21 * 2 } }
+
+echo { 'foo':  { 'bar': 21 * 2 } }
+echo { 'foo':  { "bar": 21 * 2 } }
+echo { 'foo':  {    42: 21 * 2 } }
+echo { 'foo': #{   bar: 21 * 2 } }
+echo { 'foo': #{ -bar-: 21 * 2 } }
+echo { 'foo': #{    42: 21 * 2 } }
+
+echo {    42:  { 'bar': 21 * 2 } }
+echo {    42:  { "bar": 21 * 2 } }
+echo {    42:  {    42: 21 * 2 } }
+echo {    42: #{   bar: 21 * 2 } }
+echo {    42: #{ -bar-: 21 * 2 } }
+echo {    42: #{    42: 21 * 2 } }
+
+echo {
+      "\ comment
+      \ "foo": { "bar": 21 * 2 }
+      \}
+
+" TODO: arbitrary expression keys
+
+" Literal Dictionary
+
+echo #{}
+echo #{   foo: 21 * 2 }
+echo #{ -foo-: 21 * 2 }
+echo #{    42: 21 * 2 }
+
+echo #{ foo: #{   bar: 21 * 2 } }
+echo #{ foo: #{ -bar-: 21 * 2 } }
+echo #{ foo: #{    42: 21 * 2 } }
+echo #{ foo:  { "bar": 21 * 2 } }
+echo #{ foo:  { 'bar': 21 * 2 } }
+echo #{ foo:  {    42: 21 * 2 } }
+
+echo #{ -foo-: #{   bar: 21 * 2 } }
+echo #{ -foo-: #{ -bar-: 21 * 2 } }
+echo #{ -foo-: #{    42: 21 * 2 } }
+echo #{ -foo-:  { "bar": 21 * 2 } }
+echo #{ -foo-:  { 'bar': 21 * 2 } }
+echo #{ -foo-:  {    42: 21 * 2 } }
+
+echo #{ 42: #{   bar: 21 * 2 } }
+echo #{ 42: #{ -bar-: 21 * 2 } }
+echo #{ 42: #{    42: 21 * 2 } }
+echo #{ 42:  { "bar": 21 * 2 } }
+echo #{ 42:  { 'bar': 21 * 2 } }
+echo #{ 42:  {    42: 21 * 2 } }
+
+echo #{
+      "\ comment
+      \  foo: #{
+      \    bar: 21 * 2
+      \  }
+      \}
+
+" match as keys not scope dictionaries
+echo #{ b: 42, w: 42, t: 42, g: 42, l: 42, s: 42, a: 42, v: 42  }
+
+" Tuple
+
+echo ()
+echo (42,)
+echo ((11, 12), (21, 22), (31, 32))
+echo (1,
+      \ 2,
+      \ 3,
+      \ 4
+      \)
+echo (1, 'two', 1 + 2, "fo" .. "ur")
+
+echo foo + (42, 87)
+echo (42, 87) + foo
+
 " Register
 
 echo @" 

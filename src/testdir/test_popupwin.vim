@@ -148,7 +148,7 @@ func Test_popup_with_border_and_padding()
 	\ lastline: 1,
 	\ scrollbar: 0,
 	\ visible: 1}
-  let winid = popup_create('hello border', #{line: 2, col: 3, border: []})",
+  let winid = popup_create('hello border', #{line: 2, col: 3, border: []})
   call assert_equal(with_border_or_padding, winid->popup_getpos())
   let options = popup_getoptions(winid)
   call assert_equal([], options.border)
@@ -3896,6 +3896,24 @@ func Test_popupwin_cancel()
   call assert_equal({}, popup_getpos(win1))
   call assert_equal({}, popup_getpos(win2))
   call assert_equal({}, popup_getpos(win3))
+endfunc
+
+func Test_popupwin_cancel_with_without_filter()
+  let win1 = popup_create('with filter', #{line: 5, filter: {... -> 0}})
+  let win2 = popup_create('no filter', #{line: 10})
+
+  call assert_equal(5, popup_getpos(win1).line)
+  call assert_equal(10, popup_getpos(win2).line)
+
+  call feedkeys("\<C-C>", 'xt')
+  call assert_equal({}, popup_getpos(win1))
+  call assert_equal(10, popup_getpos(win2).line)
+
+  call feedkeys("\<C-C>", 'xt')
+  call assert_equal({}, popup_getpos(win1))
+  call assert_equal({}, popup_getpos(win2))
+
+  call popup_clear()
 endfunc
 
 func Test_popupwin_filter_redraw()

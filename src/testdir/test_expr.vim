@@ -658,10 +658,10 @@ func Test_printf_spec_b()
 endfunc
 
 func Test_max_min_errors()
-  call v9.CheckLegacyAndVim9Failure(['call max(v:true)'], ['E712:', 'E1013:', 'E1227:'])
-  call v9.CheckLegacyAndVim9Failure(['call max(v:true)'], ['max()', 'E1013:', 'E1227:'])
-  call v9.CheckLegacyAndVim9Failure(['call min(v:true)'], ['E712:', 'E1013:', 'E1227:'])
-  call v9.CheckLegacyAndVim9Failure(['call min(v:true)'], ['min()', 'E1013:', 'E1227:'])
+  call v9.CheckLegacyAndVim9Failure(['call max(v:true)'], ['E712:', 'E1013:', 'E1530:'])
+  call v9.CheckLegacyAndVim9Failure(['call max(v:true)'], ['max()', 'E1013:', 'E1530:'])
+  call v9.CheckLegacyAndVim9Failure(['call min(v:true)'], ['E712:', 'E1013:', 'E1530:'])
+  call v9.CheckLegacyAndVim9Failure(['call min(v:true)'], ['min()', 'E1013:', 'E1530:'])
 endfunc
 
 func Test_function_with_funcref()
@@ -1059,6 +1059,16 @@ func Test_bitwise_shift()
      assert_equal(16, a)
   END
   call v9.CheckDefAndScriptSuccess(lines)
+
+  " Error in the second expression of "<<"
+  let lines =<< trim END
+    vim9script
+    def Fn()
+      var x = 1 << y
+    enddef
+    defcompile
+  END
+  call v9.CheckSourceFailure(lines, 'E1001: Variable not found: y')
 
   let lines =<< trim END
     # Use in a lambda function
