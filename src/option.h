@@ -536,6 +536,7 @@ EXTERN unsigned	cot_flags;	// flags from 'completeopt'
 #define COT_FUZZY	    0x100   // TRUE: fuzzy match enabled
 #define COT_NOSORT	    0x200   // TRUE: fuzzy match without qsort score
 #define COT_PREINSERT	    0x400   // TRUE: preinsert
+#define COT_NEAREST	    0x800   // TRUE: prioritize matches close to cursor
 
 #define CFC_KEYWORD         0x001
 #define CFC_FILES           0x002
@@ -546,6 +547,7 @@ EXTERN char_u	*p_csl;		// 'completeslash'
 #endif
 EXTERN long	p_ph;		// 'pumheight'
 EXTERN long	p_pw;		// 'pumwidth'
+EXTERN long	p_pmw;		// 'pummaxwidth'
 EXTERN char_u	*p_com;		// 'comments'
 EXTERN char_u	*p_cpo;		// 'cpoptions'
 #ifdef FEAT_CSCOPE
@@ -859,6 +861,7 @@ EXTERN char_u	*p_rop;		// 'renderoptions'
 EXTERN long	p_report;	// 'report'
 #if defined(FEAT_QUICKFIX)
 EXTERN long	p_pvh;		// 'previewheight'
+EXTERN long     p_chi;          // 'chistory'
 #endif
 #ifdef MSWIN
 EXTERN int	p_rs;		// 'restorescreen'
@@ -1323,6 +1326,7 @@ enum
 #endif
 #if defined(FEAT_QUICKFIX)
     , WV_PVW
+    , WV_LHI
 #endif
 #ifdef FEAT_RIGHTLEFT
     , WV_RL

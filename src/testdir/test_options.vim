@@ -272,6 +272,23 @@ func Test_complete()
   call feedkeys("i\<C-N>\<Esc>", 'xt')
   bwipe!
   call assert_fails('set complete=ix', 'E535:')
+  call assert_fails('set complete=x', 'E539:')
+  call assert_fails('set complete=..', 'E535:')
+  set complete=.,w,b,u,k,\ s,i,d,],t,U,f,o
+  call assert_fails('set complete=i^-10', 'E535:')
+  call assert_fails('set complete=i^x', 'E535:')
+  call assert_fails('set complete=k^2,t^-1,s^', 'E535:')
+  call assert_fails('set complete=t^-1', 'E535:')
+  call assert_fails('set complete=kfoo^foo2', 'E535:')
+  call assert_fails('set complete=kfoo^', 'E535:')
+  call assert_fails('set complete=.^', 'E535:')
+  set complete=.,w,b,u,k,s,i,d,],t,U,f,o
+  set complete=.
+  set complete=.^10,t^0
+  set complete+=ffuncref('foo'\\,\ [10])
+  set complete=ffuncref('foo'\\,\ [10])^10
+  set complete&
+  set complete+=ffunction('g:foo'\\,\ [10\\,\ 20])
   set complete&
 endfun
 
@@ -311,6 +328,13 @@ func Test_set_completion()
   " Expand key codes.
   call feedkeys(":set <H\<C-A>\<C-B>\"\<CR>", 'tx')
   call assert_equal('"set <Help> <Home>', @:)
+  " <BackSpace> (alt name) and <BS> should both show up in auto-complete
+  call feedkeys(":set <B\<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"set <BackSpace> <Bar> <BS> <Bslash>', @:)
+  " <ScrollWheelDown> has alt name <MouseUp> but it should not show up here
+  " nor show up as duplicates
+  call feedkeys(":set <ScrollWheel\<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"set <ScrollWheelDown> <ScrollWheelLeft> <ScrollWheelRight> <ScrollWheelUp>', @:)
 
   " Expand terminal options.
   call feedkeys(":set t_A\<C-A>\<C-B>\"\<CR>", 'tx')
@@ -1144,11 +1168,14 @@ func Test_backupskip()
     call setenv(var, '/duplicate/path')
   endfor
 
+  " unset $HOME, so that it won't try to read init files
+  let saveenv['HOME'] = getenv("HOME")
+  call setenv('HOME', v:null)
   exe 'silent !' . cmd
   call assert_equal(['errors:'], readfile('Xtestout'))
 
   " restore environment variables
-  for var in ['TMPDIR', 'TMP', 'TEMP']
+  for var in ['TMPDIR', 'TMP', 'TEMP', 'HOME']
     call setenv(var, saveenv[var])
   endfor
 
