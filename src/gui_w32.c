@@ -7234,8 +7234,11 @@ dialog_callback(
 
 	    GetDlgItemTextW(hwnd, DLG_NONBUTTON_CONTROL + 2, wp, IOSIZE);
 	    p = utf16_to_enc(wp, NULL);
-	    vim_strncpy(s_textfield, p, IOSIZE);
-	    vim_free(p);
+	    if (p != NULL)
+	    {
+		vim_strncpy(s_textfield, p, IOSIZE);
+		vim_free(p);
+	    }
 	    vim_free(wp);
 	}
 
