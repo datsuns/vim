@@ -1,7 +1,7 @@
 " Vim support file to detect file types
 "
 " Maintainer:	The Vim Project <https://github.com/vim/vim>
-" Last Change:	2025 Apr 21
+" Last Change:	2025 May 02
 " Former Maintainer:	Bram Moolenaar <Bram@vim.org>
 
 " Listen very carefully, I will say this only once
@@ -1023,6 +1023,14 @@ au BufNewFile,BufRead *.gjs			setf javascript.glimmer
 " Gnuplot scripts
 au BufNewFile,BufRead *.gpi,*.gnuplot,.gnuplot_history	setf gnuplot
 
+" GNU Radio Companion files
+au BufNewFile,BufRead *.grc
+	\ if getline(1) =~# '<?xml' |
+	\   setf xml |
+	\ else |
+	\   setf yaml |
+	\ endif
+
 " Go (Google)
 au BufNewFile,BufRead *.go			setf go
 au BufNewFile,BufRead Gopkg.lock		setf toml
@@ -1811,6 +1819,8 @@ au BufNewFile,BufRead pacman.conf,mpv.conf		setf confini
 au BufNewFile,BufRead */.aws/config,*/.aws/credentials	setf confini
 au BufNewFile,BufRead *.nmconnection			setf confini
 au BufNewFile,BufRead paru.conf				setf confini
+au BufNewFile,BufRead */{,.}gnuradio/*.conf		setf confini
+au BufNewFile,BufRead */gnuradio/conf.d/*.conf		setf confini
 
 " Pacman hooks
 au BufNewFile,BufRead *.hook
@@ -2061,9 +2071,9 @@ au BufNewFile,BufRead *.arr			setf pyret
 au BufNewFile,BufRead *.pyx,*.pyx+,*.pxd,*.pxi	setf pyrex
 
 " Python, Python Shell Startup and Python Stub Files
-" Quixote (Python-based web framework)
+" Quixote (Python-based web framework) and IPython
 au BufNewFile,BufRead *.py,*.pyw,.pythonstartup,.pythonrc,.python_history,.jline-jython.history	setf python
-au BufNewFile,BufRead *.ptl,*.pyi,SConstruct		   setf python
+au BufNewFile,BufRead *.ipy,*.ptl,*.pyi,SConstruct		   setf python
 
 " QL
 au BufRead,BufNewFile *.ql,*.qll		setf ql

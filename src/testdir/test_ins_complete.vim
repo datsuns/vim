@@ -3833,7 +3833,7 @@ func Test_complete_info_completed()
   set cot&
 endfunc
 
-function Test_completeopt_preinsert()
+func Test_completeopt_preinsert()
   func Omni_test(findstart, base)
     if a:findstart
       return col(".")
@@ -3972,6 +3972,47 @@ function Test_completeopt_preinsert()
   call assert_equal("wp.fobar", g:line)
   call assert_equal(4, g:col)
   call assert_equal("wp.", getline('.'))
+
+  %delete _
+  let &l:undolevels = &l:undolevels
+  normal! ifoo
+  let &l:undolevels = &l:undolevels
+  normal! obar
+  let &l:undolevels = &l:undolevels
+  normal! obaz
+  let &l:undolevels = &l:undolevels
+
+  func CheckUndo()
+    let g:errmsg = ''
+    call assert_equal(['foo', 'bar', 'baz'], getline(1, '$'))
+    undo
+    call assert_equal(['foo', 'bar'], getline(1, '$'))
+    undo
+    call assert_equal(['foo'], getline(1, '$'))
+    undo
+    call assert_equal([''], getline(1, '$'))
+    later 3
+    call assert_equal(['foo', 'bar', 'baz'], getline(1, '$'))
+    call assert_equal('', v:errmsg)
+  endfunc
+
+  " Check that switching buffer with "preinsert" doesn't corrupt undo.
+  new
+  setlocal bufhidden=wipe
+  inoremap <buffer> <F2> <Cmd>enew!<CR>
+  call feedkeys("i\<C-X>\<C-O>\<F2>\<Esc>", 'tx')
+  bwipe!
+  call CheckUndo()
+
+  " Check that closing window with "preinsert" doesn't corrupt undo.
+  new
+  setlocal bufhidden=wipe
+  inoremap <buffer> <F2> <Cmd>close!<CR>
+  call feedkeys("i\<C-X>\<C-O>\<F2>\<Esc>", 'tx')
+  call CheckUndo()
+
+  %delete _
+  delfunc CheckUndo
 
   bw!
   set cot&
@@ -4172,6 +4213,93 @@ func Test_complete_append_selected_match_default()
   delfunc PrintMenuWords
 endfunc
 
+" Test normal mode (^N/^P/^X^N/^X^P) with smartcase when 1) matches are first
+" found and 2) matches are filtered (when a character is typed).
+func Test_smartcase_normal_mode()
+
+  func! PrintMenu()
+    let info = complete_info(["matches"])
+    call map(info.matches, {_, v -> v.word})
+    return info
+  endfunc
+
+  func! TestInner(key)
+    let pr = "\<c-r>=PrintMenu()\<cr>"
+
+    new
+    set completeopt=menuone,noselect ignorecase smartcase
+    call setline(1, ["Fast", "FAST", "False", "FALSE", "fast", "false"])
+    exe $"normal! ggOF{a:key}{pr}"
+    call assert_equal('F{''matches'': [''Fast'', ''FAST'', ''False'',
+          \ ''FALSE'']}', getline(1))
+    %d
+    call setline(1, ["Fast", "FAST", "False", "FALSE", "fast", "false"])
+    exe $"normal! ggOF{a:key}a{pr}"
+    call assert_equal('Fa{''matches'': [''Fast'', ''False'']}', getline(1))
+    %d
+    call setline(1, ["Fast", "FAST", "False", "FALSE", "fast", "false"])
+    exe $"normal! ggOF{a:key}a\<bs>{pr}"
+    call assert_equal('F{''matches'': [''Fast'', ''FAST'', ''False'',
+          \ ''FALSE'']}', getline(1))
+    %d
+    call setline(1, ["Fast", "FAST", "False", "FALSE", "fast", "false"])
+    exe $"normal! ggOF{a:key}ax{pr}"
+    call assert_equal('Fax{''matches'': []}', getline(1))
+    %d
+    call setline(1, ["Fast", "FAST", "False", "FALSE", "fast", "false"])
+    exe $"normal! ggOF{a:key}ax\<bs>{pr}"
+    call assert_equal('Fa{''matches'': [''Fast'', ''False'']}', getline(1))
+
+    %d
+    call setline(1, ["Fast", "FAST", "False", "FALSE", "fast", "false"])
+    exe $"normal! ggOF{a:key}A{pr}"
+    call assert_equal('FA{''matches'': [''FAST'', ''FALSE'']}', getline(1))
+    %d
+    call setline(1, ["Fast", "FAST", "False", "FALSE", "fast", "false"])
+    exe $"normal! ggOF{a:key}A\<bs>{pr}"
+    call assert_equal('F{''matches'': [''Fast'', ''FAST'', ''False'',
+          \ ''FALSE'']}', getline(1))
+    %d
+    call setline(1, ["Fast", "FAST", "False", "FALSE", "fast", "false"])
+    exe $"normal! ggOF{a:key}AL{pr}"
+    call assert_equal('FAL{''matches'': [''FALSE'']}', getline(1))
+    %d
+    call setline(1, ["Fast", "FAST", "False", "FALSE", "fast", "false"])
+    exe $"normal! ggOF{a:key}ALx{pr}"
+    call assert_equal('FALx{''matches'': []}', getline(1))
+    %d
+    call setline(1, ["Fast", "FAST", "False", "FALSE", "fast", "false"])
+    exe $"normal! ggOF{a:key}ALx\<bs>{pr}"
+    call assert_equal('FAL{''matches'': [''FALSE'']}', getline(1))
+
+    %d
+    call setline(1, ["Fast", "FAST", "False", "FALSE", "fast", "false"])
+    exe $"normal! ggOf{a:key}{pr}"
+    call assert_equal('f{''matches'': [''Fast'', ''FAST'', ''False'', ''FALSE'',
+          \ ''fast'', ''false'']}', getline(1))
+    %d
+    call setline(1, ["Fast", "FAST", "False", "FALSE", "fast", "false"])
+    exe $"normal! ggOf{a:key}a{pr}"
+    call assert_equal('fa{''matches'': [''Fast'', ''FAST'', ''False'', ''FALSE'',
+          \ ''fast'', ''false'']}', getline(1))
+
+    %d
+    exe $"normal! ggOf{a:key}{pr}"
+    call assert_equal('f{''matches'': []}', getline(1))
+    exe $"normal! ggOf{a:key}a\<bs>{pr}"
+    call assert_equal('f{''matches'': []}', getline(1))
+    set ignorecase& smartcase& completeopt&
+    bw!
+  endfunc
+
+  call TestInner("\<c-n>")
+  call TestInner("\<c-p>")
+  call TestInner("\<c-x>\<c-n>")
+  call TestInner("\<c-x>\<c-p>")
+  delfunc PrintMenu
+  delfunc TestInner
+endfunc
+
 " Test 'nearest' flag of 'completeopt'
 func Test_nearest_cpt_option()
 
@@ -4285,6 +4413,88 @@ func Test_nearest_cpt_option()
 
   set completeopt&
   delfunc PrintMenuWords
+endfunc
+
+func Test_complete_match()
+  set isexpand=.,/,->,abc,/*,_
+  func TestComplete()
+    let res = complete_match()
+    if res->len() == 0
+      return
+    endif
+    let [startcol, expandchar] = res[0]
+
+    if startcol >= 0
+      let line = getline('.')
+
+      let items = []
+      if expandchar == '/*'
+        let items = ['/** */']
+      elseif expandchar =~ '^/'
+        let items = ['/*! */', '// TODO:', '// fixme:']
+      elseif expandchar =~ '^\.' && startcol < 4
+        let items = ['length()', 'push()', 'pop()', 'slice()']
+      elseif expandchar =~ '^\.' && startcol > 4
+        let items = ['map()', 'filter()', 'reduce()']
+      elseif expandchar =~ '^\abc'
+        let items = ['def', 'ghk']
+      elseif expandchar =~ '^\->'
+        let items = ['free()', 'xfree()']
+      else
+        let items = ['test1', 'test2', 'test3']
+      endif
+
+      call complete(expandchar =~ '^/' ? startcol : startcol + strlen(expandchar), items)
+    endif
+  endfunc
+
+  new
+  inoremap <buffer> <F5> <cmd>call TestComplete()<CR>
+
+  call feedkeys("S/*\<F5>\<C-Y>", 'tx')
+  call assert_equal('/** */', getline('.'))
+
+  call feedkeys("S/\<F5>\<C-N>\<C-Y>", 'tx')
+  call assert_equal('// TODO:', getline('.'))
+
+  call feedkeys("Swp.\<F5>\<C-N>\<C-Y>", 'tx')
+  call assert_equal('wp.push()', getline('.'))
+
+  call feedkeys("Swp.property.\<F5>\<C-N>\<C-Y>", 'tx')
+  call assert_equal('wp.property.filter()', getline('.'))
+
+  call feedkeys("Sp->\<F5>\<C-N>\<C-Y>", 'tx')
+  call assert_equal('p->xfree()', getline('.'))
+
+  call feedkeys("Swp->property.\<F5>\<C-Y>", 'tx')
+  call assert_equal('wp->property.map()', getline('.'))
+
+  call feedkeys("Sabc\<F5>\<C-Y>", 'tx')
+  call assert_equal('abcdef', getline('.'))
+
+  call feedkeys("S_\<F5>\<C-Y>", 'tx')
+  call assert_equal('_test1', getline('.'))
+
+  set ise&
+  call feedkeys("Sabc \<ESC>:let g:result=complete_match()\<CR>", 'tx')
+  call assert_equal([[1, 'abc']], g:result)
+
+  call assert_fails('call complete_match(99, 0)', 'E966:')
+  call assert_fails('call complete_match(1, 99)', 'E964:')
+  call assert_fails('call complete_match(1)', 'E474:')
+
+  set ise=你好,好
+  call feedkeys("S你好 \<ESC>:let g:result=complete_match()\<CR>", 'tx')
+  call assert_equal([[1, '你好'], [4, '好']], g:result)
+
+  set ise=\\,,->
+  call feedkeys("Sabc, \<ESC>:let g:result=complete_match()\<CR>", 'tx')
+  call assert_equal([[4, ',']], g:result)
+
+  bw!
+  unlet g:result
+  set isexpand&
+  delfunc TestComplete
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab nofoldenable

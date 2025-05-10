@@ -183,7 +183,8 @@ def s:GetFilenameChecks(): dict<list<string>>
     conaryrecipe: ['file.recipe'],
     conf: ['auto.master', 'file.conf', 'texdoc.cnf', '.x11vncrc', '.chktexrc', '.ripgreprc', 'ripgreprc', 'file.ctags'],
     config: ['configure.in', 'configure.ac', '/etc/hostname.file', 'any/etc/hostname.file'],
-    confini: ['pacman.conf', 'paru.conf', 'mpv.conf', 'any/.aws/config', 'any/.aws/credentials', 'file.nmconnection'],
+    confini: ['pacman.conf', 'paru.conf', 'mpv.conf', 'any/.aws/config', 'any/.aws/credentials', 'file.nmconnection',
+              'any/.gnuradio/grc.conf', 'any/gnuradio/config.conf', 'any/gnuradio/conf.d/modtool.conf'],
     context: ['tex/context/any/file.tex', 'file.mkii', 'file.mkiv', 'file.mkvi', 'file.mkxl', 'file.mklx'],
     cook: ['file.cook'],
     corn: ['file.corn'],
@@ -632,7 +633,7 @@ def s:GetFilenameChecks(): dict<list<string>>
     pymanifest: ['MANIFEST.in'],
     pyret: ['file.arr'],
     pyrex: ['file.pyx', 'file.pxd', 'file.pxi', 'file.pyx+'],
-    python: ['file.py', 'file.pyw', '.pythonstartup', '.pythonrc', '.python_history', '.jline-jython.history', 'file.ptl', 'file.pyi', 'SConstruct'],
+    python: ['file.py', 'file.pyw', '.pythonstartup', '.pythonrc', '.python_history', '.jline-jython.history', 'file.ptl', 'file.pyi', 'SConstruct', 'file.ipy'],
     ql: ['file.ql', 'file.qll'],
     qml: ['file.qml', 'file.qbs'],
     qmldir: ['qmldir'],
@@ -1073,10 +1074,10 @@ def s:GetScriptEnvChecks(): dict<list<list<string>>>
   return {
     perl: [['#!/usr/bin/env VAR=val perl']],
     scala: [['#!/usr/bin/env VAR=val VVAR=vval scala']],
-    awk: [['#!/usr/bin/env VAR=val -i awk']],
+    awk: [['#!/usr/bin/env --split-string=VAR= awk -vFS="," -f']],
     execline: [['#!/usr/bin/env execlineb']],
     scheme: [['#!/usr/bin/env VAR=val --ignore-environment scheme']],
-    python: [['#!/usr/bin/env VAR=val -S python -w -T']],
+    python: [['#!/usr/bin/env -S -i VAR=val python -B -u']],
     wml: [['#!/usr/bin/env VAR=val --split-string wml']],
     nix: [['#!/usr/bin/env nix-shell']],
   }
@@ -1625,6 +1626,22 @@ func Test_git_file()
   call writefile(['ref: refs/heads/master'], 'Xrepo.git/HEAD')
   split Xrepo.git/HEAD
   call assert_equal('git', &filetype)
+  bwipe!
+
+  filetype off
+endfunc
+
+func Test_grc_file()
+  filetype on
+
+  call writefile(['<?xml version="1.0"?>', '<block>', '</block>'], 'Xfile.grc')
+  split Xfile.grc
+  call assert_equal('xml', &filetype)
+  bwipe!
+
+  call writefile(['metadata:', '  file_format: 1'], 'Xfile.grc')
+  split Xfile.grc
+  call assert_equal('yaml', &filetype)
   bwipe!
 
   filetype off

@@ -63,6 +63,7 @@ runtime/compiler/eruby.vim		@dkearns
 runtime/compiler/fbc.vim		@dkearns
 runtime/compiler/gawk.vim		@dkearns
 runtime/compiler/gjs.vim		@dkearns
+runtime/compiler/gleam.vim		@kirillmorozov
 runtime/compiler/gm2.vim		@dkearns
 runtime/compiler/go.vim			@dbarnett
 runtime/compiler/groff.vim		@Konfekt
@@ -123,6 +124,7 @@ runtime/doc/vimtutor-ru.UTF-8.1		@RestorerZ
 runtime/doc/xxd-ru.1			@RestorerZ
 runtime/doc/xxd-ru.UTF-8.1		@RestorerZ
 runtime/ftplugin/abaqus.vim		@costerwi
+runtime/ftplugin/abnf.vim		@A4-Tacks
 runtime/ftplugin/antlr4.vim		@jiangyinzuo
 runtime/ftplugin/apache.vim		@dubgeiser
 runtime/ftplugin/arduino.vim		@k-takata
@@ -186,6 +188,7 @@ runtime/ftplugin/goaccess.vim		@meonkeys
 runtime/ftplugin/gomod.vim		@yu-yk
 runtime/ftplugin/gprof.vim		@dpelle
 runtime/ftplugin/graphql.vim		@jparise
+runtime/ftplugin/groff.vim		@e-kwsm
 runtime/ftplugin/gyp.vim		@ObserverOfTime
 runtime/ftplugin/haml.vim		@tpope
 runtime/ftplugin/hare.vim		@selenebun
@@ -428,6 +431,7 @@ runtime/lang/menu_ru_ru.koi8-r.vim	@RestorerZ
 runtime/lang/menu_ru_ru.utf-8.vim	@RestorerZ
 runtime/pack/dist/opt/cfilter/plugin/cfilter.vim	@yegappan
 runtime/pack/dist/opt/comment/	@habamax
+runtime/pack/dist/opt/helptoc/	@kennypete
 runtime/pack/dist/opt/matchit/		@chrisbra
 runtime/pack/dist/opt/nohlsearch/		@habamax
 runtime/plugin/manpager.vim		@Konfekt
@@ -500,6 +504,7 @@ runtime/syntax/gitconfig.vim		@tpope
 runtime/syntax/gitignore.vim		@ObserverOfTime
 runtime/syntax/gitolite.vim		@sitaramc
 runtime/syntax/gitrebase.vim		@tpope
+runtime/syntax/gleam.vim		@kirillmorozov
 runtime/syntax/glsl.vim		@gpanders
 runtime/syntax/go.vim			@bhcleek
 runtime/syntax/goaccess.vim		@meonkeys

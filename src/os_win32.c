@@ -971,7 +971,7 @@ PlatformId(void)
 
     ovi.dwOSVersionInfoSize = sizeof(ovi);
     if (!GetVersionEx(&ovi))
-        return;
+	return;
 
 #ifdef FEAT_EVAL
     vim_snprintf(windowsVersion, sizeof(windowsVersion), "%d.%d",
@@ -988,7 +988,7 @@ PlatformId(void)
 #ifdef HAVE_ACL
     // Enable privilege for getting or setting SACLs.
     if (!win32_enable_privilege(SE_SECURITY_NAME))
-        return;
+	return;
 #endif
 }
 #ifdef _MSC_VER
@@ -3810,10 +3810,13 @@ mch_dirname(
     if (GetLongPathNameW(wbuf, wcbuf, _MAX_PATH) != 0)
     {
 	p = utf16_to_enc(wcbuf, NULL);
-	if (STRLEN(p) >= (size_t)len)
+	if (p != NULL)
 	{
-	    // long path name is too long, fall back to short one
-	    VIM_CLEAR(p);
+	    if (STRLEN(p) >= (size_t)len)
+	    {
+		// long path name is too long, fall back to short one
+		VIM_CLEAR(p);
+	    }
 	}
     }
     if (p == NULL)
@@ -6346,7 +6349,7 @@ termcap_mode_end(void)
 
     // Switch back to main screen buffer.
     if (exiting && use_alternate_screen_buffer)
-        vtp_printf("\033[?1049l");
+	vtp_printf("\033[?1049l");
 
     if (!USE_WT && (p_rs || exiting))
     {
