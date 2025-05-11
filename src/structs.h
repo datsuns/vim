@@ -1976,7 +1976,7 @@ struct ufunc_S
 #define FC_DEAD	    0x80	// function kept only for reference to dfunc
 #define FC_EXPORT   0x100	// "export def Func()"
 #define FC_NOARGS   0x200	// no a: variables in lambda
-#define FC_VIM9	    0x400	// defined in vim9 script file
+#define FC_VIM9	    0x400	// defined in Vim9 script file
 #define FC_CFUNC    0x800	// defined as Lua C func
 #define FC_COPY	    0x1000	// copy of another function by
 				// copy_lambda_to_global_func()
@@ -3072,7 +3072,7 @@ struct file_buffer
     int		b_locked;	// Buffer is being closed or referenced, don't
 				// let autocommands wipe it out.
     int		b_locked_split;	// Buffer is being closed, don't allow opening
-				// a new window with it.
+				// it in more windows.
 
     /*
      * b_ffname has the full path of the file (NULL for no name).
