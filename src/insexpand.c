@@ -3660,12 +3660,28 @@ f_complete_match(typval_T *argvars, typval_T *rettv)
     }
     else
     {
-	char_u	*p = ise;
+	char_u	    *p = ise;
+	char_u	    *p_space = NULL;
+
 	cur_end = before_cursor + (int)STRLEN(before_cursor);
 
 	while (*p != NUL)
 	{
-	    int len = copy_option_part(&p, part, MAXPATHL, ",");
+	    int	    len = 0;
+	    if (p_space)
+	    {
+		len = p - p_space - 1;
+		memcpy(part, p_space + 1, len);
+		p_space = NULL;
+	    }
+	    else
+	    {
+		char_u *next_comma = vim_strchr((*p == ',') ? p + 1 : p, ',');
+		if (next_comma && *(next_comma + 1) == ' ')
+		    p_space = next_comma;
+
+		len = copy_option_part(&p, part, MAXPATHL, ",");
+	    }
 
 	    if (len > 0 && len <= col)
 	    {
@@ -5236,9 +5252,8 @@ find_comp_when_fuzzy(void)
 
     if ((is_forward && compl_selected_item == compl_match_arraysize - 1)
 	    || (is_backward && compl_selected_item == 0))
-	return compl_first_match != compl_shown_match ?
-	    (is_forward ? compl_shown_match->cp_next : compl_first_match) :
-	    (compl_first_match->cp_prev ? compl_first_match->cp_prev : NULL);
+	return match_at_original_text(compl_first_match)
+			    ? compl_first_match : compl_first_match->cp_prev;
 
     if (is_forward)
 	target_idx = compl_selected_item + 1;

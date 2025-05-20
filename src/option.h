@@ -985,7 +985,15 @@ EXTERN unsigned	swb_flags;
 #define SWB_NEWTAB		0x008
 #define SWB_VSPLIT		0x010
 #define SWB_USELAST		0x020
+
 EXTERN char_u	*p_spk;		// 'splitkeep'
+
+#if defined(FEAT_TABPANEL)
+EXTERN char_u	*p_tpl;		// 'tabpanel'
+EXTERN long	p_stpl;		// 'showtabpanel'
+EXTERN char_u	*p_tplo;	// 'tabpanelopt'
+#endif
+
 #ifdef FEAT_SYN_HL
 EXTERN char_u	*p_syn;		// 'syntax'
 #endif
@@ -1150,6 +1158,7 @@ enum
     , BV_BT
 #ifdef FEAT_QUICKFIX
     , BV_EFM
+    , BV_GEFM
     , BV_GP
     , BV_MP
 #endif

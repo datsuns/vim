@@ -3371,6 +3371,7 @@ struct file_buffer
      * local values for options which are normally global
      */
 #ifdef FEAT_QUICKFIX
+    char_u	*b_p_gefm;	// 'grepformat' local value
     char_u	*b_p_gp;	// 'grepprg' local value
     char_u	*b_p_mp;	// 'makeprg' local value
     char_u	*b_p_efm;	// 'errorformat' local value
@@ -3851,6 +3852,9 @@ typedef struct
     int	diff;
     int	eob;
     int	lastline;
+#if defined(FEAT_TABPANEL)
+    int	tpl_vert;
+#endif
     int trunc;
     int truncrl;
 } fill_chars_T;
@@ -4579,9 +4583,9 @@ typedef struct
 } tagname_T;
 
 typedef struct {
-  UINT32_T total[2];
-  UINT32_T state[8];
-  char_u   buffer[64];
+    UINT32_T total[2];
+    UINT32_T state[8];
+    char_u   buffer[64];
 } context_sha256_T;
 
 /*
