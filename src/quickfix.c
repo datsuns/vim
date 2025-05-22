@@ -4759,7 +4759,7 @@ ex_cbottom(exarg_T *eap)
  * Return the number of the current entry (line number in the quickfix
  * window).
  */
-     linenr_T
+    linenr_T
 qf_current_entry(win_T *wp)
 {
     qf_info_T	*qi = ql_info;
@@ -5503,7 +5503,7 @@ ex_make(exarg_T *eap)
     incr_quickfix_busy();
 
     if (eap->cmdidx != CMD_make && eap->cmdidx != CMD_lmake)
-	errorformat = p_gefm;
+	errorformat =  *curbuf->b_p_gefm != NUL ? curbuf->b_p_gefm : p_gefm;
     if (eap->cmdidx == CMD_grepadd || eap->cmdidx == CMD_lgrepadd)
 	newlist = FALSE;
 
