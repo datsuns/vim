@@ -8,7 +8,7 @@
  */
 
 /*
- * wayland.c: Stuff related to wayland
+ * wayland.c: Stuff related to Wayland
  */
 
 #include "vim.h"
@@ -49,7 +49,7 @@ typedef struct {
 #endif
 } vwl_global_objects_T;
 
-// Struct wrapper for wayland display and registry
+// Struct wrapper for Wayland display and registry
 typedef struct {
     struct wl_display	*proxy;
     int			fd;	// File descriptor for display
@@ -907,21 +907,14 @@ vwl_destroy_seat(vwl_seat_T *seat)
 
 /*
  * Return a seat with the give name/label. If none exists then NULL is returned.
- * If NULL or an empty string is passed as the label then $XDG_SEAT is used
- * else the first available seat found is used.
+ * If NULL or an empty string is passed as the label then the first available
+ * seat found is used.
  */
     static vwl_seat_T *
 vwl_get_seat(const char *label)
 {
     if ((STRCMP(label, "") == 0 || label == NULL) && vwl_seats.ga_len > 0)
-    {
-	const char *xdg_seat = (char*)mch_getenv("XDG_SEAT");
-
-	if (xdg_seat == NULL)
 	    return &((vwl_seat_T *)vwl_seats.ga_data)[0];
-	else
-	    label = xdg_seat;
-    }
 
     for (int i = 0; i < vwl_seats.ga_len; i++)
     {
@@ -946,7 +939,7 @@ vwl_seat_get_keyboard(vwl_seat_T *seat)
 }
 
 /*
- * Connects to the wayland display with given name and binds to global objects
+ * Connects to the Wayland display with given name and binds to global objects
  * as needed. If display is NULL then the $WAYLAND_DISPLAY environment variable
  * will be used (handled by libwayland). Returns FAIL on failure and OK on
  * success
@@ -970,7 +963,7 @@ fail:
 }
 
 /*
- * Disconnect wayland client and free up all resources used.
+ * Disconnect Wayland client and free up all resources used.
  */
     void
 wayland_uninit_client(void)
@@ -984,7 +977,7 @@ wayland_uninit_client(void)
 }
 
 /*
- * Return TRUE if wayland display connection is valid and ready.
+ * Return TRUE if Wayland display connection is valid and ready.
  */
     int
 wayland_client_is_connected(int quiet)
@@ -1884,7 +1877,7 @@ vwl_clipboard_free_mime_types(vwl_clipboard_selection_T *clip_sel)
 }
 
 /*
- * Setup required objects to interact with wayland selections/clipboard on given
+ * Setup required objects to interact with Wayland selections/clipboard on given
  * seat. Returns OK on success and FAIL on failure.
  */
     int
@@ -2325,7 +2318,7 @@ wayland_cb_selection_is_owned(wayland_selection_T selection)
 }
 
 /*
- * Return TRUE if the wayland clipboard/selections are ready to use.
+ * Return TRUE if the Wayland clipboard/selections are ready to use.
  */
     int
 wayland_cb_is_ready(void)
@@ -2339,7 +2332,7 @@ wayland_cb_is_ready(void)
 }
 
 /*
- * Reload wayland clipboard, useful if changing seat.
+ * Reload Wayland clipboard, useful if changing seat.
  */
     int
 wayland_cb_reload(void)
@@ -2391,7 +2384,7 @@ wayland_may_restore_connection(void)
 }
 
 /*
- * Disconnect then reconnect wayland connection, and update clipmethod.
+ * Disconnect then reconnect Wayland connection, and update clipmethod.
  */
     void
 ex_wlrestore(exarg_T *eap)
@@ -2405,7 +2398,7 @@ ex_wlrestore(exarg_T *eap)
 	display = (char*)eap->arg;
 
     // Return early if shebang is not passed, we are still connected, and if not
-    // changing to a new wayland display.
+    // changing to a new Wayland display.
     if (!eap->forceit && wayland_client_is_connected(TRUE) &&
 	    (display == wayland_display_name ||
 	     (wayland_display_name != NULL &&
@@ -2434,14 +2427,14 @@ ex_wlrestore(exarg_T *eap)
 
     if (wayland_init_client(display) == OK)
     {
-	smsg(_("restoring wayland display %s"), wayland_display_name);
+	smsg(_("restoring Wayland display %s"), wayland_display_name);
 
 #ifdef FEAT_WAYLAND_CLIPBOARD
 	wayland_cb_init((char*)p_wse);
 #endif
     }
     else
-	msg(_("failed restoring, lost connection to wayland display"));
+	msg(_("failed restoring, lost connection to Wayland display"));
 
     vim_free(display);
 

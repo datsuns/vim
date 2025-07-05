@@ -1815,6 +1815,7 @@ $quote	eval.txt	/*$quote*
 /\{-	pattern.txt	/*\/\\{-*
 /\~	pattern.txt	/*\/\\~*
 /^	pattern.txt	/*\/^*
+/_<Tab>	cmdline.txt	/*\/_<Tab>*
 /_CTRL-G	cmdline.txt	/*\/_CTRL-G*
 /_CTRL-L	cmdline.txt	/*\/_CTRL-L*
 /_CTRL-T	cmdline.txt	/*\/_CTRL-T*
@@ -6794,6 +6795,7 @@ cpo-x	options.txt	/*cpo-x*
 cpo-y	options.txt	/*cpo-y*
 cpo-z	options.txt	/*cpo-z*
 cpo-{	options.txt	/*cpo-{*
+cpo-~	options.txt	/*cpo-~*
 cpp.vim	syntax.txt	/*cpp.vim*
 crash-recovery	recover.txt	/*crash-recovery*
 creating-menus	gui.txt	/*creating-menus*
@@ -9235,7 +9237,6 @@ netrw-rightmouse	pi_netrw.txt	/*netrw-rightmouse*
 netrw-s	pi_netrw.txt	/*netrw-s*
 netrw-s-cr	pi_netrw.txt	/*netrw-s-cr*
 netrw-settings	pi_netrw.txt	/*netrw-settings*
-netrw-settings-window	pi_netrw.txt	/*netrw-settings-window*
 netrw-sexplore	pi_netrw.txt	/*netrw-sexplore*
 netrw-sort	pi_netrw.txt	/*netrw-sort*
 netrw-sort-sequence	pi_netrw.txt	/*netrw-sort-sequence*
