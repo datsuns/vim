@@ -376,8 +376,9 @@ typedef enum {
 // flags for the 'wildoptions' option
 // each defined char should be unique over all values.
 #define WOP_FUZZY	'z'
-#define WOP_TAGFILE	't'
+#define WOP_TAGFILE	'g'
 #define WOP_PUM		'p'
+#define WOP_EXACTTEXT	'x'
 
 // arguments for can_bs()
 // each defined char should be unique over all values
@@ -792,6 +793,7 @@ EXTERN long	p_mmt;		// 'maxmemtot'
 EXTERN long	p_mis;		// 'menuitems'
 #endif
 EXTERN char_u	*p_mopt;	// 'messagesopt'
+EXTERN long	p_msc;		// 'maxsearchcount'
 #ifdef FEAT_SPELL
 EXTERN char_u	*p_msm;		// 'mkspellmem'
 #endif
