@@ -212,7 +212,10 @@ SRC_ALL =	\
 		src/testdir/samples/*.html \
 		src/testdir/samples/*.txt \
 		src/testdir/samples/*.vim \
+		src/testdir/samples/evil.zip \
+		src/testdir/samples/evil.tar \
 		src/testdir/samples/poc.zip \
+		src/testdir/samples/sample.tar \
 		src/testdir/samples/test.zip \
 		src/testdir/samples/test000 \
 		src/testdir/samples/test_undo.txt.undo \
@@ -1151,6 +1154,7 @@ LANG_SRC = \
 		src/po/sjiscorr.c \
 		src/po/big5corr.c \
 		src/po/*.po \
+		src/po/vim.pot \
 
 # The language files for the Win32 lang archive.
 LANG_DOS = \
