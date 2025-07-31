@@ -524,6 +524,7 @@ EXTERN char_u	*p_cia;		// 'completeitemalign'
 EXTERN unsigned cia_flags;	// order flags of 'completeitemalign'
 EXTERN char_u	*p_cot;		// 'completeopt'
 EXTERN unsigned	cot_flags;	// flags from 'completeopt'
+EXTERN int	p_ac;		// 'autocomplete'
 // Keep in sync with p_cot_values in optionstr.c
 #define COT_MENU	0x001
 #define COT_MENUONE	0x002
@@ -572,6 +573,7 @@ EXTERN char_u	*p_def;		// 'define'
 EXTERN char_u	*p_inc;
 #endif
 #ifdef FEAT_DIFF
+EXTERN char_u	*p_dia;		// 'diffanchors'
 EXTERN char_u	*p_dip;		// 'diffopt'
 # ifdef FEAT_EVAL
 EXTERN char_u	*p_dex;		// 'diffexpr'
@@ -793,6 +795,7 @@ EXTERN long	p_mmt;		// 'maxmemtot'
 EXTERN long	p_mis;		// 'menuitems'
 #endif
 EXTERN char_u	*p_mopt;	// 'messagesopt'
+EXTERN long	p_msc;		// 'maxsearchcount'
 #ifdef FEAT_SPELL
 EXTERN char_u	*p_msm;		// 'mkspellmem'
 #endif
@@ -1189,6 +1192,9 @@ enum
     , BV_COT
     , BV_CPT
     , BV_DICT
+#ifdef FEAT_DIFF
+    , BV_DIA
+#endif
     , BV_TSR
 #ifdef BACKSLASH_IN_FILENAME
     , BV_CSL
