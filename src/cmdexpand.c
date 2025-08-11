@@ -238,6 +238,7 @@ nextwild(
     cmdline_info_T	*ccline = get_cmdline_info();
     int		i;
     char_u	*p;
+    int		from_wildtrigger_func = options & WILD_FUNC_TRIGGER;
 
     if (xp->xp_numfiles == -1)
     {
@@ -269,16 +270,21 @@ nextwild(
 	return FAIL;
     }
 
+    i = (int)(xp->xp_pattern - ccline->cmdbuff);
+    xp->xp_pattern_len = ccline->cmdpos - i;
+
+    // Skip showing matches if prefix is invalid during wildtrigger()
+    if (from_wildtrigger_func && xp->xp_context == EXPAND_COMMANDS
+	    && xp->xp_pattern_len == 0)
+	return FAIL;
+
     // If cmd_silent is set then don't show the dots, because redrawcmd() below
     // won't remove them.
-    if (!cmd_silent)
+    if (!cmd_silent && !from_wildtrigger_func)
     {
 	msg_puts("...");	    // show that we are busy
 	out_flush();
     }
-
-    i = (int)(xp->xp_pattern - ccline->cmdbuff);
-    xp->xp_pattern_len = ccline->cmdpos - i;
 
     if (type == WILD_NEXT || type == WILD_PREV
 	    || type == WILD_PAGEUP || type == WILD_PAGEDOWN)
@@ -449,9 +455,8 @@ cmdline_pum_active(void)
  * items and refresh the screen.
  */
     void
-cmdline_pum_remove(cmdline_info_T *cclp UNUSED)
+cmdline_pum_remove(cmdline_info_T *cclp UNUSED, int defer_redraw)
 {
-    int save_p_lz = p_lz;
     int	save_KeyTyped = KeyTyped;
 #ifdef FEAT_EVAL
     int	save_RedrawingDisabled = RedrawingDisabled;
@@ -462,9 +467,15 @@ cmdline_pum_remove(cmdline_info_T *cclp UNUSED)
     pum_undisplay();
     VIM_CLEAR(compl_match_array);
     compl_match_arraysize = 0;
-    p_lz = FALSE;  // avoid the popup menu hanging around
-    update_screen(0);
-    p_lz = save_p_lz;
+    if (!defer_redraw)
+    {
+	int save_p_lz = p_lz;
+	p_lz = FALSE;  // avoid the popup menu hanging around
+	update_screen(0);
+	p_lz = save_p_lz;
+    }
+    else
+	pum_call_update_screen();
     redrawcmd();
 
     // When a function is called (e.g. for 'foldtext') KeyTyped might be reset
@@ -479,7 +490,7 @@ cmdline_pum_remove(cmdline_info_T *cclp UNUSED)
     void
 cmdline_pum_cleanup(cmdline_info_T *cclp)
 {
-    cmdline_pum_remove(cclp);
+    cmdline_pum_remove(cclp, FALSE);
     wildmenu_cleanup(cclp);
 }
 
@@ -1062,7 +1073,7 @@ ExpandOne(
 
 	// The entries from xp_files may be used in the PUM, remove it.
 	if (compl_match_array != NULL)
-	    cmdline_pum_remove(get_cmdline_info());
+	    cmdline_pum_remove(get_cmdline_info(), FALSE);
     }
     xp->xp_selected = 0;
 
@@ -2355,6 +2366,7 @@ set_context_by_cmdname(
 	case CMD_tab:
 	case CMD_tabdo:
 	case CMD_topleft:
+	case CMD_unsilent:
 	case CMD_verbose:
 	case CMD_vertical:
 	case CMD_windo:
@@ -4783,17 +4795,29 @@ copy_substring_from_pos(pos_T *start, pos_T *end, char_u **match,
     static int
 is_regex_match(char_u *pat, char_u *str)
 {
+    if (STRCMP(pat, str) == 0)
+	return TRUE;
+
     regmatch_T	regmatch;
     int		result;
 
+    ++emsg_off;
+    ++msg_silent;
     regmatch.regprog = vim_regcomp(pat, RE_MAGIC + RE_STRING);
+    --emsg_off;
+    --msg_silent;
+
     if (regmatch.regprog == NULL)
 	return FALSE;
     regmatch.rm_ic = p_ic;
     if (p_ic && p_scs)
 	regmatch.rm_ic = !pat_has_uppercase(pat);
 
+    ++emsg_off;
+    ++msg_silent;
     result = vim_regexec_nl(&regmatch, str, (colnr_T)0);
+    --emsg_off;
+    --msg_silent;
 
     vim_regfree(regmatch.regprog);
     return result;

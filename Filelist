@@ -12,6 +12,7 @@ SRC_ALL =	\
 		.github/workflows/ci.yml \
 		.github/workflows/codeql-analysis.yml \
 		.github/workflows/coverity.yml \
+		.github/workflows/link-check.yml \
 		.github/actions/test_artifacts/action.yml \
 		.github/dependabot.yml \
 		.gitignore \
@@ -24,6 +25,7 @@ SRC_ALL =	\
 		ci/config.mk*.sed \
 		ci/if_ver*.vim \
 		ci/if_feat_check.vim \
+		ci/lychee.toml \
 		ci/setup-xvfb.sh \
 		ci/setup-sway.sh \
 		ci/remove_snap.sh \
@@ -177,6 +179,7 @@ SRC_ALL =	\
 		src/vim9compile.c \
 		src/vim9execute.c \
 		src/vim9expr.c \
+		src/vim9generics.c \
 		src/vim9instr.c \
 		src/vim9script.c \
 		src/vim9type.c \
@@ -362,6 +365,7 @@ SRC_ALL =	\
 		src/proto/vim9compile.pro \
 		src/proto/vim9execute.pro \
 		src/proto/vim9expr.pro \
+		src/proto/vim9generics.pro \
 		src/proto/vim9instr.pro \
 		src/proto/vim9script.pro \
 		src/proto/vim9type.pro \
