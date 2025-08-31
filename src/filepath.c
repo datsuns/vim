@@ -359,7 +359,11 @@ repeat:
 	}
 
 	// FullName_save() is slow, don't use it when not needed.
-	if (*p != NUL || !vim_isAbsName(*fnamep))
+	if (*p != NUL || !vim_isAbsName(*fnamep)
+#ifdef MSWIN	// enforce drive letter on Windows paths
+		|| **fnamep == '/' || **fnamep == '\\'
+#endif
+	)
 	{
 	    *fnamep = FullName_save(*fnamep, *p != NUL);
 	    vim_free(*bufp);	// free any allocated file name
@@ -3110,6 +3114,42 @@ vim_fnamencmp(char_u *x, char_u *y, size_t len)
     int		cx = NUL;
     int		cy = NUL;
 
+# ifdef MSWIN
+    /*
+     * To allow proper comparison of absolute paths:
+     *	 - one with explicit drive letter C:\xxx
+     *	 - another with implicit drive letter \xxx
+     * advance the pointer, of the explicit one, to skip the drive
+     */
+    for (int swap = 0, drive = NUL; swap < 2; ++swap)
+    {
+	// Handle absolute paths with implicit drive letter
+	cx = PTR2CHAR(px);
+	cy = PTR2CHAR(py);
+
+	if ((cx == '/' || cx == '\\') && ASCII_ISALPHA(cy))
+	{
+	    drive = MB_TOUPPER(cy) - 'A' + 1;
+
+	    // Check for the colon
+	    py += mb_ptr2len(py);
+	    cy = PTR2CHAR(py);
+	    if (cy == ':' && drive == _getdrive())
+	    { // skip the drive for comparison
+		py += mb_ptr2len(py);
+		break;
+	    }
+	    else // ignore
+		py -= mb_ptr2len(py);
+	}
+
+	// swap pointers
+	char_u *tmp = px;
+	px = py;
+	py = tmp;
+    }
+# endif
+
     while (len > 0)
     {
 	cx = PTR2CHAR(px);
@@ -3669,9 +3709,14 @@ dos_expandpath(
 		vim_snprintf((char *)buf + len, buflen - len, "%s", path_end);
 		if (mch_has_exp_wildcard(path_end))
 		{
-		    // need to expand another component of the path
-		    // remove backslashes for the remaining components only
-		    (void)dos_expandpath(gap, buf, len + 1, flags, FALSE);
+		    if (stardepth < 100)
+		    {
+			// need to expand another component of the path
+			// remove backslashes for the remaining components only
+			++stardepth;
+			(void)dos_expandpath(gap, buf, len + 1, flags, FALSE);
+			--stardepth;
+		    }
 		}
 		else
 		{
@@ -3910,9 +3955,14 @@ unix_expandpath(
 		vim_snprintf((char *)buf + len, buflen - len, "%s", path_end);
 		if (mch_has_exp_wildcard(path_end)) // handle more wildcards
 		{
-		    // need to expand another component of the path
-		    // remove backslashes for the remaining components only
-		    (void)unix_expandpath(gap, buf, len + 1, flags, FALSE);
+		    if (stardepth < 100)
+		    {
+			// need to expand another component of the path
+			// remove backslashes for the remaining components only
+			++stardepth;
+			(void)unix_expandpath(gap, buf, len + 1, flags, FALSE);
+			--stardepth;
+		    }
 		}
 		else
 		{
