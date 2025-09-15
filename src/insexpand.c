@@ -154,9 +154,8 @@ static string_T	  compl_leader = {NULL, 0};
 static int	  compl_get_longest = FALSE;	// put longest common string
 						// in compl_leader
 
-// This flag indicates that one of the items in the match list is currently
-// selected.  FALSE when no match is selected or the match was edited or using
-// the longest common string.
+// This flag is FALSE when no match is selected (by ^N/^P) or the match was
+// edited or using the longest common string.
 static int	  compl_used_match;
 
 // didn't finish finding completions.
@@ -1068,10 +1067,13 @@ ins_compl_col_range_attr(linenr_T lnum, int col)
 {
     int	    start_col;
     int	    attr;
+    int	    has_preinsert = ins_compl_has_preinsert();
 
     if ((get_cot_flags() & COT_FUZZY)
-	    || (!compl_autocomplete
+	    || (!has_preinsert
 		&& (attr = syn_name2attr((char_u *)"ComplMatchIns")) == 0)
+	    || (!compl_autocomplete && has_preinsert
+		&& (attr = syn_name2attr((char_u *)"PreInsert")) == 0)
 	    || (compl_autocomplete
 		&& (!compl_autocomplete_preinsert
 		    || (attr = syn_name2attr((char_u *)"PreInsert")) == 0)))
@@ -2422,6 +2424,10 @@ ins_compl_bs(void)
 	return K_BS;
     }
 
+    // Clear selection if a menu item is currently selected in autocompletion
+    if (compl_autocomplete && compl_first_match)
+	compl_shown_match = compl_first_match;
+
     ins_compl_new_leader();
     if (compl_shown_match != NULL)
 	// Make sure current match is not a hidden item.
@@ -2532,9 +2538,7 @@ ins_compl_new_leader(void)
 	if (compl_started && compl_autocomplete
 		&& !ins_compl_preinsert_effect())
 	{
-	    if (ins_compl_insert(TRUE, TRUE) != OK)
-		(void)ins_compl_insert(FALSE, FALSE);
-	    else
+	    if (ins_compl_insert(TRUE, TRUE) == OK)
 		compl_autocomplete_preinsert = TRUE;
 	}
 	else
@@ -3447,7 +3451,7 @@ set_cpt_callbacks(optset_T *args)
 	}
     }
 
-    if (!local) // ':set' used insted of ':setlocal'
+    if (!local) // ':set' used instead of ':setlocal'
 	// Cache the callback array
 	if (copy_cpt_callbacks(&cpt_cb, &cpt_cb_count, curbuf->b_p_cpt_cb,
 		    curbuf->b_p_cpt_count) != OK)
@@ -5960,7 +5964,8 @@ ins_compl_insert(int move_cursor, int preinsert_prefix)
 		curwin->w_cursor.col -= (colnr_T)(cp_str_len - leader_len);
 	}
     }
-    if (match_at_original_text(compl_shown_match) || preinsert)
+    if (match_at_original_text(compl_shown_match)
+	    || (preinsert && !compl_autocomplete))
 	compl_used_match = FALSE;
     else
 	compl_used_match = TRUE;
