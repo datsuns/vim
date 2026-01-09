@@ -26,6 +26,7 @@
 
 // Definition of the PV_ values for buffer-local options.
 // The BV_ values are defined in option.h.
+#define PV_AC		OPT_BOTH(OPT_BUF(BV_AC))
 #define PV_AI		OPT_BUF(BV_AI)
 #define PV_AR		OPT_BOTH(OPT_BUF(BV_AR))
 #define PV_BKC		OPT_BOTH(OPT_BUF(BV_BKC))
@@ -47,9 +48,7 @@
 #define PV_CINSD	OPT_BUF(BV_CINSD)
 #define PV_CINW		OPT_BUF(BV_CINW)
 #define PV_CM		OPT_BOTH(OPT_BUF(BV_CM))
-#ifdef FEAT_FOLDING
-# define PV_CMS		OPT_BUF(BV_CMS)
-#endif
+#define PV_CMS		OPT_BUF(BV_CMS)
 #define PV_COM		OPT_BUF(BV_COM)
 #define PV_COT		OPT_BOTH(OPT_BUF(BV_COT))
 #define PV_CPT		OPT_BUF(BV_CPT)
@@ -83,6 +82,9 @@
 #define PV_FF		OPT_BUF(BV_FF)
 #define PV_FLP		OPT_BUF(BV_FLP)
 #define PV_FO		OPT_BUF(BV_FO)
+#ifdef HAVE_FSYNC
+# define PV_FS		OPT_BOTH(OPT_BUF(BV_FS))
+#endif
 #define PV_FT		OPT_BUF(BV_FT)
 #define PV_IMI		OPT_BUF(BV_IMI)
 #define PV_IMS		OPT_BUF(BV_IMS)
@@ -94,7 +96,6 @@
 # define PV_INEX	OPT_BUF(BV_INEX)
 #endif
 #define PV_INF		OPT_BUF(BV_INF)
-#define PV_ISE		OPT_BOTH(OPT_BUF(BV_ISE))
 #define PV_ISK		OPT_BUF(BV_ISK)
 #ifdef FEAT_CRYPT
 # define PV_KEY		OPT_BUF(BV_KEY)
@@ -309,7 +310,7 @@ struct vimoption
 # define ISP_LATIN1 (char_u *)"@,161-255"
 #endif
 
-# define HIGHLIGHT_INIT "8:SpecialKey,~:EndOfBuffer,@:NonText,d:Directory,e:ErrorMsg,i:IncSearch,l:Search,y:CurSearch,m:MoreMsg,M:ModeMsg,n:LineNr,a:LineNrAbove,b:LineNrBelow,N:CursorLineNr,G:CursorLineSign,O:CursorLineFold,r:Question,s:StatusLine,S:StatusLineNC,c:VertSplit,t:Title,v:Visual,V:VisualNOS,w:WarningMsg,W:WildMenu,f:Folded,F:FoldColumn,A:DiffAdd,C:DiffChange,D:DiffDelete,T:DiffText,E:DiffTextAdd,>:SignColumn,-:Conceal,B:SpellBad,P:SpellCap,R:SpellRare,L:SpellLocal,+:Pmenu,=:PmenuSel,k:PmenuMatch,<:PmenuMatchSel,[:PmenuKind,]:PmenuKindSel,{:PmenuExtra,}:PmenuExtraSel,x:PmenuSbar,X:PmenuThumb,*:TabLine,#:TabLineSel,_:TabLineFill,!:CursorColumn,.:CursorLine,o:ColorColumn,q:QuickFixLine,z:StatusLineTerm,Z:StatusLineTermNC,g:MsgArea,h:ComplMatchIns,%:TabPanel,^:TabPanelSel,&:TabPanelFill,I:PreInsert"
+# define HIGHLIGHT_INIT "8:SpecialKey,~:EndOfBuffer,@:NonText,d:Directory,e:ErrorMsg,i:IncSearch,l:Search,y:CurSearch,m:MoreMsg,M:ModeMsg,n:LineNr,a:LineNrAbove,b:LineNrBelow,N:CursorLineNr,G:CursorLineSign,O:CursorLineFold,r:Question,s:StatusLine,S:StatusLineNC,c:VertSplit,t:Title,v:Visual,V:VisualNOS,w:WarningMsg,W:WildMenu,f:Folded,F:FoldColumn,A:DiffAdd,C:DiffChange,D:DiffDelete,T:DiffText,E:DiffTextAdd,>:SignColumn,-:Conceal,B:SpellBad,P:SpellCap,R:SpellRare,L:SpellLocal,+:Pmenu,=:PmenuSel,k:PmenuMatch,<:PmenuMatchSel,[:PmenuKind,]:PmenuKindSel,{:PmenuExtra,}:PmenuExtraSel,x:PmenuSbar,X:PmenuThumb,j:PmenuBorder,H:PmenuShadow,*:TabLine,#:TabLineSel,_:TabLineFill,!:CursorColumn,.:CursorLine,o:ColorColumn,q:QuickFixLine,z:StatusLineTerm,Z:StatusLineTermNC,g:MsgArea,h:ComplMatchIns,%:TabPanel,^:TabPanelSel,&:TabPanelFill,I:PreInsert"
 
 // Default python version for pyx* commands
 #if defined(FEAT_PYTHON) && defined(FEAT_PYTHON3)
@@ -390,7 +391,7 @@ static struct vimoption options[] =
 			    SCTX_INIT},
 #ifdef ELAPSED_FUNC
     {"autocomplete",  "ac", P_BOOL|P_VI_DEF,
-			    (char_u *)&p_ac, PV_NONE, NULL,
+			    (char_u *)&p_ac, PV_AC, NULL,
 			    NULL, {(char_u *)FALSE, (char_u *)0L} SCTX_INIT},
     {"autocompletedelay", "acl", P_NUM|P_VI_DEF,
 			    (char_u *)&p_acl, PV_NONE, NULL, NULL,
@@ -620,7 +621,7 @@ static struct vimoption options[] =
 				(char_u *)0L}
 			    SCTX_INIT},
     {"clipboard",   "cb",   P_STRING|P_VI_DEF|P_ONECOMMA|P_NODUP,
-#ifdef FEAT_CLIPBOARD
+#ifdef HAVE_CLIPMETHOD
 			    (char_u *)&p_cb, PV_NONE, did_set_clipboard, expand_set_clipboard,
 # if defined(FEAT_XCLIPBOARD) || defined(FEAT_WAYLAND_CLIPBOARD)
 			    {(char_u *)"autoselect,exclude:cons\\|linux",
@@ -634,14 +635,14 @@ static struct vimoption options[] =
 #endif
 			    SCTX_INIT},
     {"clipmethod", "cpm",   P_STRING|P_VI_DEF|P_ONECOMMA|P_NODUP,
-#ifdef FEAT_CLIPBOARD
+#ifdef HAVE_CLIPMETHOD
 			    (char_u *)&p_cpm, PV_NONE, did_set_clipmethod, expand_set_clipmethod,
 # ifdef UNIX
-			    {(char_u *)"wayland,x11,gui,other", (char_u *)0L}
+			    {(char_u *)"wayland,x11", (char_u *)0L}
 # elif defined(VMS)
-			    {(char_u *)"x11,gui,other", (char_u *)0L}
+			    {(char_u *)"x11", (char_u *)0L}
 # else
-			    {(char_u *)"gui,other", (char_u *)0L}
+			    {(char_u *)"", (char_u *)0L}
 # endif
 #else
 			    (char_u *)NULL, PV_NONE, NULL, NULL,
@@ -670,13 +671,8 @@ static struct vimoption options[] =
 				(char_u *)0L}
 			    SCTX_INIT},
     {"commentstring", "cms", P_STRING|P_ALLOCED|P_VI_DEF,
-#ifdef FEAT_FOLDING
 			    (char_u *)&p_cms, PV_CMS, did_set_commentstring, NULL,
 			    {(char_u *)"/* %s */", (char_u *)0L}
-#else
-			    (char_u *)NULL, PV_NONE, NULL, NULL,
-			    {(char_u *)0L, (char_u *)0L}
-#endif
 			    SCTX_INIT},
 			    // P_PRI_MKRC isn't needed here, optval_default()
 			    // always returns TRUE for 'compatible'
@@ -710,7 +706,7 @@ static struct vimoption options[] =
 			    SCTX_INIT},
     {"completepopup", "cpp", P_STRING|P_VI_DEF|P_COMMA|P_NODUP|P_COLON,
 #if defined(FEAT_PROP_POPUP) && defined(FEAT_QUICKFIX)
-			    (char_u *)&p_cpp, PV_NONE, did_set_completepopup, expand_set_popupoption,
+			    (char_u *)&p_cpp, PV_NONE, did_set_completepopup, expand_set_completepopup,
 			    {(char_u *)"", (char_u *)0L}
 #else
 			    (char_u *)NULL, PV_NONE, NULL, NULL,
@@ -1179,7 +1175,7 @@ static struct vimoption options[] =
 			    {(char_u *)"", (char_u *)0L} SCTX_INIT},
     {"fsync",       "fs",   P_BOOL|P_SECURE|P_VI_DEF,
 #ifdef HAVE_FSYNC
-			    (char_u *)&p_fs, PV_NONE, NULL, NULL,
+			    (char_u *)&p_fs, PV_FS, NULL, NULL,
 			    {(char_u *)TRUE, (char_u *)0L}
 #else
 			    (char_u *)NULL, PV_NONE, NULL, NULL,
@@ -1499,10 +1495,6 @@ static struct vimoption options[] =
     {"insertmode",  "im",   P_BOOL|P_VI_DEF|P_VIM,
 			    (char_u *)&p_im, PV_NONE, did_set_insertmode, NULL,
 			    {(char_u *)FALSE, (char_u *)0L} SCTX_INIT},
-    {"isexpand",    "ise",  P_STRING|P_VI_DEF|P_ONECOMMA|P_NODUP,
-			    (char_u *)&p_ise, PV_ISE, did_set_isexpand, NULL,
-			    {(char_u *)"", (char_u *)0L}
-			    SCTX_INIT},
     {"isfname",	    "isf",  P_STRING|P_VI_DEF|P_COMMA|P_NODUP,
 			    (char_u *)&p_isf, PV_NONE, did_set_isopt, NULL,
 			    {
@@ -1990,7 +1982,7 @@ static struct vimoption options[] =
 			    {(char_u *)12L, (char_u *)0L} SCTX_INIT},
     {"previewpopup", "pvp", P_STRING|P_VI_DEF|P_COMMA|P_NODUP|P_COLON,
 #ifdef FEAT_PROP_POPUP
-			    (char_u *)&p_pvp, PV_NONE, did_set_previewpopup, expand_set_popupoption,
+			    (char_u *)&p_pvp, PV_NONE, did_set_previewpopup, expand_set_previewpopup,
 			    {(char_u *)"", (char_u *)0L}
 #else
 			    (char_u *)NULL, PV_NONE, NULL, NULL,
@@ -2088,6 +2080,9 @@ static struct vimoption options[] =
     {"prompt",	    NULL,   P_BOOL|P_VI_DEF,
 			    (char_u *)&p_prompt, PV_NONE, NULL, NULL,
 			    {(char_u *)TRUE, (char_u *)0L} SCTX_INIT},
+    {"pumborder",   "pb",   P_STRING|P_VI_DEF|P_COMMA|P_NODUP|P_COLON|P_SECURE,
+			    (char_u *)&p_pb, PV_NONE, did_set_pumborder, expand_set_pumborder,
+			    {(char_u *)"", (char_u *)NULL} SCTX_INIT},
     {"pumheight",   "ph",   P_NUM|P_VI_DEF,
 			    (char_u *)&p_ph, PV_NONE, NULL, NULL,
 			    {(char_u *)0L, (char_u *)0L} SCTX_INIT},
@@ -3009,7 +3004,7 @@ static struct vimoption options[] =
 #endif
 			    SCTX_INIT},
     {"wlsteal",	    "wst",  P_BOOL|P_VI_DEF,
-#ifdef FEAT_WAYLAND_CLIPBOARD
+#ifdef FEAT_WAYLAND_CLIPBOARD_FS
 			    (char_u *)&p_wst, PV_NONE, did_set_wlsteal, NULL,
 			    {(char_u *)FALSE, (char_u *)0L}
 #else

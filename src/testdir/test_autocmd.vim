@@ -818,25 +818,47 @@ func Test_WinClosed_switch_tab()
   %bwipe!
 endfunc
 
-" This used to trigger WinClosed twice for the same window, and the window's
-" buffer was NULL in the second autocommand.
-func Test_WinClosed_BufUnload_close_other()
-  tabnew
+" This used to trigger WinClosed/WinLeave/BufLeave twice for the same window,
+" and the window's buffer was NULL in the second autocommand.
+func Run_test_BufUnload_close_other(extra_cmd)
+  let oldtab = tabpagenr()
+  tabnew Xb1
   let g:tab = tabpagenr()
-  let g:buf = bufnr()
-  new
-  setlocal bufhidden=wipe
-  augroup test-WinClosed
-    autocmd BufUnload * ++once exe g:buf .. 'bwipe!'
-    autocmd WinClosed * call tabpagebuflist(g:tab)
+  let g:w1 = win_getid()
+  new Xb2
+  let g:w2 = win_getid()
+  let g:log = []
+  exe a:extra_cmd
+
+  augroup test-BufUnload-close-other
+    autocmd BufUnload * ++nested ++once bwipe! Xb1
+    for event in ['WinClosed', 'BufLeave', 'WinLeave', 'TabLeave']
+      exe $'autocmd {event} * call tabpagebuflist(g:tab)'
+      exe $'autocmd {event} * let g:log += ["{event}:" .. expand("<afile>")]'
+    endfor
   augroup END
+
   close
+  " WinClosed is triggered once for each of the 2 closed windows.
+  " Others are only triggered once.
+  call assert_equal(['BufLeave:Xb2', 'WinLeave:Xb2', $'WinClosed:{g:w2}',
+        \ $'WinClosed:{g:w1}', 'TabLeave:Xb2'], g:log)
+  call assert_equal(oldtab, tabpagenr())
+  call assert_equal([0, 0], win_id2tabwin(g:w1))
+  call assert_equal([0, 0], win_id2tabwin(g:w2))
 
   unlet g:tab
-  unlet g:buf
-  autocmd! test-WinClosed
-  augroup! test-WinClosed
+  unlet g:w1
+  unlet g:w2
+  unlet g:log
+  autocmd! test-BufUnload-close-other
+  augroup! test-BufUnload-close-other
   %bwipe!
+endfunc
+
+func Test_BufUnload_close_other()
+  call Run_test_BufUnload_close_other('')
+  call Run_test_BufUnload_close_other('setlocal bufhidden=wipe')
 endfunc
 
 func s:AddAnAutocmd()
@@ -3674,7 +3696,7 @@ func Test_BufReadPre_changebuf()
   close!
 endfunc
 
-" Test for BufWipeouti autocmd changing the current buffer when reading a file
+" Test for BufWipeout autocmd changing the current buffer when reading a file
 " in an empty buffer with 'f' flag in 'cpo'
 func Test_BufDelete_changebuf()
   new
@@ -3991,6 +4013,29 @@ func Test_bufwipeout_changes_window()
 
   unlet g:window_id
   au! BufWipeout
+  %bwipe!
+endfunc
+
+func Test_autocmd_prevent_buf_wipe()
+  " Xa must be the first buffer so that win_close_othertab() puts it in
+  " another window, which causes wiping the buffer to fail.
+  %bwipe!
+
+  file Xa
+  call setline(1, 'foo')
+  setlocal bufhidden=wipe
+  tabnew Xb
+  setlocal bufhidden=wipe
+  autocmd BufUnload Xa ++once ++nested tabonly
+  autocmd BufWinLeave Xb ++once tabnext
+  tabfirst
+
+  edit! Xc
+  call assert_equal('Xc', bufname('%'))
+  tabnext
+  call assert_equal('Xa', bufname('%'))
+  call assert_equal("\n\"Xa\" --No lines in buffer--", execute('file'))
+
   %bwipe!
 endfunc
 
@@ -5513,6 +5558,29 @@ func Test_VimResized_and_window_width_not_equalized()
   call WaitForAssert({-> assert_match('^window_width: 10$', term_getline(buf, 10))}, 1000)
 
   call StopVimInTerminal(buf)
+endfunc
+
+func Test_win_tabclose_autocmd()
+
+  defer CleanUpTestAuGroup()
+  new
+  augroup testing
+    au WinClosed * wincmd p
+  augroup END
+
+  tabnew
+  new
+  new
+
+  call assert_equal(2, tabpagenr('$'))
+  try
+    tabclose
+  catch
+    " should not happen
+    call assert_report("closing tabpage failed")
+  endtry
+  call assert_equal(1, tabpagenr('$'))
+  bw!
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

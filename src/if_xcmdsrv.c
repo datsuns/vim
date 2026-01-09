@@ -14,7 +14,7 @@
 #include "vim.h"
 #include "version.h"
 
-#if (defined(FEAT_CLIENTSERVER) && defined(FEAT_X11)) || defined(PROTO)
+#if (defined(FEAT_CLIENTSERVER) && defined(FEAT_X11))
 
 # ifdef FEAT_X11
 #  include <X11/Intrinsic.h>
@@ -321,7 +321,7 @@ DoRegisterName(Display *dpy, char_u *name)
     return -2;
 }
 
-#if defined(FEAT_GUI) || defined(PROTO)
+#if defined(FEAT_GUI)
 /*
  * Clean out new ID from registry and set it as comm win.
  * Change any registered window ID.
@@ -666,7 +666,7 @@ serverGetVimNames(Display *dpy)
 	    if (WindowValid(dpy, (Window)w))
 	    {
 		ga_concat(&ga, p + 1);
-		ga_concat(&ga, (char_u *)"\n");
+		ga_concat_len(&ga, (char_u *)"\n", 1);
 	    }
 	    while (*p != 0)
 		p++;
@@ -1343,7 +1343,7 @@ server_parse_message(
 			    ga_concat(&reply,
 				   (char_u *)_(e_invalid_expression_received));
 			    ga_append(&reply, 0);
-			    ga_concat(&reply, (char_u *)"-c 1");
+			    ga_concat_len(&reply, (char_u *)"-c 1", 4);
 			}
 			ga_append(&reply, NUL);
 			(void)AppendPropCarefully(dpy, resWindow, commProperty,

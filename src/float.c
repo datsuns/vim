@@ -14,7 +14,7 @@
 
 #include "vim.h"
 
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
 
 #ifdef VMS
 # include <float.h>
@@ -338,16 +338,13 @@ f_fmod(typval_T *argvars, typval_T *rettv)
 	rettv->vval.v_float = 0.0;
 }
 
-# if defined(HAVE_MATH_H) || defined(PROTO)
+# if defined(HAVE_MATH_H)
 /*
  * "isinf()" function
  */
     void
 f_isinf(typval_T *argvars, typval_T *rettv)
 {
-    rettv->v_type = VAR_NUMBER;
-    rettv->vval.v_number = 0;
-
     if (in_vim9script() && check_for_float_or_nr_arg(argvars, 0) == FAIL)
 	return;
 
@@ -361,9 +358,6 @@ f_isinf(typval_T *argvars, typval_T *rettv)
     void
 f_isnan(typval_T *argvars, typval_T *rettv)
 {
-    rettv->v_type = VAR_NUMBER;
-    rettv->vval.v_number = 0;
-
     if (in_vim9script() && check_for_float_or_nr_arg(argvars, 0) == FAIL)
 	return;
 

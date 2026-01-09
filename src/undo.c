@@ -138,7 +138,7 @@ static int	undo_undoes = FALSE;
 
 static int	lastmark = 0;
 
-#if defined(U_DEBUG) || defined(PROTO)
+#if defined(U_DEBUG)
 /*
  * Check the undo structures for being valid.  Print a warning when something
  * looks wrong.
@@ -760,7 +760,7 @@ nomem:
     return FAIL;
 }
 
-#if defined(FEAT_PERSISTENT_UNDO) || defined(PROTO)
+#if defined(FEAT_PERSISTENT_UNDO)
 
 # define UF_START_MAGIC	    "Vim\237UnDo\345"  // magic at start of undofile
 # define UF_START_MAGIC_LEN	9
@@ -1774,7 +1774,8 @@ u_write_undo(
 #endif
 
 #if defined(UNIX) && defined(HAVE_FSYNC)
-    if (p_fs && fflush(fp) == 0 && vim_fsync(fd) != 0)
+    if ((buf->b_p_fs >= 0 ? buf->b_p_fs : p_fs) && fflush(fp) == 0
+	    && vim_fsync(fd) != 0)
 	write_ok = FALSE;
 #endif
 
@@ -2720,7 +2721,6 @@ u_undoredo(int undo)
 
 	// Decide about the cursor position, depending on what text changed.
 	// Don't set it yet, it may be invalid if lines are going to be added.
-	if (top < newlnum)
 	{
 	    // If the saved cursor is somewhere in this undo block, move it to
 	    // the remembered position.  Makes "gwap" put the cursor back
@@ -2729,9 +2729,12 @@ u_undoredo(int undo)
 	    if (lnum >= top && lnum <= top + newsize + 1)
 	    {
 		new_curpos = curhead->uh_cursor;
-		newlnum = new_curpos.lnum - 1;
+
+		// We don't want other entries to override saved cursor
+		// position.
+		newlnum = -1;
 	    }
-	    else
+	    else if (top < newlnum)
 	    {
 		// Use the first line that actually changed.  Avoids that
 		// undoing auto-formatting puts the cursor in the previous
@@ -3634,7 +3637,7 @@ curbufIsChanged(void)
     return bufIsChanged(curbuf);
 }
 
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
 
 /*
  * For undotree(): Append the list of undo blocks at "first_uhp" to "list".

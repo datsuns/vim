@@ -14,7 +14,7 @@
 
 #include "vim.h"
 
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
 
 #ifdef VMS
 # include <float.h>
@@ -22,6 +22,7 @@
 
 #define NAMESPACE_CHAR	(char_u *)"abglstvw"
 
+static int eval0_simple_funccal(char_u *arg, typval_T *rettv, exarg_T *eap, evalarg_T *evalarg);
 static int eval2(char_u **arg, typval_T *rettv, evalarg_T *evalarg);
 static int eval3(char_u **arg, typval_T *rettv, evalarg_T *evalarg);
 static int eval4(char_u **arg, typval_T *rettv, evalarg_T *evalarg);
@@ -96,7 +97,7 @@ eval_init(void)
     func_init();
 }
 
-#if defined(EXITFREE) || defined(PROTO)
+#if defined(EXITFREE)
     void
 eval_clear(void)
 {
@@ -130,6 +131,7 @@ fill_evalarg_from_eap(evalarg_T *evalarg, exarg_T *eap, int skip)
 	evalarg->eval_getline = eap->ea_getline;
 	evalarg->eval_cookie = eap->cookie;
     }
+    evalarg->eval_class = eap->ea_class;
 }
 
 /*
@@ -1004,7 +1006,7 @@ call_func_retlist(
     return rettv.vval.v_list;
 }
 
-#if defined(FEAT_FOLDING) || defined(PROTO)
+#if defined(FEAT_FOLDING)
 /*
  * Evaluate "arg", which is 'foldexpr'.
  * Note: caller must set "curwin" to match "arg".
@@ -1019,7 +1021,7 @@ eval_foldexpr(win_T *wp, int *cp)
     varnumber_T	retval;
     char_u	*s;
     sctx_T	saved_sctx = current_sctx;
-    int		use_sandbox = was_set_insecurely((char_u *)"foldexpr",
+    int		use_sandbox = was_set_insecurely(wp, (char_u *)"foldexpr",
 								    OPT_LOCAL);
 
     arg = skipwhite(wp->w_p_fde);
@@ -1155,7 +1157,7 @@ fill_lval_from_lval_root(lval_T *lp, lval_root_T *lr)
 		lp->ll_tv = &lp->ll_class->class_members_tv[m_idx];
 #ifdef LOG_LOCKVAR
 		ch_log(NULL, "LKVAR:    ... class member %s.%s",
-					lp->ll_class->class_name, lp->ll_name);
+					lp->ll_class->class_name.string, lp->ll_name);
 #endif
 		return;
 	    }
@@ -1204,7 +1206,7 @@ get_lval_check_access(
 		{
 		    if (om->ocm_type->tt_type == VAR_OBJECT)
 			semsg(_(e_enumvalue_str_cannot_be_modified),
-				cl->class_name, om->ocm_name);
+				cl->class_name.string, om->ocm_name.string);
 		    else
 			msg = e_variable_is_not_writable_str;
 		}
@@ -1217,7 +1219,7 @@ get_lval_check_access(
     }
     if (msg != NULL)
     {
-	emsg_var_cl_define(msg, om->ocm_name, 0, cl);
+	emsg_var_cl_define(msg, om->ocm_name.string, 0, cl);
 	return FAIL;
     }
     return OK;
@@ -2222,7 +2224,8 @@ get_lval(
 		lp->ll_type = parse_type(&tp,
 			       &SCRIPT_ITEM(current_sctx.sc_sid)->sn_type_list,
 			       NULL, NULL, !quiet);
-		if (lp->ll_type == NULL && !quiet)
+		if (!quiet && (lp->ll_type == NULL
+			    || !valid_declaration_type(lp->ll_type)))
 		    return NULL;
 		lp->ll_name_end = tp;
 	    }
@@ -2234,13 +2237,33 @@ get_lval(
 
     if (*p == '.')
     {
-	imported_T *import = find_imported(lp->ll_name, p - lp->ll_name, TRUE);
-	if (import != NULL)
+	// In legacy script, when a local variable and import exists with this name,
+	// prioritize local variable over imports to avoid conflicts.
+	int var_exists = FALSE;
+	if (!vim9script)
 	{
-	    p++;	// skip '.'
-	    p = get_lval_imported(lp, import->imp_sid, p, &v, fne_flags);
-	    if (p == NULL)
-		return NULL;
+	    cc = *p;
+	    *p = NUL;
+	    hashtab_T *local_ht = get_funccal_local_ht();
+	    if (local_ht != NULL)
+	    {
+		hashitem_T *hi = hash_find(local_ht, lp->ll_name);
+		if (!HASHITEM_EMPTY(hi))
+		    var_exists = TRUE;
+	    }
+	    *p = cc;
+	}
+
+	if (!var_exists)
+	{
+	    imported_T *import = find_imported(lp->ll_name, p - lp->ll_name, TRUE);
+	    if (import != NULL)
+	    {
+		p++;	// skip '.'
+		p = get_lval_imported(lp, import->imp_sid, p, &v, fne_flags);
+		if (p == NULL)
+		    return NULL;
+	    }
 	}
     }
 
@@ -2341,7 +2364,7 @@ set_var_lval(
 
 	if (lp->ll_blob != NULL)
 	{
-	    int	    error = FALSE, val;
+	    int	    error = FALSE;
 
 	    if (op != NULL && *op != '=')
 	    {
@@ -2362,9 +2385,14 @@ set_var_lval(
 	    }
 	    else
 	    {
-		val = (int)tv_get_number_chk(rettv, &error);
+		varnumber_T	val = tv_get_number_chk(rettv, &error);
 		if (!error)
-		    blob_set_append(lp->ll_blob, lp->ll_n1, val);
+		{
+		    if (val < 0 || val > 255)
+			semsg(_(e_invalid_value_for_blob_nr), val);
+		    else
+			blob_set_append(lp->ll_blob, lp->ll_n1, val);
+		}
 	    }
 	}
 	else if (op != NULL && *op != '=')
@@ -3091,6 +3119,8 @@ set_context_for_expression(
 		|| cmdidx == CMD_echo
 		|| cmdidx == CMD_echon
 		|| cmdidx == CMD_echomsg
+		|| cmdidx == CMD_echoerr
+		|| cmdidx == CMD_echoconsole
 		|| cmdidx == CMD_echowindow)
 	    && xp->xp_context == EXPAND_EXPRESSION)
     {
@@ -3438,7 +3468,7 @@ may_call_simple_func(
  * Handle zero level expression with optimization for a simple function call.
  * Same arguments and return value as eval0().
  */
-    int
+    static int
 eval0_simple_funccal(
     char_u	*arg,
     typval_T	*rettv,
@@ -6201,7 +6231,7 @@ method_tv2string(typval_T *tv, char_u **tofree, int echo_style)
 
     size_t len = vim_snprintf((char *)buf, sizeof(buf), "<SNR>%d_%s.%s",
 			   pt->pt_func->uf_script_ctx.sc_sid,
-			   pt->pt_func->uf_class->class_name,
+			   pt->pt_func->uf_class->class_name.string,
 			   pt->pt_func->uf_name);
     if (len >= sizeof(buf))
     {
@@ -6240,14 +6270,14 @@ partial_tv2string(
     fname = string_quote(pt == NULL ? NULL : partial_name(pt), FALSE);
 
     ga_init2(&ga, 1, 100);
-    ga_concat(&ga, (char_u *)"function(");
+    ga_concat_len(&ga, (char_u *)"function(", 9);
     if (fname != NULL)
     {
 	// When using uf_name prepend "g:" for a global function.
 	if (pt != NULL && pt->pt_name == NULL && fname[0] == '\''
 						&& vim_isupper(fname[1]))
 	{
-	    ga_concat(&ga, (char_u *)"'g:");
+	    ga_concat_len(&ga, (char_u *)"'g:", 3);
 	    ga_concat(&ga, fname + 1);
 	}
 	else
@@ -6256,21 +6286,21 @@ partial_tv2string(
     }
     if (pt != NULL && pt->pt_argc > 0)
     {
-	ga_concat(&ga, (char_u *)", [");
+	ga_concat_len(&ga, (char_u *)", [", 3);
 	for (i = 0; i < pt->pt_argc; ++i)
 	{
 	    if (i > 0)
-		ga_concat(&ga, (char_u *)", ");
+		ga_concat_len(&ga, (char_u *)", ", 2);
 	    ga_concat(&ga, tv2string(&pt->pt_argv[i], &tf, numbuf, copyID));
 	    vim_free(tf);
 	}
-	ga_concat(&ga, (char_u *)"]");
+	ga_concat_len(&ga, (char_u *)"]", 1);
     }
     if (pt != NULL && pt->pt_dict != NULL)
     {
 	typval_T dtv;
 
-	ga_concat(&ga, (char_u *)", ");
+	ga_concat_len(&ga, (char_u *)", ", 2);
 	dtv.v_type = VAR_DICT;
 	dtv.vval.v_dict = pt->pt_dict;
 	ga_concat(&ga, tv2string(&dtv, &tf, numbuf, copyID));
@@ -6464,31 +6494,29 @@ class_tv2string(typval_T *tv, char_u **tofree)
     char_u	*r = NULL;
     size_t	rsize;
     class_T	*cl = tv->vval.v_class;
-    char_u	*class_name = (char_u *)"[unknown]";
-    size_t	class_namelen = 9;
-    char	*s = "class";
-    size_t	slen = 5;
+    string_T	class_name = {(char_u *)"[unknown]", 9};
+    string_T	s = {(char_u *)"class", 5};
 
     if (cl != NULL)
     {
-	class_name = cl->class_name;
-	class_namelen = STRLEN(cl->class_name);
+	class_name.string = cl->class_name.string;
+	class_name.length = cl->class_name.length;
 	if (IS_INTERFACE(cl))
 	{
-	    s = "interface";
-	    slen = 9;
+	    s.string = (char_u *)"interface";
+	    s.length = 9;
 	}
 	else if (IS_ENUM(cl))
 	{
-	    s = "enum";
-	    slen = 4;
+	    s.string = (char_u *)"enum";
+	    s.length = 4;
 	}
     }
 
-    rsize = slen + 1 + class_namelen + 1;
+    rsize = s.length + 1 + class_name.length + 1;
     r = *tofree = alloc(rsize);
     if (r != NULL)
-	vim_snprintf((char *)r, rsize, "%s %s", s, (char *)class_name);
+	vim_snprintf((char *)r, rsize, "%s %s", s.string, (char *)class_name.string);
 
     return r;
 }
@@ -6521,11 +6549,11 @@ object_tv2string(
     else if (copyID != 0 && obj->obj_copyID == copyID
 	    && obj->obj_class->class_obj_member_count != 0)
     {
-	size_t n = 25 + STRLEN((char *)obj->obj_class->class_name);
+	size_t n = 25 + obj->obj_class->class_name.length;
 	r = alloc(n);
 	if (r != NULL)
 	    (void)vim_snprintf((char *)r, n, "object of %s {...}",
-						obj->obj_class->class_name);
+						obj->obj_class->class_name.string);
 	*tofree = r;
     }
     else
@@ -6771,13 +6799,13 @@ var2fpos(
     char_u		*name;
     static pos_T	pos;
     pos_T		*pp;
+    int			error = FALSE;
 
     // Argument can be [lnum, col, coladd].
     if (varp->v_type == VAR_LIST)
     {
 	list_T		*l;
 	int		len;
-	int		error = FALSE;
 	listitem_T	*li;
 
 	l = varp->vval.v_list;
@@ -6829,11 +6857,16 @@ var2fpos(
     if (name == NULL)
 	return NULL;
 
+    error = TRUE;
     pos.lnum = 0;
-    if (name[0] == '.' && (!in_vim9script() || name[1] == NUL))
+    if (name[0] == '.')
     {
-	// cursor
-	pos = curwin->w_cursor;
+	if (!in_vim9script() || name[1] == NUL)
+	{
+	    error = FALSE;
+	    // cursor
+	    pos = curwin->w_cursor;
+	}
     }
     else if (name[0] == 'v' && name[1] == NUL)
     {
@@ -6843,14 +6876,17 @@ var2fpos(
 	else
 	    pos = curwin->w_cursor;
     }
-    else if (name[0] == '\'' && (!in_vim9script()
-					|| (name[1] != NUL && name[2] == NUL)))
+    else if (name[0] == '\'')
     {
-	// mark
-	pp = getmark_buf_fnum(curbuf, name[1], FALSE, fnum);
-	if (pp == NULL || pp == (pos_T *)-1 || pp->lnum <= 0)
-	    return NULL;
-	pos = *pp;
+	if (!in_vim9script() || (name[1] != NUL && name[2] == NUL))
+	{
+	    error = FALSE;
+	    // mark
+	    pp = getmark_buf_fnum(curbuf, name[1], FALSE, fnum);
+	    if (pp == NULL || pp == (pos_T *)-1 || pp->lnum <= 0)
+		return NULL;
+	    pos = *pp;
+	}
     }
     if (pos.lnum != 0)
     {
@@ -6901,7 +6937,7 @@ var2fpos(
 	}
 	return &pos;
     }
-    if (in_vim9script())
+    if (in_vim9script() && error)
 	semsg(_(e_invalid_value_for_line_number_str), name);
     return NULL;
 }

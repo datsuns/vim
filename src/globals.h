@@ -146,6 +146,8 @@ EXTERN int	vgetc_char INIT(= 0);
  * update_screen().
  */
 EXTERN int	cmdline_row;
+EXTERN int	cmdline_col_off;
+EXTERN int	cmdline_width;
 
 EXTERN int	redraw_cmdline INIT(= FALSE);	// cmdline must be redrawn
 EXTERN int	redraw_mode INIT(= FALSE);	// mode must be redrawn
@@ -248,7 +250,7 @@ EXTERN int	did_wait_return INIT(= FALSE);	// wait_return() was used and
 EXTERN int	need_maketitle INIT(= TRUE); // call maketitle() soon
 
 EXTERN int	quit_more INIT(= FALSE);    // 'q' hit at "--more--" msg
-#if defined(UNIX) || defined(VMS) || defined(MACOS_X)
+#if defined(UNIX) || defined(VMS) || defined(MACOS_X) || defined(AMIGA)
 EXTERN int	newline_on_exit INIT(= FALSE);	// did msg in altern. screen
 EXTERN int	intr_char INIT(= 0);	    // extra interrupt character
 #endif
@@ -978,18 +980,27 @@ EXTERN Clipboard_T clip_plus;	// CLIPBOARD selection in X11/Wayland
 #  define clip_plus clip_star	// there is only one clipboard
 #  define ONE_CLIPBOARD
 # endif
+#endif
 
+#ifdef HAVE_CLIPMETHOD
 # define CLIP_UNNAMED      1
 # define CLIP_UNNAMED_PLUS 2
 EXTERN int	clip_unnamed INIT(= 0); // above two values or'ed
 
+# ifdef FEAT_CLIPBOARD
 EXTERN int	clip_autoselect_star INIT(= FALSE);
 EXTERN int	clip_autoselect_plus INIT(= FALSE);
 EXTERN int	clip_autoselectml INIT(= FALSE);
 EXTERN int	clip_html INIT(= FALSE);
 EXTERN regprog_T *clip_exclude_prog INIT(= NULL);
 EXTERN int	clip_unnamed_saved INIT(= 0);
+# endif
 #endif
+
+#ifdef FEAT_CLIPBOARD_PROVIDER
+EXTERN char_u	*clip_provider INIT(= NULL);
+#endif
+
 
 /*
  * All regular windows are linked in a list. "firstwin" points to the first
@@ -1601,7 +1612,7 @@ EXTERN int	listcmd_busy INIT(= FALSE); // set when :argdo, :windo or
 					    // :bufdo is executing
 EXTERN int	need_start_insertmode INIT(= FALSE);
 					    // start insert mode soon
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
 EXTERN char_u	last_mode[MODE_MAX_LENGTH] INIT(= "n"); // for ModeChanged event
 #endif
 EXTERN char_u	*last_cmdline INIT(= NULL); // last command line (for ":)
@@ -1869,9 +1880,6 @@ EXTERN Window	clientWindow INIT(= None);
 EXTERN Atom	commProperty INIT(= None);
 EXTERN char_u	*serverDelayedStartName INIT(= NULL);
 # elif defined(MSWIN)
-#  ifdef PROTO
-typedef int HWND;
-#  endif
 EXTERN HWND	clientWindow INIT(= 0);
 # endif
 #endif
@@ -2017,15 +2025,12 @@ EXTERN listitem_T range_list_item;
 EXTERN evalarg_T EVALARG_EVALUATE
 # ifdef DO_INIT
 	= {EVAL_EVALUATE, 0, NULL, NULL, NULL, NULL, GA_EMPTY, GA_EMPTY, NULL,
-			 {0, 0, (int)sizeof(char_u *), 20, NULL}, 0, NULL}
+			 {0, 0, (int)sizeof(char_u *), 20, NULL}, 0, NULL, NULL}
 # endif
 	;
 #endif
 
 #ifdef MSWIN
-# ifdef PROTO
-typedef int HINSTANCE;
-# endif
 EXTERN int ctrl_break_was_pressed INIT(= FALSE);
 EXTERN HINSTANCE g_hinst INIT(= NULL);
 #endif
@@ -2072,22 +2077,28 @@ EXTERN int	p_tgc_set INIT(= FALSE);
 #endif
 
 // If we've already warned about missing/unavailable clipboard
-EXTERN int did_warn_clipboard INIT(= FALSE);
+EXTERN bool did_warn_clipboard INIT(= FALSE);
 
-#ifdef FEAT_CLIPBOARD
+#ifdef HAVE_CLIPMETHOD
 EXTERN clipmethod_T clipmethod INIT(= CLIPMETHOD_NONE);
 #endif
 
 #ifdef FEAT_WAYLAND
 
-// Don't connect to Wayland compositor if TRUE
-EXTERN int wayland_no_connect INIT(= FALSE);
-
-// Wayland display name (ex. wayland-0). Can be NULL
+// Wayland display name for global connection (ex. wayland-0). Can be NULL
 EXTERN char *wayland_display_name INIT(= NULL);
 
-// Wayland display file descriptor; set by wayland_init_client()
-EXTERN int wayland_display_fd;
+// Special mime type used to identify selection events that came from us setting
+// the selection. Is in format of "application/x-vim-instance-<pid>" where <pid>
+// is the PID of the Vim process. Set in main.c
+//
+// This is more reliable than just checking if our data source is non-NULL, as
+// that may be subject to data races in the Wayland protocol.
+EXTERN char wayland_vim_special_mime[
+    sizeof("application/x-vim-instance-") + NUMBUFLEN - 1]; // Includes NUL
+
+// Don't connect to Wayland compositor if TRUE
+EXTERN int wayland_no_connect INIT(= FALSE);
 
 #endif
 
@@ -2121,4 +2132,13 @@ INIT(= CLIENTSERVER_METHOD_NONE);
 #ifdef FEAT_SOCKETSERVER
 // Path to socket of last client that communicated with us
 EXTERN char_u *client_socket INIT(= NULL);
+#endif
+
+// If the <xOSC> key should be propagated from vgetc()
+EXTERN int allow_osc_key INIT(= 0);
+
+#ifdef FEAT_EVAL
+// Global singly linked list of redraw listeners
+EXTERN redraw_listener_T *redraw_listeners INIT(= NULL);
+EXTERN bool inside_redraw_on_start_cb INIT(= false);
 #endif

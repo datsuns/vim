@@ -13,7 +13,7 @@
 
 #include "vim.h"
 
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
 static int debug_greedy = FALSE;	// batch mode debugging: don't save
 					// and restore typeahead.
 static void do_setdebugtracelevel(char_u *arg);
@@ -929,7 +929,7 @@ dbg_find_breakpoint(
     return debuggy_find(file, fname, after, &dbg_breakp, NULL);
 }
 
-#if defined(FEAT_PROFILE) || defined(PROTO)
+#if defined(FEAT_PROFILE)
 #if defined(PROF_CACHE_LOG)
 static int count_lookups[2];
 #endif
@@ -1111,8 +1111,10 @@ debuggy_find(
 	    {
 		if (bp->dbg_val == NULL)
 		{
+		    vim_free(debug_oldval);
 		    debug_oldval = typval_tostring(NULL, TRUE);
 		    bp->dbg_val = tv;
+		    vim_free(debug_newval);
 		    debug_newval = typval_tostring(bp->dbg_val, TRUE);
 		    line = TRUE;
 		}
@@ -1129,10 +1131,12 @@ debuggy_find(
 			typval_T *v;
 
 			line = TRUE;
+			vim_free(debug_oldval);
 			debug_oldval = typval_tostring(bp->dbg_val, TRUE);
 			// Need to evaluate again, typval_compare() overwrites
 			// "tv".
 			v = eval_expr_no_emsg(bp);
+			vim_free(debug_newval);
 			debug_newval = typval_tostring(v, TRUE);
 			free_tv(bp->dbg_val);
 			bp->dbg_val = v;
@@ -1142,7 +1146,9 @@ debuggy_find(
 	    }
 	    else if (bp->dbg_val != NULL)
 	    {
+		vim_free(debug_oldval);
 		debug_oldval = typval_tostring(bp->dbg_val, TRUE);
+		vim_free(debug_newval);
 		debug_newval = typval_tostring(NULL, TRUE);
 		free_tv(bp->dbg_val);
 		bp->dbg_val = NULL;

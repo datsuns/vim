@@ -14,13 +14,7 @@
 #define USING_FLOAT_STUFF
 #include "vim.h"
 
-#if defined(FEAT_EVAL) || defined(PROTO)
-
-// When not generating protos this is included in proto.h
-#ifdef PROTO
-# include "vim9.h"
-#endif
-
+#if defined(FEAT_EVAL)
 
 // Structure put on ec_trystack when ISN_TRY is encountered.
 typedef struct {
@@ -1182,20 +1176,30 @@ invoke_defer_funcs(ectx_T *ectx)
 	    argvars[i] = arg_li->li_tv;
 	}
 
-	funcexe_T   funcexe;
+	funcexe_T	funcexe;
+	char_u		*name = NULL;
+	partial_T	*pt = NULL;
+
 	CLEAR_FIELD(funcexe);
 	funcexe.fe_evaluate = TRUE;
 	rettv.v_type = VAR_UNKNOWN;
+
 	if (functv->v_type == VAR_PARTIAL)
 	{
-	    funcexe.fe_partial = functv->vval.v_partial;
-	    funcexe.fe_object = functv->vval.v_partial->pt_obj;
+	    pt = functv->vval.v_partial;
+	    functv->vval.v_partial = NULL;
+
+	    name = pt->pt_func->uf_name;
+	    funcexe.fe_partial = pt;
+	    funcexe.fe_object = pt->pt_obj;
 	    if (funcexe.fe_object != NULL)
 		++funcexe.fe_object->obj_refcount;
 	}
-
-	char_u *name = functv->vval.v_string;
-	functv->vval.v_string = NULL;
+	else
+	{
+	    name = functv->vval.v_string;
+	    functv->vval.v_string = NULL;
+	}
 
 	// If the deferred function is called after an exception, then only the
 	// first statement in the function will be executed (because of the
@@ -1210,7 +1214,10 @@ invoke_defer_funcs(ectx_T *ectx)
 	exception_state_restore(&estate);
 
 	clear_tv(&rettv);
-	vim_free(name);
+	if (functv->v_type == VAR_PARTIAL)
+	    partial_unref(pt);
+	else
+	    vim_free(name);
     }
 }
 
@@ -1757,7 +1764,7 @@ do_2string(typval_T *tv, int is_2string_any, int tostring_flags)
 					if (p != NULL)
 					{
 					    ga_concat(&ga, p);
-					    ga_concat(&ga, (char_u *)" ");
+					    ga_concat_len(&ga, (char_u *)" ", 1);
 					    vim_free(p);
 					}
 					s = e + 1;
@@ -2384,7 +2391,7 @@ execute_storeindex(isn_T *iptr, ectx_T *ectx)
 			char *msg = (m->ocm_access == VIM_ACCESS_PRIVATE)
 			    ? e_cannot_access_protected_variable_str
 			    : e_variable_is_not_writable_str;
-			emsg_var_cl_define(msg, m->ocm_name, 0, cl);
+			emsg_var_cl_define(msg, m->ocm_name.string, 0, cl);
 			status = FAIL;
 		    }
 		    // Fail if the variable is a const or final or the type
@@ -2519,6 +2526,11 @@ execute_storeindex(isn_T *iptr, ectx_T *ectx)
 	    nr = tv_get_number_chk(tv, &error);
 	    if (error)
 		return FAIL;
+	    if (nr < 0 || nr > 255)
+	    {
+		semsg(_(e_invalid_value_for_blob_nr), nr);
+		return FAIL;
+	    }
 	    blob_set_append(blob, lidx, nr);
 	}
 	else if (dest_type == VAR_CLASS || dest_type == VAR_OBJECT)
@@ -3333,7 +3345,7 @@ var_any_get_oc_member(class_T *current_class, isn_T *iptr, typval_T *tv)
 	    msg = e_variable_not_found_on_object_str_str;
 	else
 	    msg = e_class_variable_str_not_found_in_class_str;
-	semsg(_(msg), iptr->isn_arg.string, tv_cl->class_name);
+	semsg(_(msg), iptr->isn_arg.string, tv_cl->class_name.string);
 	return FAIL;
     }
 
@@ -6133,7 +6145,7 @@ exec_instructions(ectx_T *ectx)
 			ocmember_T *m = &obj->obj_class->class_obj_members[idx];
 			SOURCING_LNUM = iptr->isn_lnum;
 			semsg(_(e_uninitialized_object_var_reference),
-				m->ocm_name);
+				m->ocm_name.string);
 			goto on_error;
 		    }
 		    copy_tv(mtv, tv);
@@ -7057,7 +7069,7 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 	{
 	    case ISN_CONSTRUCT:
 		smsg("%s%4d NEW %s size %d", pfx, current,
-			iptr->isn_arg.construct.construct_class->class_name,
+			iptr->isn_arg.construct.construct_class->class_name.string,
 				  (int)iptr->isn_arg.construct.construct_size);
 		break;
 	    case ISN_EXEC:
@@ -7369,7 +7381,7 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 		    smsg("%s%4d %s CLASSMEMBER %s.%s", pfx, current,
 			    iptr->isn_type == ISN_LOAD_CLASSMEMBER
 							    ? "LOAD" : "STORE",
-			    cl->class_name, ocm->ocm_name);
+			    cl->class_name.string, ocm->ocm_name.string);
 		}
 		break;
 
@@ -7424,7 +7436,7 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 	    case ISN_PUSHCLASS:
 		smsg("%s%4d PUSHCLASS %s", pfx, current,
 			iptr->isn_arg.classarg == NULL ? "null"
-				 : (char *)iptr->isn_arg.classarg->class_name);
+				 : (char *)iptr->isn_arg.classarg->class_name.string);
 		break;
 	    case ISN_PUSHEXC:
 		smsg("%s%4d PUSH v:exception", pfx, current);
@@ -7496,7 +7508,7 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 		    cmfunc_T	*mfunc = iptr->isn_arg.mfunc;
 
 		    smsg("%s%4d METHODCALL %s.%s(argc %d)", pfx, current,
-			    mfunc->cmf_itf->class_name,
+			    mfunc->cmf_itf->class_name.string,
 			    mfunc->cmf_itf->class_obj_methods[
 						      mfunc->cmf_idx]->uf_name,
 			    mfunc->cmf_argcount);
@@ -7551,7 +7563,7 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 		    if (extra != NULL && extra->fre_class != NULL)
 		    {
 			smsg("%s%4d FUNCREF %s.%s", pfx, current,
-					   extra->fre_class->class_name, name);
+					   extra->fre_class->class_name.string, name);
 		    }
 		    else if (extra == NULL
 				     || extra->fre_loopvar_info.lvi_depth == 0)
@@ -7841,7 +7853,7 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 	    case ISN_GET_ITF_MEMBER: smsg("%s%4d ITF_MEMBER %d on %s",
 			     pfx, current,
 			     (int)iptr->isn_arg.classmember.cm_idx,
-			     iptr->isn_arg.classmember.cm_class->class_name);
+			     iptr->isn_arg.classmember.cm_class->class_name.string);
 				     break;
 	    case ISN_STORE_THIS: smsg("%s%4d STORE_THIS %d", pfx, current,
 					     (int)iptr->isn_arg.number); break;
@@ -7859,6 +7871,9 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 		      if (ct->ct_type->tt_type == VAR_FLOAT
 			      && (ct->ct_type->tt_flags & TTFLAG_NUMBER_OK))
 			  typename = "float|number";
+		      else if (ct->ct_type->tt_type == VAR_LIST
+			      && (ct->ct_type->tt_flags & TTFLAG_TUPLE_OK))
+			  typename = "list<any>|tuple<any>";
 		      else
 			  typename = type_name(ct->ct_type, &tofree);
 

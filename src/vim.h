@@ -17,7 +17,7 @@
 # define MSWIN
 #endif
 
-#if defined(MSWIN) && !defined(PROTO)
+#if defined(MSWIN)
 # include <io.h>
 #endif
 
@@ -272,9 +272,11 @@
 # include <clib/exec_protos.h>
 #endif
 
-#ifdef __HAIKU__
-# include "os_haiku.h"
-# define __ARGS(x)  x
+#ifndef PROTO
+# ifdef __HAIKU__
+#  include "os_haiku.h"
+#  define __ARGS(x)  x
+# endif
 #endif
 
 #if (defined(UNIX) || defined(VMS)) \
@@ -314,24 +316,26 @@
 // a concrete example, gcc-3.2 enforces exception specifications, and
 // glibc-2.2.5 has them in their system headers.
 #if !defined(__cplusplus) && defined(UNIX) \
-	&& !defined(MACOS_X) // MACOS_X doesn't yet support osdef.h
+       && !defined(MACOS_X) // MACOS_X doesn't yet support osdef.h
 # include "auto/osdef.h"	// bring missing declarations in
 #endif
 
-#ifdef AMIGA
-# include "os_amiga.h"
-#endif
+#ifndef PROTO
+# ifdef AMIGA
+#  include "os_amiga.h"
+# endif
 
-#ifdef MSWIN
-# include "os_win32.h"
-#endif
+# ifdef MSWIN
+#  include "os_win32.h"
+# endif
 
-#if defined(MACOS_X)
-# include "os_mac.h"
-#endif
+# if defined(MACOS_X)
+#  include "os_mac.h"
+# endif
 
-#ifdef __QNX__
-# include "os_qnx.h"
+# ifdef __QNX__
+#  include "os_qnx.h"
+# endif
 #endif
 
 #ifdef X_LOCALE
@@ -437,11 +441,7 @@ typedef __int64 off_T;
 #  define vim_ftell _ftelli64
 # endif
 #else
-# ifdef PROTO
-typedef long off_T;
-# else
 typedef off_t off_T;
-# endif
 # ifdef HAVE_FSEEKO
 #  define vim_lseek lseek
 #  define vim_ftell ftello
@@ -1321,6 +1321,7 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 #define WSP_ABOVE	0x80	// put new window above/left
 #define WSP_NEWLOC	0x100	// don't copy location list
 #define WSP_FORCE_ROOM	0x200	// ignore "not enough room" errors
+#define WSP_QUICKFIX	0x400	// creating the quickfix window
 
 /*
  * arguments for gui_set_shellsize()
@@ -1581,6 +1582,8 @@ typedef enum
     , HLF_PSX	    // popup menu selected item "menu" (extra text)
     , HLF_PSB	    // popup menu scrollbar
     , HLF_PST	    // popup menu scrollbar thumb
+    , HLF_PMB	    // popup menu border
+    , HLF_PMS	    // popup menu shadow
     , HLF_TP	    // tabpage line
     , HLF_TPS	    // tabpage line selected
     , HLF_TPF	    // tabpage line filler
@@ -1604,7 +1607,7 @@ typedef enum
 		  'n', 'a', 'b', 'N', 'G', 'O', 'r', 's', 'S', 'c', 't', 'v', 'V', \
 		  'w', 'W', 'f', 'F', 'A', 'C', 'D', 'T', 'E', '-', '>', \
 		  'B', 'P', 'R', 'L', \
-		  '+', '=', 'k', '<','[', ']', '{', '}', 'x', 'X', \
+		  '+', '=', 'k', '<','[', ']', '{', '}', 'x', 'X', 'j', 'H', \
 		  '*', '#', '_', '!', '.', 'o', 'q', \
 		  'z', 'Z', 'g', \
 		  '%', '^', '&', 'I'}
@@ -2035,20 +2038,26 @@ typedef enum {
  * bits elsewhere.  That causes memory corruption.  Define time_T and use it
  * for global variables to avoid that.
  */
-#ifdef PROTO
-typedef long  time_T;
-#else
 # ifdef MSWIN
 typedef __time64_t  time_T;
 # else
 typedef time_t	    time_T;
 # endif
-#endif
 
 #ifdef _WIN64
 typedef __int64 sock_T;
 #else
 typedef int sock_T;
+#endif
+
+// The clipboard provider feature uses clipmethod as well but should be separate
+// from the clipboard code.
+#if defined(FEAT_CLIPBOARD) || defined(FEAT_EVAL)
+# define HAVE_CLIPMETHOD
+#endif
+
+#if defined(HAVE_CLIPMETHOD) && defined(FEAT_EVAL)
+# define FEAT_CLIPBOARD_PROVIDER
 #endif
 
 // Include option.h before structs.h, because the number of window-local and
@@ -2103,6 +2112,9 @@ typedef int sock_T;
 
 // Lowest button code for using the mouse wheel (xterm only)
 #define MOUSEWHEEL_LOW		0x60
+
+// Lowest button code for extra mouse buttons 8-11
+#define MOUSESIDEBUTTONS_LOW		0xa0
 
 #define MOUSE_CLICK_MASK	0x03
 
@@ -2265,7 +2277,9 @@ typedef int sock_T;
 #define VV_CLIPMETHOD 113
 #define VV_TERMDA1 114
 #define VV_TERMOSC 115
-#define VV_LEN		116	// number of v: vars
+#define VV_VIM_DID_INIT		116
+#define VV_CLIPPROVIDERS 117
+#define VV_LEN		118	// number of v: vars
 
 // used for v_number in VAR_BOOL and VAR_SPECIAL
 #define VVAL_FALSE	0L	// VAR_BOOL
@@ -2297,6 +2311,16 @@ typedef int sock_T;
 
 #define TABSTOP_MAX 9999
 
+#ifdef HAVE_CLIPMETHOD
+typedef enum {
+    CLIPMETHOD_FAIL,
+    CLIPMETHOD_NONE,
+    CLIPMETHOD_WAYLAND,
+    CLIPMETHOD_X11,
+    CLIPMETHOD_PROVIDER
+} clipmethod_T;
+#endif
+
 #ifdef FEAT_CLIPBOARD
 
 // VIM_ATOM_NAME is the older Vim-specific selection type for X11.  Still
@@ -2319,15 +2343,6 @@ typedef int sock_T;
 #   define WM_OLE (WM_APP+0)
 #  endif
 # endif
-
-typedef enum {
-    CLIPMETHOD_FAIL,
-    CLIPMETHOD_NONE,
-    CLIPMETHOD_WAYLAND,
-    CLIPMETHOD_X11,
-    CLIPMETHOD_GUI,
-    CLIPMETHOD_OTHER,
-} clipmethod_T;
 
 // Info about selected text
 typedef struct
@@ -2686,12 +2701,6 @@ typedef int (*opt_expand_cb_T)(optexpand_T *args, int *numMatches, char_u ***mat
 # endif
 #endif
 
-#if defined(FEAT_BROWSE) && defined(GTK_CHECK_VERSION)
-# if GTK_CHECK_VERSION(2,4,0)
-#  define USE_FILE_CHOOSER
-# endif
-#endif
-
 #ifdef FEAT_GUI_GTK
 # if !GTK_CHECK_VERSION(2,14,0)
 #  define gtk_widget_get_window(wid)	((wid)->window)
@@ -3007,9 +3016,6 @@ long elapsed(struct timeval *start_tv);
 # define ELAPSED_TICKCOUNT
 # define ELAPSED_INIT(v) v = GetTickCount()
 # define ELAPSED_FUNC(v) elapsed(v)
-# ifdef PROTO
-typedef int DWORD;
-# endif
 typedef DWORD elapsed_T;
 # ifndef PROTO
 long elapsed(DWORD start_tick);

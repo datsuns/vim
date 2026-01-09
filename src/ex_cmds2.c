@@ -126,9 +126,9 @@ check_changed(buf_T *buf, int flags)
     return FALSE;
 }
 
-#if defined(FEAT_GUI_DIALOG) || defined(FEAT_CON_DIALOG) || defined(PROTO)
+#if defined(FEAT_GUI_DIALOG) || defined(FEAT_CON_DIALOG)
 
-#if defined(FEAT_BROWSE) || defined(PROTO)
+#if defined(FEAT_BROWSE)
 /*
  * When wanting to write a file without a file name, ask the user for a name.
  */
@@ -536,6 +536,9 @@ ex_listdo(exarg_T *eap)
 #ifdef FEAT_CLIPBOARD
     start_global_changes();
 #endif
+#ifdef FEAT_CLIPBOARD_PROVIDER
+    inc_clip_provider();
+#endif
 
     if (eap->cmdidx == CMD_windo
 	    || eap->cmdidx == CMD_tabdo
@@ -760,6 +763,9 @@ ex_listdo(exarg_T *eap)
 #ifdef FEAT_CLIPBOARD
     end_global_changes();
 #endif
+#ifdef FEAT_CLIPBOARD_PROVIDER
+    dec_clip_provider();
+#endif
 }
 
 #ifdef FEAT_EVAL
@@ -835,9 +841,9 @@ ex_compiler(exarg_T *eap)
 }
 #endif
 
-#if defined(FEAT_PYTHON3) || defined(FEAT_PYTHON) || defined(PROTO)
+#if defined(FEAT_PYTHON3) || defined(FEAT_PYTHON)
 
-# if (defined(FEAT_PYTHON) && defined(FEAT_PYTHON3)) || defined(PROTO)
+# if defined(FEAT_PYTHON) && defined(FEAT_PYTHON3)
 /*
  * Detect Python 3 or 2, and initialize 'pyxversion'.
  */

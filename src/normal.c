@@ -695,6 +695,9 @@ normal_cmd(
     int		idx;
     int		set_prevcount = FALSE;
     int		save_did_cursorhold = did_cursorhold;
+#ifdef FEAT_EVAL
+    int		did_visual_op = FALSE;
+#endif
 
     CLEAR_FIELD(ca);	// also resets ca.retval
     ca.oap = oap;
@@ -971,7 +974,15 @@ normal_cmd(
     // If an operation is pending, handle it.  But not for K_IGNORE or
     // K_MOUSEMOVE.
     if (ca.cmdchar != K_IGNORE && ca.cmdchar != K_MOUSEMOVE)
+    {
+#ifdef FEAT_EVAL
+	did_visual_op = VIsual_active && oap->op_type != OP_NOP
+			// For OP_COLON, do_pending_operator() stuffs ':' into
+			// the read buffer, which isn't executed immediately.
+			&& oap->op_type != OP_COLON;
+#endif
 	do_pending_operator(&ca, old_col, FALSE);
+    }
 
     // Wait for a moment when a message is displayed that will be overwritten
     // by the mode message.
@@ -984,7 +995,7 @@ normal_end:
     msg_nowait = FALSE;
 
 #ifdef FEAT_EVAL
-    if (finish_op)
+    if (finish_op || did_visual_op)
 	reset_reg_var();
 #endif
 
@@ -1143,7 +1154,8 @@ end_visual_mode_keep_button(void)
     // we need to paste it somewhere while we still own the selection.
     // Only do this when the clipboard is already owned.  Don't want to grab
     // the selection when hitting ESC.
-    if (clip_star.available && clip_star.owned)
+    if ((clip_star.available && clip_star.owned)
+	    || (clip_plus.available && clip_plus.owned))
 	clip_auto_select();
 
 # if defined(FEAT_EVAL)
@@ -1845,12 +1857,13 @@ display_showcmd(void)
     else // 'showcmdloc' is "last" or empty
     {
 	if (!showcmd_is_clear)
-	    screen_puts(showcmd_buf, (int)Rows - 1, sc_col, 0);
+	    screen_puts(showcmd_buf, (int)Rows - 1,
+		    cmdline_col_off + sc_col, 0);
 
 	// clear the rest of an old message by outputting up to SHOWCMD_COLS
 	// spaces
 	screen_puts((char_u *)"          " + len,
-						(int)Rows - 1, sc_col + len, 0);
+		(int)Rows - 1, cmdline_col_off + sc_col + len, 0);
     }
 
     setcursor();	    // put cursor back where it belongs
@@ -3036,7 +3049,7 @@ nv_hor_scrollbar(cmdarg_T *cap)
 }
 #endif
 
-#if defined(FEAT_GUI_TABLINE) || defined(PROTO)
+#if defined(FEAT_GUI_TABLINE)
 /*
  * Click in GUI tab.
  */
@@ -5925,7 +5938,7 @@ nv_g_dollar_cmd(cmdarg_T *cap)
     {
 	do
 	    i = gchar_cursor();
-	while (VIM_ISWHITE(i) && oneleft() == OK);
+	while (IS_WHITE_OR_NUL(i) && oneleft() == OK);
 	curwin->w_valid &= ~VALID_WCOL;
     }
 }
@@ -7413,7 +7426,7 @@ nv_put_opt(cmdarg_T *cap, int fix_indent)
 	was_visual = TRUE;
 	regname = cap->oap->regname;
 	keep_registers = cap->cmdchar == 'P';
-#ifdef FEAT_CLIPBOARD
+#ifdef HAVE_CLIPMETHOD
 	adjust_clip_reg(&regname);
 #endif
 	if (regname == 0 || regname == '"'

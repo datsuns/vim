@@ -1321,7 +1321,7 @@ nfa_regatom(void)
 
 	case Magic('$'):
 	    EMIT(NFA_EOL);
-#if defined(FEAT_SYN_HL) || defined(PROTO)
+#if defined(FEAT_SYN_HL)
 	    had_eol = TRUE;
 #endif
 	    break;
@@ -1347,7 +1347,7 @@ nfa_regatom(void)
 	    if (c == '$')	// "\_$" is end-of-line
 	    {
 		EMIT(NFA_EOL);
-#if defined(FEAT_SYN_HL) || defined(PROTO)
+#if defined(FEAT_SYN_HL)
 		had_eol = TRUE;
 #endif
 		break;
@@ -2891,16 +2891,16 @@ nfa_print_state2(FILE *debugf, nfa_state_T *state, garray_T *indent)
     // grow indent for state->out
     indent->ga_len -= 1;
     if (state->out1)
-	ga_concat(indent, (char_u *)"| ");
+	ga_concat_len(indent, (char_u *)"| ", 2);
     else
-	ga_concat(indent, (char_u *)"  ");
+	ga_concat_len(indent, (char_u *)"  ", 2);
     ga_append(indent, NUL);
 
     nfa_print_state2(debugf, state->out, indent);
 
     // replace last part of indent for state->out1
     indent->ga_len -= 3;
-    ga_concat(indent, (char_u *)"  ");
+    ga_concat_len(indent, (char_u *)"  ", 2);
     ga_append(indent, NUL);
 
     nfa_print_state2(debugf, state->out1, indent);

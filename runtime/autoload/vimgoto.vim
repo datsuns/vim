@@ -4,9 +4,9 @@ vim9script
 # Contributers: @lacygoill
 #               Shane-XB-Qian
 #               Andrew Radev
-# Last Change:  2025 Sep 02
+# Last Change:  2025 Oct 17
 #
-# Vim Script to handle jumping to the targets of several types of Vim commands
+# Vim script to handle jumping to the targets of several types of Vim commands
 # (:import, :packadd, :runtime, :colorscheme), and to autoloaded functions of
 # the style <path>#<function_name>.
 #
@@ -16,17 +16,17 @@ vim9script
 export def Find(editcmd: string) #{{{2
     var curline: string = getline('.')
 
-    if curline =~ '^\s*\%(:\s*\)\=packadd!\=\s'
+    if curline =~ '^\s*\%(:\s*\)\=\%(sil\%[ent]!\=\s\+\)\=packadd!\=\s'
         HandlePackaddLine(editcmd, curline)
         return
     endif
 
-    if curline =~ '^\s*\%(:\s*\)\=ru\%[ntime]!\='
+    if curline =~ '^\s*\%(:\s*\)\=\%(sil\%[ent]!\=\s\+\)\=ru\%[ntime]!\='
         HandleRuntimeLine(editcmd, curline, expand('<cfile>'))
         return
     endif
 
-    if curline =~ '^\s*\%(:\s*\)\=colo\%[rscheme]\s'
+    if curline =~ '^\s*\%(:\s*\)\=\%(sil\%[ent]!\=\s\+\)\=colo\%[rscheme]\s'
         HandleColoLine(editcmd, curline)
         return
     endif

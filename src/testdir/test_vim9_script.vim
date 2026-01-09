@@ -613,6 +613,52 @@ def Test_block_in_a_string()
   v9.CheckSourceSuccess(lines)
 enddef
 
+" Test for a block in a command with comments
+def Test_block_command_with_comment()
+  var lines =<< trim END
+    vim9script
+
+    g:Str = ''
+    command Cmd1 {
+      g:Str = 'Hello' # comment1
+      var x: string # comment2
+      g:Str ..= ' World' # comment3
+    }
+    Cmd1
+    assert_equal('Hello World', g:Str)
+
+    g:Str = ''
+    command Cmd2 {
+      # comment1
+      g:Str = 'Hello'
+      # comment2
+      g:Str ..= ' World'
+      # comment3
+    }
+    Cmd2
+    assert_equal('Hello World', g:Str)
+
+    command Cmd3 {
+      new # comment1
+      setline(1, 'hello') # comment2
+    }
+    Cmd3
+    assert_equal(['hello'], getline(1, '$'))
+    :bw!
+
+    command Cmd4 {
+      # comment1
+      new
+      # comment2
+      setline(1, 'hello') # comment2
+    }
+    Cmd4
+    assert_equal(['hello'], getline(1, '$'))
+    :bw!
+  END
+  v9.CheckSourceSuccess(lines)
+enddef
+
 " Test for using too many nested blocks
 def Test_too_many_nested_blocks()
   var lines = ['vim9script']
@@ -5186,6 +5232,131 @@ def Test_defer_invalid_func_arg()
   v9.CheckScriptFailure(lines, 'E1001: Variable not found: a', 1)
 enddef
 
+" Test for using defer with a lambda funcref
+def Test_defer_lambda_funcref()
+  var lines =<< trim END
+    vim9script
+    var lfr_result = ''
+    def Foo()
+      var Fn = () => {
+          lfr_result = 'called'
+        }
+      defer Fn()
+    enddef
+    Foo()
+    assert_equal('called', lfr_result)
+  END
+  v9.CheckSourceSuccess(lines)
+enddef
+
+" Test for using defer with a lambda and a command block
+def Test_defer_lambda_func()
+  var lines =<< trim END
+    vim9script
+    var result = ''
+    def Foo()
+      result = 'xxx'
+      defer (a: number, b: string): number => {
+        result = $'{a}:{b}'
+        return 0
+      }(10, 'aaa')
+      result = 'yyy'
+    enddef
+    Foo()
+    assert_equal('10:aaa', result)
+  END
+  v9.CheckScriptSuccess(lines)
+
+  # Error: argument type mismatch
+  lines =<< trim END
+    vim9script
+    def Foo()
+      defer (a: number, b: string): number => {
+        return 0
+      }(10, 20)
+    enddef
+    defcompile
+  END
+  v9.CheckScriptFailure(lines, 'E1013: Argument 2: type mismatch, expected string but got number', 1)
+
+  # Error: not enough arguments
+  lines =<< trim END
+    vim9script
+    def Foo()
+      defer (a: number) => {
+      }()
+    enddef
+    defcompile
+  END
+  v9.CheckScriptFailure(lines, 'E119: Not enough arguments for function: (a: number) => {', 1)
+
+  # Error: too many arguments
+  lines =<< trim END
+    vim9script
+    def Foo()
+      defer () => {
+      }(10)
+    enddef
+    defcompile
+  END
+  v9.CheckScriptFailure(lines, 'E118: Too many arguments for function: () => {', 1)
+
+  # Error: invalid command in command-block
+  lines =<< trim END
+    vim9script
+    def Foo()
+      defer () => {
+        xxx
+      }()
+    enddef
+    defcompile
+  END
+  v9.CheckScriptFailure(lines, 'E476: Invalid command: xxx', 1)
+
+  # Error: missing return
+  lines =<< trim END
+    vim9script
+    def Foo()
+      defer (): number => {
+      }()
+    enddef
+    defcompile
+  END
+  v9.CheckScriptFailure(lines, 'E1027: Missing return statement', 1)
+
+  # Error: missing lambda body
+  lines =<< trim END
+    vim9script
+    def Foo()
+      defer (a: number): number
+    enddef
+    defcompile
+  END
+  v9.CheckScriptFailure(lines, 'E1028: Compiling :def function failed', 1)
+
+  # Error: invalid lambda syntax
+  lines =<< trim END
+    vim9script
+    def Foo()
+      defer (
+    enddef
+    defcompile
+  END
+  v9.CheckScriptFailure(lines, 'E1028: Compiling :def function failed', 1)
+
+  # Error: lambda without arguments
+  lines =<< trim END
+    vim9script
+    def Foo()
+      defer () => {
+      }
+      assert_report("shouldn't reach here")
+    enddef
+    defcompile
+  END
+  v9.CheckScriptFailure(lines, 'E107: Missing parentheses: ', 1)
+enddef
+
 " Test for using an non-existing type in a "for" statement.
 def Test_invalid_type_in_for()
   var lines =<< trim END
@@ -5532,6 +5703,17 @@ def Test_multikey_dict_in_block()
   v9.CheckSourceSuccess(lines)
   assert_equal({key: 'v1', other_key: 'v2'}, g:TestDict)
   unlet g:TestDict
+enddef
+
+" Test for using the type() function with void
+def Test_type_func_with_void()
+  var lines =<< trim END
+    vim9script
+    def GetVoidValue(): void
+    enddef
+    echo type(GetVoidValue())
+  END
+  v9.CheckSourceFailure(lines, 'E1031: Cannot use void value', 4)
 enddef
 
 " Keep this last, it messes up highlighting.

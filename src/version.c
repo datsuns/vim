@@ -28,8 +28,8 @@
 char		*Version = VIM_VERSION_SHORT;
 static char	*mediumVersion = VIM_VERSION_MEDIUM;
 
-#if defined(HAVE_DATE_TIME) || defined(PROTO)
-# if (defined(VMS) && defined(VAXC)) || defined(PROTO)
+#if defined(HAVE_DATE_TIME)
+# if defined(VMS) && defined(VAXC)
 char	longVersion[sizeof(VIM_VERSION_LONG_DATE) + sizeof(__DATE__)
 						      + sizeof(__TIME__) + 3];
 
@@ -155,6 +155,11 @@ static char *(features[]) =
 	"+clipboard",
 #else
 	"-clipboard",
+#endif
+#ifdef FEAT_CLIPBOARD_PROVIDER
+	"+clipboard_provider",
+#else
+	"-clipboard_provider",
 #endif
 	"+cmdline_compl",
 	"+cmdline_hist",
@@ -659,6 +664,11 @@ static char *(features[]) =
 #else
 	"-wayland_clipboard",
 #endif
+#ifdef FEAT_WAYLAND_CLIPBOARD_FS
+	"+wayland_focus_steal",
+#else
+	"-wayland_focus_steal",
+#endif
 	"+wildignore",
 	"+wildmenu",
 	"+windows",
@@ -724,6 +734,602 @@ static char *(features[]) =
 
 static int included_patches[] =
 {   /* Add new patch number below this line */
+/**/
+    2063,
+/**/
+    2062,
+/**/
+    2061,
+/**/
+    2060,
+/**/
+    2059,
+/**/
+    2058,
+/**/
+    2057,
+/**/
+    2056,
+/**/
+    2055,
+/**/
+    2054,
+/**/
+    2053,
+/**/
+    2052,
+/**/
+    2051,
+/**/
+    2050,
+/**/
+    2049,
+/**/
+    2048,
+/**/
+    2047,
+/**/
+    2046,
+/**/
+    2045,
+/**/
+    2044,
+/**/
+    2043,
+/**/
+    2042,
+/**/
+    2041,
+/**/
+    2040,
+/**/
+    2039,
+/**/
+    2038,
+/**/
+    2037,
+/**/
+    2036,
+/**/
+    2035,
+/**/
+    2034,
+/**/
+    2033,
+/**/
+    2032,
+/**/
+    2031,
+/**/
+    2030,
+/**/
+    2029,
+/**/
+    2028,
+/**/
+    2027,
+/**/
+    2026,
+/**/
+    2025,
+/**/
+    2024,
+/**/
+    2023,
+/**/
+    2022,
+/**/
+    2021,
+/**/
+    2020,
+/**/
+    2019,
+/**/
+    2018,
+/**/
+    2017,
+/**/
+    2016,
+/**/
+    2015,
+/**/
+    2014,
+/**/
+    2013,
+/**/
+    2012,
+/**/
+    2011,
+/**/
+    2010,
+/**/
+    2009,
+/**/
+    2008,
+/**/
+    2007,
+/**/
+    2006,
+/**/
+    2005,
+/**/
+    2004,
+/**/
+    2003,
+/**/
+    2002,
+/**/
+    2001,
+/**/
+    2000,
+/**/
+    1999,
+/**/
+    1998,
+/**/
+    1997,
+/**/
+    1996,
+/**/
+    1995,
+/**/
+    1994,
+/**/
+    1993,
+/**/
+    1992,
+/**/
+    1991,
+/**/
+    1990,
+/**/
+    1989,
+/**/
+    1988,
+/**/
+    1987,
+/**/
+    1986,
+/**/
+    1985,
+/**/
+    1984,
+/**/
+    1983,
+/**/
+    1982,
+/**/
+    1981,
+/**/
+    1980,
+/**/
+    1979,
+/**/
+    1978,
+/**/
+    1977,
+/**/
+    1976,
+/**/
+    1975,
+/**/
+    1974,
+/**/
+    1973,
+/**/
+    1972,
+/**/
+    1971,
+/**/
+    1970,
+/**/
+    1969,
+/**/
+    1968,
+/**/
+    1967,
+/**/
+    1966,
+/**/
+    1965,
+/**/
+    1964,
+/**/
+    1963,
+/**/
+    1962,
+/**/
+    1961,
+/**/
+    1960,
+/**/
+    1959,
+/**/
+    1958,
+/**/
+    1957,
+/**/
+    1956,
+/**/
+    1955,
+/**/
+    1954,
+/**/
+    1953,
+/**/
+    1952,
+/**/
+    1951,
+/**/
+    1950,
+/**/
+    1949,
+/**/
+    1948,
+/**/
+    1947,
+/**/
+    1946,
+/**/
+    1945,
+/**/
+    1944,
+/**/
+    1943,
+/**/
+    1942,
+/**/
+    1941,
+/**/
+    1940,
+/**/
+    1939,
+/**/
+    1938,
+/**/
+    1937,
+/**/
+    1936,
+/**/
+    1935,
+/**/
+    1934,
+/**/
+    1933,
+/**/
+    1932,
+/**/
+    1931,
+/**/
+    1930,
+/**/
+    1929,
+/**/
+    1928,
+/**/
+    1927,
+/**/
+    1926,
+/**/
+    1925,
+/**/
+    1924,
+/**/
+    1923,
+/**/
+    1922,
+/**/
+    1921,
+/**/
+    1920,
+/**/
+    1919,
+/**/
+    1918,
+/**/
+    1917,
+/**/
+    1916,
+/**/
+    1915,
+/**/
+    1914,
+/**/
+    1913,
+/**/
+    1912,
+/**/
+    1911,
+/**/
+    1910,
+/**/
+    1909,
+/**/
+    1908,
+/**/
+    1907,
+/**/
+    1906,
+/**/
+    1905,
+/**/
+    1904,
+/**/
+    1903,
+/**/
+    1902,
+/**/
+    1901,
+/**/
+    1900,
+/**/
+    1899,
+/**/
+    1898,
+/**/
+    1897,
+/**/
+    1896,
+/**/
+    1895,
+/**/
+    1894,
+/**/
+    1893,
+/**/
+    1892,
+/**/
+    1891,
+/**/
+    1890,
+/**/
+    1889,
+/**/
+    1888,
+/**/
+    1887,
+/**/
+    1886,
+/**/
+    1885,
+/**/
+    1884,
+/**/
+    1883,
+/**/
+    1882,
+/**/
+    1881,
+/**/
+    1880,
+/**/
+    1879,
+/**/
+    1878,
+/**/
+    1877,
+/**/
+    1876,
+/**/
+    1875,
+/**/
+    1874,
+/**/
+    1873,
+/**/
+    1872,
+/**/
+    1871,
+/**/
+    1870,
+/**/
+    1869,
+/**/
+    1868,
+/**/
+    1867,
+/**/
+    1866,
+/**/
+    1865,
+/**/
+    1864,
+/**/
+    1863,
+/**/
+    1862,
+/**/
+    1861,
+/**/
+    1860,
+/**/
+    1859,
+/**/
+    1858,
+/**/
+    1857,
+/**/
+    1856,
+/**/
+    1855,
+/**/
+    1854,
+/**/
+    1853,
+/**/
+    1852,
+/**/
+    1851,
+/**/
+    1850,
+/**/
+    1849,
+/**/
+    1848,
+/**/
+    1847,
+/**/
+    1846,
+/**/
+    1845,
+/**/
+    1844,
+/**/
+    1843,
+/**/
+    1842,
+/**/
+    1841,
+/**/
+    1840,
+/**/
+    1839,
+/**/
+    1838,
+/**/
+    1837,
+/**/
+    1836,
+/**/
+    1835,
+/**/
+    1834,
+/**/
+    1833,
+/**/
+    1832,
+/**/
+    1831,
+/**/
+    1830,
+/**/
+    1829,
+/**/
+    1828,
+/**/
+    1827,
+/**/
+    1826,
+/**/
+    1825,
+/**/
+    1824,
+/**/
+    1823,
+/**/
+    1822,
+/**/
+    1821,
+/**/
+    1820,
+/**/
+    1819,
+/**/
+    1818,
+/**/
+    1817,
+/**/
+    1816,
+/**/
+    1815,
+/**/
+    1814,
+/**/
+    1813,
+/**/
+    1812,
+/**/
+    1811,
+/**/
+    1810,
+/**/
+    1809,
+/**/
+    1808,
+/**/
+    1807,
+/**/
+    1806,
+/**/
+    1805,
+/**/
+    1804,
+/**/
+    1803,
+/**/
+    1802,
+/**/
+    1801,
+/**/
+    1800,
+/**/
+    1799,
+/**/
+    1798,
+/**/
+    1797,
+/**/
+    1796,
+/**/
+    1795,
+/**/
+    1794,
+/**/
+    1793,
+/**/
+    1792,
+/**/
+    1791,
+/**/
+    1790,
+/**/
+    1789,
+/**/
+    1788,
+/**/
+    1787,
+/**/
+    1786,
+/**/
+    1785,
+/**/
+    1784,
+/**/
+    1783,
+/**/
+    1782,
+/**/
+    1781,
+/**/
+    1780,
+/**/
+    1779,
+/**/
+    1778,
+/**/
+    1777,
+/**/
+    1776,
+/**/
+    1775,
+/**/
+    1774,
+/**/
+    1773,
+/**/
+    1772,
+/**/
+    1771,
+/**/
+    1770,
+/**/
+    1769,
+/**/
+    1768,
+/**/
+    1767,
+/**/
+    1766,
 /**/
     1765,
 /**/
@@ -4278,7 +4884,7 @@ highest_patch(void)
     return included_patches[0];
 }
 
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
 /*
  * Return TRUE if patch "n" has been included.
  */
@@ -4329,7 +4935,7 @@ version_msg_wrap(char_u *s, int wrap)
 {
     int		len = vim_strsize(s) + (wrap ? 2 : 0);
 
-    if (!got_int && len < (int)Columns && msg_col + len >= (int)Columns
+    if (!got_int && len < cmdline_width && msg_col + len >= cmdline_width
 								&& *s != '\n')
 	msg_putchar('\n');
     if (!got_int)
@@ -4387,7 +4993,7 @@ list_in_columns(char_u **items, int size, int current)
     }
     width += 1;
 
-    if (Columns < width)
+    if (cmdline_width < width)
     {
 	// Not enough screen columns - show one per line
 	for (i = 0; i < item_count; ++i)
@@ -4401,7 +5007,7 @@ list_in_columns(char_u **items, int size, int current)
 
     // The rightmost column doesn't need a separator.
     // Sacrifice it to fit in one more column if possible.
-    ncol = (int) (Columns + 1) / width;
+    ncol = (cmdline_width + 1) / width;
     nrow = item_count / ncol + ((item_count % ncol) ? 1 : 0);
 
     // "i" counts columns then rows.  "idx" counts rows then columns.
@@ -4770,7 +5376,7 @@ intro_message(
 	N_("Vim is open source and freely distributable"),
 	"",
 	N_("Help poor children in Uganda!"),
-	N_("type  :help iccf<Enter>       for information "),
+	N_("type  :help Kuwasha<Enter>    for information "),
 	"",
 	N_("type  :q<Enter>               to exit         "),
 	N_("type  :help<Enter>  or  <F1>  for on-line help"),
@@ -4818,8 +5424,7 @@ intro_message(
     if (blanklines < 0)
 	blanklines = 0;
 
-    // Show the sponsor and register message one out of four times, the Uganda
-    // message two out of four times.
+    // Show the sponsor and Uganda message two out of four times
     sponsor = (int)time(NULL);
     sponsor = ((sponsor & 2) == 0) - ((sponsor & 4) == 0);
 
@@ -4843,15 +5448,11 @@ intro_message(
 	    if (sponsor != 0)
 	    {
 		if (strstr(p, "children") != NULL)
-		    p = sponsor < 0
-			? N_("Sponsor Vim development!")
-			: N_("Become a registered Vim user!");
-		else if (strstr(p, "iccf") != NULL)
-		    p = sponsor < 0
-			? N_("type  :help sponsor<Enter>    for information ")
-			: N_("type  :help register<Enter>   for information ");
+		    p = N_("Sponsor Vim development!");
+		else if (strstr(p, "Kuwasha") != NULL)
+		    p = N_("type  :help sponsor<Enter>    for information ");
 		else if (strstr(p, "Orphans") != NULL)
-		    p = N_("menu  Help->Sponsor/Register  for information    ");
+		    p = N_("menu  Help->Sponsor  for information    ");
 	    }
 	    if (*p != NUL)
 		do_intro_line(row, (char_u *)_(p), i == 2, 0);

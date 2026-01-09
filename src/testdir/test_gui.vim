@@ -664,6 +664,20 @@ func Test_set_guioptions()
     set guioptions&
     call assert_equal('egmrLtT', &guioptions)
 
+    set guioptions+=s
+    exec 'sleep' . duration
+    call assert_equal('egmrLtTs', &guioptions)
+    set guioptions-=s
+    exec 'sleep' . duration
+    call assert_equal('egmrLtT', &guioptions)
+
+    set guioptions+=d
+    exec 'sleep' . duration
+    call assert_equal('egmrLtTd', &guioptions)
+    set guioptions-=d
+    exec 'sleep' . duration
+    call assert_equal('egmrLtT', &guioptions)
+
   else
     " Default Value
     set guioptions&

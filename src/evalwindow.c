@@ -13,7 +13,7 @@
 
 #include "vim.h"
 
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
 
     static int
 win_getid(typval_T *argvars)
@@ -416,6 +416,7 @@ get_win_info(win_T *wp, short tpnr, short winnr)
     dict_add_number(dict, "winnr", winnr);
     dict_add_number(dict, "winid", wp->w_id);
     dict_add_number(dict, "height", wp->w_height);
+    dict_add_number(dict, "status_height", wp->w_status_height);
     dict_add_number(dict, "winrow", wp->w_winrow + 1);
     dict_add_number(dict, "topline", wp->w_topline);
     dict_add_number(dict, "botline", wp->w_botline - 1);
@@ -1199,10 +1200,14 @@ f_winrestcmd(typval_T *argvars UNUSED, typval_T *rettv)
 	winnr = 1;
 	FOR_ALL_WINDOWS(wp)
 	{
-	    sprintf((char *)buf, ":%dresize %d|", winnr, wp->w_height);
-	    ga_concat(&ga, buf);
-	    sprintf((char *)buf, "vert :%dresize %d|", winnr, wp->w_width);
-	    ga_concat(&ga, buf);
+	    size_t  buflen;
+
+	    buflen = vim_snprintf_safelen((char *)buf, sizeof(buf),
+		":%dresize %d|", winnr, wp->w_height);
+	    ga_concat_len(&ga, buf, buflen);
+	    buflen = vim_snprintf_safelen((char *)buf, sizeof(buf),
+		"vert :%dresize %d|", winnr, wp->w_width);
+	    ga_concat_len(&ga, buf, buflen);
 	    ++winnr;
 	}
     }
@@ -1306,8 +1311,7 @@ f_winwidth(typval_T *argvars, typval_T *rettv)
 }
 #endif // FEAT_EVAL
 
-#if defined(FEAT_EVAL) || defined(FEAT_PYTHON) || defined(FEAT_PYTHON3) \
-	|| defined(PROTO)
+#if defined(FEAT_EVAL) || defined(FEAT_PYTHON) || defined(FEAT_PYTHON3)
 /*
  * Set "win" to be the curwin and "tp" to be the current tab page.
  * restore_win() MUST be called to undo, also when FAIL is returned.

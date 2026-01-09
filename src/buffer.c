@@ -75,6 +75,7 @@ static garray_T buf_reuse = GA_EMPTY;	// file numbers to recycle
     static void
 trigger_undo_ftplugin(buf_T *buf, win_T *win)
 {
+    int win_was_locked = win->w_locked;
     window_layout_lock();
     buf->b_locked++;
     win->w_locked = TRUE;
@@ -82,7 +83,7 @@ trigger_undo_ftplugin(buf_T *buf, win_T *win)
     do_cmdline_cmd((char_u*)"if exists('b:undo_ftplugin') | :legacy :exe \
 	    b:undo_ftplugin | endif");
     buf->b_locked--;
-    win->w_locked = FALSE;
+    win->w_locked = win_was_locked;
     window_layout_unlock();
 }
 
@@ -167,7 +168,7 @@ read_buffer(
     return retval;
 }
 
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
 /*
  * Ensure buffer "buf" is loaded.  Does not trigger the swap-exists action.
  */
@@ -516,6 +517,10 @@ can_unload_buffer(buf_T *buf)
 		break;
 	    }
     }
+    // Don't unload the buffer while it's still being saved
+    if (can_unload && buf->b_saving)
+	can_unload = FALSE;
+
     if (!can_unload)
     {
 	char_u *fname = buf->b_fname != NULL ? buf->b_fname : buf->b_ffname;
@@ -702,7 +707,7 @@ aucmd_abort:
     // If the buffer was in curwin and the window has changed, go back to that
     // window, if it still exists.  This avoids that ":edit x" triggering a
     // "tabnext" BufUnload autocmd leaves a window behind without a buffer.
-    if (is_curwin && curwin != the_curwin &&  win_valid_any_tab(the_curwin))
+    if (is_curwin && curwin != the_curwin && win_valid_any_tab(the_curwin))
     {
 	block_autocmds();
 	goto_tabpage_win(the_curtab, the_curwin);
@@ -777,15 +782,12 @@ aucmd_abort:
 
     /*
      * Remove the buffer from the list.
+     * Do not wipe out the buffer if it is used in a window.
      */
-    if (wipe_buf)
+    if (wipe_buf && buf->b_nwindows <= 0)
     {
 	tabpage_T	*tp;
 	win_T		*wp;
-
-	// Do not wipe out the buffer if it is used in a window.
-	if (buf->b_nwindows > 0)
-	    return FALSE;
 
 	FOR_ALL_TAB_WINDOWS(tp, wp)
 	    mark_forget_file(wp, buf->b_fnum);
@@ -1432,19 +1434,10 @@ do_buffer_ext(
     if ((flags & DOBUF_NOPOPUP) && bt_popup(buf) && !bt_terminal(buf))
 	return OK;
 #endif
-    if (action == DOBUF_GOTO && buf != curbuf)
-    {
-	if (!check_can_set_curbuf_forceit((flags & DOBUF_FORCEIT) != 0))
-	    // disallow navigating to another buffer when 'winfixbuf' is applied
-	    return FAIL;
-	if (buf->b_locked_split)
-	{
-	    // disallow navigating to a closing buffer, which like splitting,
-	    // can result in more windows displaying it
-	    emsg(_(e_cannot_switch_to_a_closing_buffer));
-	    return FAIL;
-	}
-    }
+    if (action == DOBUF_GOTO && buf != curbuf
+	    && !check_can_set_curbuf_forceit((flags & DOBUF_FORCEIT) != 0))
+	// disallow navigating to another buffer when 'winfixbuf' is applied
+	return FAIL;
 
     if ((action == DOBUF_GOTO || action == DOBUF_SPLIT)
 						  && (buf->b_flags & BF_DUMMY))
@@ -1652,15 +1645,17 @@ do_buffer_ext(
     /*
      * make "buf" the current buffer
      */
-    if (action == DOBUF_SPLIT)	    // split window first
+    // If 'switchbuf' is set jump to the window containing "buf".
+    if (action == DOBUF_SPLIT && swbuf_goto_win_with_buf(buf) != NULL)
+	return OK;
+    // Whether splitting or not, don't open a closing buffer in more windows.
+    if (buf != curbuf && buf->b_locked_split)
     {
-	// If 'switchbuf' is set jump to the window containing "buf".
-	if (swbuf_goto_win_with_buf(buf) != NULL)
-	    return OK;
-
-	if (win_split(0, 0) == FAIL)
-	    return FAIL;
+	emsg(_(e_cannot_switch_to_a_closing_buffer));
+	return FAIL;
     }
+    if (action == DOBUF_SPLIT && win_split(0, 0) == FAIL) // split window first
+	return FAIL;
 
     // go to current buffer - nothing to do
     if (buf == curbuf)
@@ -2066,7 +2061,7 @@ enter_buffer(buf_T *buf)
     redraw_later(UPD_NOT_VALID);
 }
 
-#if defined(FEAT_AUTOCHDIR) || defined(PROTO)
+#if defined(FEAT_AUTOCHDIR)
 /*
  * Change to the directory of the current buffer.
  * Don't do this while still starting up.
@@ -2476,9 +2471,7 @@ free_buf_options(
     ga_clear(&buf->b_kmap_ga);
 #endif
     clear_string_option(&buf->b_p_com);
-#ifdef FEAT_FOLDING
     clear_string_option(&buf->b_p_cms);
-#endif
     clear_string_option(&buf->b_p_nf);
 #ifdef FEAT_SYN_HL
     clear_string_option(&buf->b_p_syn);
@@ -2501,7 +2494,6 @@ free_buf_options(
     clear_string_option(&buf->b_p_cinw);
     clear_string_option(&buf->b_p_cot);
     clear_string_option(&buf->b_p_cpt);
-    clear_string_option(&buf->b_p_ise);
 #ifdef FEAT_COMPL_FUNC
     clear_string_option(&buf->b_p_cfu);
     free_callback(&buf->b_cfu_cb);
@@ -2534,7 +2526,11 @@ free_buf_options(
 #endif
     clear_string_option(&buf->b_p_tsr);
     clear_string_option(&buf->b_p_qe);
+    buf->b_p_ac = -1;
     buf->b_p_ar = -1;
+#ifdef HAVE_FSYNC
+    buf->b_p_fs = -1;
+#endif
     buf->b_p_ul = NO_LOCAL_UNDOLEVEL;
     clear_string_option(&buf->b_p_lw);
     clear_string_option(&buf->b_p_bkc);
@@ -3767,7 +3763,7 @@ buflist_add(char_u *fname, int flags)
     return 0;
 }
 
-#if defined(BACKSLASH_IN_FILENAME) || defined(PROTO)
+#if defined(BACKSLASH_IN_FILENAME)
 /*
  * Adjust slashes in file names.  Called after 'shellslash' was set.
  */
@@ -3855,7 +3851,7 @@ otherfile_buf(
     return TRUE;
 }
 
-#if defined(UNIX) || defined(PROTO)
+#if defined(UNIX)
 /*
  * Set inode and device number for a buffer.
  * Must always be called when b_fname is changed!.
@@ -4294,7 +4290,7 @@ resettitle(void)
     mch_settitle(lasttitle, lasticon);
 }
 
-# if defined(EXITFREE) || defined(PROTO)
+# if defined(EXITFREE)
     void
 free_titles(void)
 {
@@ -4304,7 +4300,7 @@ free_titles(void)
 # endif
 
 
-#if defined(FEAT_STL_OPT) || defined(FEAT_GUI_TABLINE) || defined(PROTO)
+#if defined(FEAT_STL_OPT) || defined(FEAT_GUI_TABLINE)
 
 /*
  * Used for building in the status line.
@@ -4422,7 +4418,7 @@ build_stl_str_hl(
 
 #ifdef FEAT_EVAL
     // if "fmt" was set insecurely it needs to be evaluated in the sandbox
-    use_sandbox = was_set_insecurely(opt_name, opt_scope);
+    use_sandbox = was_set_insecurely(wp, opt_name, opt_scope);
 
     // When the format starts with "%!" then evaluate it as an expression and
     // use the result as the actual format string.
@@ -5429,7 +5425,7 @@ get_rel_pos(
     char tmp[8];
     // localized percentage value
     vim_snprintf(tmp, sizeof(tmp), _("%d%%"), perc);
-    return (int)vim_snprintf_safelen((char *)buf, buflen, _("%2s"), tmp);
+    return (int)vim_snprintf_safelen((char *)buf, buflen, _("%3s"), tmp);
 }
 
 /*
@@ -5985,7 +5981,7 @@ bt_prompt(buf_T *buf)
     return buf != NULL && buf->b_p_bt[0] == 'p' && buf->b_p_bt[1] == 'r';
 }
 
-#if defined(FEAT_PROP_POPUP) || defined(PROTO)
+#if defined(FEAT_PROP_POPUP)
 /*
  * Return TRUE if "buf" is a buffer for a popup window.
  */
@@ -6024,7 +6020,7 @@ bt_nofileread(buf_T *buf)
 	    || buf->b_p_bt[0] == 'p');
 }
 
-#if defined(FEAT_QUICKFIX) || defined(PROTO)
+#if defined(FEAT_QUICKFIX)
 /*
  * Return TRUE if "buf" has 'buftype' set to "nofile".
  */

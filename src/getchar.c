@@ -436,10 +436,10 @@ stuff_empty(void)
 	 && readbuf2.bh_first.b_next == NULL);
 }
 
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
 /*
  * Return TRUE if readbuf1 is empty.  There may still be redo characters in
- * redbuf2.
+ * readbuf2.
  */
     int
 readbuf1_empty(void)
@@ -717,7 +717,7 @@ stuffReadbuffLen(char_u *s, long len)
     add_buff(&readbuf1, s, len);
 }
 
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
 /*
  * Stuff "s" into the stuff buffer, leaving special key codes unmodified and
  * escaping other K_SPECIAL and CSI bytes.
@@ -1700,7 +1700,7 @@ closescript(void)
 	--curscript;
 }
 
-#if defined(EXITFREE) || defined(PROTO)
+#if defined(EXITFREE)
     void
 close_all_scripts(void)
 {
@@ -1976,6 +1976,9 @@ vgetc(void)
 		    continue;
 		}
 		c = TO_SPECIAL(c2, c);
+
+		if (allow_osc_key == 0 && c == K_OSC)
+		    continue;
 
 		// K_ESC is used to avoid ambiguity with the single Esc
 		// character that might be the start of an escape sequence.
@@ -2335,7 +2338,7 @@ vpeekc(void)
     return vgetorpeek(FALSE);
 }
 
-#if defined(FEAT_TERMRESPONSE) || defined(FEAT_TERMINAL) || defined(PROTO)
+#if defined(FEAT_TERMRESPONSE) || defined(FEAT_TERMINAL)
 /*
  * Like vpeekc(), but don't allow mapping.  Do allow checking for terminal
  * codes.
@@ -2391,7 +2394,7 @@ char_avail(void)
     return (retval != NUL);
 }
 
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
 /*
  * "getchar()" and "getcharstr()" functions
  */
@@ -2448,10 +2451,11 @@ getchar_common(typval_T *argvars, typval_T *rettv, int allow_number)
     if (cursor_flag == 'h')
 	cursor_sleep();
     else if (cursor_flag == 'm')
-	windgoto(msg_row, msg_col);
+	windgoto(msg_row, cmdline_col_off + msg_col);
 
     ++no_mapping;
     ++allow_keys;
+    ++allow_osc_key;
     if (!simplify)
 	++no_reduce_keys;
     for (;;)
@@ -2479,6 +2483,7 @@ getchar_common(typval_T *argvars, typval_T *rettv, int allow_number)
     }
     --no_mapping;
     --allow_keys;
+    --allow_osc_key;
     if (!simplify)
 	--no_reduce_keys;
 
@@ -2582,7 +2587,7 @@ f_getcharmod(typval_T *argvars UNUSED, typval_T *rettv)
 }
 #endif // FEAT_EVAL
 
-#if defined(MESSAGE_QUEUE) || defined(PROTO)
+#if defined(MESSAGE_QUEUE)
 # define MAX_REPEAT_PARSE 8
 
 /*
@@ -4189,7 +4194,7 @@ fix_input_buffer(char_u *buf, int len)
     return len;
 }
 
-#if defined(USE_INPUT_BUF) || defined(PROTO)
+#if defined(USE_INPUT_BUF)
 /*
  * Return TRUE when bytes are in the input buffer or in the typeahead buffer.
  * Normally the input buffer would be sufficient, but the server_to_input_buf()
@@ -4283,7 +4288,7 @@ getcmdkeycmd(
 	}
 	else if (c1 == K_SNR)
 	{
-	    ga_concat(&line_ga, (char_u *)"<SNR>");
+	    ga_concat_len(&line_ga, (char_u *)"<SNR>", 5);
 	}
 	else
 	{
@@ -4314,7 +4319,7 @@ getcmdkeycmd(
     return (char_u *)line_ga.ga_data;
 }
 
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
 /*
  * If there was a mapping we get its SID.  Otherwise, use "last_used_sid", it
  * is set when redo'ing.
@@ -4379,7 +4384,7 @@ do_cmdkey_command(int key UNUSED, int flags)
     return res;
 }
 
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
     void
 reset_last_used_map(mapblock_T *mp)
 {

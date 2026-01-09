@@ -12,7 +12,7 @@
 
 #include "vim.h"
 
-#if defined(FEAT_JOB_CHANNEL) || defined(PROTO)
+#if defined(FEAT_JOB_CHANNEL)
 
 // TRUE when netbeans is running with a GUI.
 #ifdef FEAT_GUI
@@ -396,7 +396,7 @@ free_unused_channels(int copyID, int mask)
     }
 }
 
-#if defined(FEAT_GUI) || defined(PROTO)
+#if defined(FEAT_GUI)
 
 # if defined(FEAT_GUI_X11) || defined(FEAT_GUI_GTK)
 /*
@@ -1635,7 +1635,14 @@ channel_write_in(channel_T *channel)
 	ch_log(channel, "Finished writing all lines to channel");
 
 	// Close the pipe/socket, so that the other side gets EOF.
-	ch_close_part(channel, PART_IN);
+#ifdef MSWIN
+	// At this point, the input part of the conpty channel must not be
+	// closed.  If it is closed, the pipe will be destroyed, the console
+	// that was using it will be destroyed, and the process running within
+	// it will be forcibly terminated, so this needs to be prevented.
+	if (!channel->ch_anonymous_pipe)
+#endif
+	    ch_close_part(channel, PART_IN);
     }
     else
 	ch_log(channel, "Still %ld more lines to write",
@@ -3135,7 +3142,7 @@ may_invoke_callback(channel_T *channel, ch_part_T part)
     return TRUE;
 }
 
-#if defined(FEAT_NETBEANS_INTG) || defined(PROTO)
+#if defined(FEAT_NETBEANS_INTG)
 /*
  * Return TRUE when channel "channel" is open for writing to.
  * Also returns FALSE or invalid "channel".
@@ -3472,7 +3479,7 @@ channel_clear(channel_T *channel)
     free_callback(&channel->ch_close_cb);
 }
 
-#if defined(EXITFREE) || defined(PROTO)
+#if defined(EXITFREE)
     void
 channel_free_all(void)
 {
@@ -4143,7 +4150,7 @@ theend:
     free_job_options(&opt);
 }
 
-#if defined(MSWIN) || defined(__HAIKU__) || defined(FEAT_GUI) || defined(PROTO)
+#if defined(MSWIN) || defined(__HAIKU__) || defined(FEAT_GUI)
 /*
  * Check the channels for anything that is ready to be read.
  * The data is put in the read queue.
@@ -4168,7 +4175,17 @@ channel_handle_events(int only_keep_open)
 	    if (fd == INVALID_FD)
 		continue;
 
-	    int r = channel_wait(channel, fd, 0);
+	    // In normal cases, a timeout of 0 is sufficient.
+	    //
+	    // But, in Windows conpty terminals, the final output of a
+	    // terminated process may be missed.  In this case, in order for
+	    // Vim to read the final output, it is necessary to set the timeout
+	    // to 1 msec or more.  It seems that the final output can be
+	    // received by calling Sleep() once within channel_wait().  Note
+	    // that ch_killing can only be TRUE in conpty terminals, so it has
+	    // no side effects in environments other than conpty.
+	    int r = channel_wait(channel, fd, (channel->ch_killing &&
+			(part == PART_OUT || part == PART_ERR)) ? 1 : 0);
 
 	    if (r == CW_READY)
 		channel_read(channel, part, "channel_handle_events");
@@ -4194,7 +4211,7 @@ channel_handle_events(int only_keep_open)
 }
 #endif
 
-# if defined(FEAT_GUI) || defined(PROTO)
+# if defined(FEAT_GUI)
 /*
  * Return TRUE when there is any channel with a keep_open flag.
  */
@@ -4645,7 +4662,7 @@ ch_raw_common(typval_T *argvars, typval_T *rettv, int eval)
 
 #define KEEP_OPEN_TIME 20  // msec
 
-#if (defined(UNIX) && !defined(HAVE_SELECT)) || defined(PROTO)
+#if defined(UNIX) && !defined(HAVE_SELECT)
 /*
  * Add open channels to the poll struct.
  * Return the adjusted struct index.
@@ -4738,7 +4755,7 @@ channel_poll_check(int ret_in, void *fds_in)
 }
 #endif // UNIX && !HAVE_SELECT
 
-#if (!defined(MSWIN) && defined(HAVE_SELECT)) || defined(PROTO)
+#if !defined(MSWIN) && defined(HAVE_SELECT)
 
 /*
  * The "fd_set" type is hidden to avoid problems with the function proto.

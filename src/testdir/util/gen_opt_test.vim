@@ -236,7 +236,6 @@ let test_values = {
       \ 'helplang': [['', 'de', 'de,it'], ['xxx']],
       \ 'highlight': [['', 'e:Error'], ['xxx']],
       \ 'imactivatekey': [['', 'S-space'], ['xxx']],
-      \ 'isexpand': [['', '.,->', '/,/*,\\,'], [',,', '\\,,']],
       \ 'isfname': [['', '@', '@,48-52'], ['xxx', '@48']],
       \ 'isident': [['', '@', '@,48-52'], ['xxx', '@48']],
       \ 'iskeyword': [['', '@', '@,48-52'], ['xxx', '@48']],
@@ -282,6 +281,10 @@ let test_values = {
       \		['xxx', 'xxx,c:yes', 'xxx:', 'xxx:,c:yes']],
       \ 'printoptions': [['', 'header:0', 'left:10pc,top:5pc'],
       \		['xxx', 'header:-1']],
+      \ 'pumborder': [['', 'single', 'double', 'round', 'ascii', 'shadow',
+      \		'double,margin,shadow', 'custom:─;│;─;│;┌;┐;┘;└,shadow',
+      \		'ascii,margin'],
+      \		['xxx', 'margin', 'margin,shadow', 'custom:', 'custom:+;']],
       \ 'renderoptions': [[''], ['xxx']],
       \ 'rightleftcmd': [['search'], ['xxx']],
       \ 'rulerformat': [['', 'xxx'], ['%-', '%(', '%15(%%']],
@@ -366,6 +369,15 @@ let test_values = {
       \ 'othernum': [[-1, 0, 100], ['']],
       \ 'otherstring': [['', 'xxx'], []],
       \}
+
+if !has('clipboard')
+  " If +clipboard isn't enabled but +clipboard_provider is, then 'clipboard' is
+  " limited to "unnamed" and "unnamedplus"
+  let test_values['clipboard'] = [
+	\ ['', 'unnamed', 'unnamedplus'],
+	\ ['xxx', 'autoselect', 'exclude:\\%(']
+	\ ]
+endif
 
 " Two lists with values: values that pre- and post-processing in test.
 " Clear out t_WS: we don't want to resize the actual terminal.
@@ -512,7 +524,7 @@ catch
   " Append errors to test.log
   let error = $'Error: {v:exception} in {v:throwpoint}'
   echoc error
-  split test.log
+  split gen_opt_test.log
   call append('$', error)
   write
 endtry

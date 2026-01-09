@@ -350,6 +350,20 @@ typedef struct
 # define w_p_tws w_onebuf_opt.wo_tws	// 'termwinsize'
 #endif
 
+    // A few options have local flags for P_INSECURE.
+    long_u	wo_wrap_flags;		// flags for 'wrap'
+#define w_p_wrap_flags w_onebuf_opt.wo_wrap_flags
+#ifdef FEAT_STL_OPT
+    long_u	wo_stl_flags;		// flags for 'statusline'
+# define w_p_stl_flags w_onebuf_opt.wo_stl_flags
+#endif
+#ifdef FEAT_EVAL
+    long_u	wo_fde_flags;		// flags for 'foldexpr'
+# define w_p_fde_flags w_onebuf_opt.wo_fde_flags
+    long_u	wo_fdt_flags;		// flags for 'foldtext'
+# define w_p_fdt_flags w_onebuf_opt.wo_fdt_flags
+#endif
+
 #ifdef FEAT_EVAL
     sctx_T	wo_script_ctx[WV_COUNT];	// SCTXs for window-local options
 # define w_p_script_ctx w_onebuf_opt.wo_script_ctx
@@ -945,7 +959,7 @@ typedef struct sign_attrs_S {
     int		sat_priority;
 } sign_attrs_T;
 
-#if defined(FEAT_SIGNS) || defined(PROTO)
+#if defined(FEAT_SIGNS)
 // Macros to get the sign group structure from the group name
 #define SGN_KEY_OFF	offsetof(signgroup_T, sg_name)
 #define HI2SG(hi)	((signgroup_T *)((hi)->hi_key - SGN_KEY_OFF))
@@ -1425,20 +1439,11 @@ typedef long_u hash_T;		// Type for hi_hash
 
 // Use 64-bit Number.
 #ifdef MSWIN
-# ifdef PROTO
-   // workaround for cproto that doesn't recognize __int64
-   typedef long			varnumber_T;
-   typedef unsigned long	uvarnumber_T;
-#  define VARNUM_MIN		LONG_MIN
-#  define VARNUM_MAX		LONG_MAX
-#  define UVARNUM_MAX		ULONG_MAX
-# else
    typedef __int64		varnumber_T;
    typedef unsigned __int64	uvarnumber_T;
-#  define VARNUM_MIN		_I64_MIN
-#  define VARNUM_MAX		_I64_MAX
-#  define UVARNUM_MAX		_UI64_MAX
-# endif
+# define VARNUM_MIN		_I64_MIN
+# define VARNUM_MAX		_I64_MAX
+# define UVARNUM_MAX		_UI64_MAX
 #elif defined(HAVE_NO_LONG_LONG)
 # if defined(HAVE_STDINT_H)
    typedef int64_t		varnumber_T;
@@ -1527,7 +1532,7 @@ struct type_S {
     vartype_T	    tt_type;
     int8_T	    tt_argcount;    // for func, incl. vararg, -1 for unknown
     int8_T	    tt_min_argcount; // number of non-optional arguments
-    char_u	    tt_flags;	    // TTFLAG_ values
+    short_u	    tt_flags;	    // TTFLAG_ values
     type_T	    *tt_member;	    // for list, dict, func return type
     class_T	    *tt_class;	    // for class and object
     type_T	    **tt_args;	    // func argument types, allocated
@@ -1546,9 +1551,14 @@ typedef struct {
 #define TTFLAG_CONST	    0x20    // cannot be changed
 #define TTFLAG_SUPER	    0x40    // object from "super".
 #define TTFLAG_GENERIC	    0x80    // generic type
+#define TTFLAG_TUPLE_OK	    0x100   // tuple can be used for a list
 
 #define IS_GENERIC_TYPE(type)	\
     ((type->tt_flags & TTFLAG_GENERIC) == TTFLAG_GENERIC)
+
+// Type check flags
+#define TYPECHK_NUMBER_OK	0x1	// number is accepted for a float
+#define TYPECHK_TUPLE_OK	0x2	// tuple is accepted for a list
 
 typedef enum {
     VIM_ACCESS_PRIVATE,	// read/write only inside the class
@@ -1575,7 +1585,7 @@ typedef enum {
  * Entry for an object or class member variable.
  */
 typedef struct {
-    char_u	*ocm_name;	// allocated
+    string_T	ocm_name;	// allocated
     omacc_T	ocm_access;
     type_T	*ocm_type;
     int		ocm_flags;
@@ -1601,7 +1611,7 @@ struct itf2class_S {
 // Also used for an interface (class_flags has CLASS_INTERFACE).
 struct class_S
 {
-    char_u	*class_name;		// allocated
+    string_T	class_name;		// allocated
     int		class_flags;		// CLASS_ flags
 
     int		class_refcount;
@@ -1878,7 +1888,7 @@ typedef enum {
 
 typedef struct svar_S svar_T;
 
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
 /*
  * Info used by a ":for" loop.
  */
@@ -2277,6 +2287,9 @@ typedef struct {
 
     // pointer to the lines concatenated for a lambda.
     char_u	*eval_tofree_lambda;
+
+    // pointer to name of class being constructed
+    class_T	*eval_class;
 } evalarg_T;
 
 // Flag for expression evaluation.
@@ -2708,8 +2721,14 @@ struct channel_S {
 				// reference, the job refers to the channel.
     int		ch_job_killed;	// TRUE when there was a job and it was killed
 				// or we know it died.
-    int		ch_anonymous_pipe;  // ConPTY
-    int		ch_killing;	    // TerminateJobObject() was called
+    int		ch_anonymous_pipe;  // Indicates that anonymous pipes are being
+				    // used for communication in the Windows
+				    // ConPTY terminal.
+    int		ch_killing;	    // Indicates that the job associated with
+				    // the channel is terminating.  It becomes
+				    // TRUE when TerminateJobObject() was
+				    // called or the process associated with
+				    // the job had exited (only ConPTY).
 
     int		ch_refcount;	// reference count
     int		ch_copyID;
@@ -2858,6 +2877,19 @@ struct listener_S
     listener_T	*lr_next;
     int		lr_id;
     callback_T	lr_callback;
+};
+
+// Structure used for listeners added with redraw_listener_add().
+typedef struct redraw_listener_S redraw_listener_T;
+struct redraw_listener_S
+{
+    redraw_listener_T	*rl_next;
+    int			rl_id;
+    struct
+    {
+	callback_T	on_start;
+	callback_T	on_end;
+    }			rl_callbacks;
 };
 #endif
 
@@ -3285,6 +3317,7 @@ struct file_buffer
     sctx_T	b_p_script_ctx[BV_COUNT]; // SCTXs for buffer-local options
 #endif
 
+    int		b_p_ac;		// 'autocomplete'
     int		b_p_ai;		// 'autoindent'
     int		b_p_ai_nopaste;	// b_p_ai saved for paste mode
     char_u	*b_p_bkc;	// 'backupcopy'
@@ -3306,9 +3339,7 @@ struct file_buffer
     char_u	*b_p_cinsd;	// 'cinscopedecls'
     char_u	*b_p_cinw;	// 'cinwords'
     char_u	*b_p_com;	// 'comments'
-#ifdef FEAT_FOLDING
     char_u	*b_p_cms;	// 'commentstring'
-#endif
     char_u	*b_p_cot;	// 'completeopt' local value
     unsigned	b_cot_flags;	// flags for 'completeopt'
     char_u	*b_p_cpt;	// 'complete'
@@ -3341,7 +3372,6 @@ struct file_buffer
     char_u	*b_p_fo;	// 'formatoptions'
     char_u	*b_p_flp;	// 'formatlistpat'
     int		b_p_inf;	// 'infercase'
-    char_u	*b_p_ise;	// 'isexpand' local value
     char_u	*b_p_isk;	// 'iskeyword'
 #ifdef FEAT_FIND_ID
     char_u	*b_p_def;	// 'define' local value
@@ -3360,6 +3390,9 @@ struct file_buffer
 #if defined(FEAT_EVAL)
     char_u	*b_p_fex;	// 'formatexpr'
     long_u	b_p_fex_flags;	// flags for 'formatexpr'
+#endif
+#ifdef HAVE_FSYNC
+    int		b_p_fs;		// 'fsync'
 #endif
 #ifdef FEAT_CRYPT
     char_u	*b_p_key;	// 'key'
@@ -3496,7 +3529,8 @@ struct file_buffer
     dictitem_T	b_bufvar;	// variable for "b:" Dictionary
     dict_T	*b_vars;	// internal variables, local to buffer
 
-    listener_T	*b_listener;
+    listener_T	*b_listener;       // Listeners accepting buffered reports.
+    listener_T	*b_sync_listener;  // Listeners requiring unbuffered reports.
     list_T	*b_recorded_changes;
 #endif
 #ifdef FEAT_PROP_POPUP
@@ -3606,7 +3640,7 @@ struct file_buffer
 }; // file_buffer
 
 
-#if defined(FEAT_DIFF) || defined(PROTO)
+#if defined(FEAT_DIFF)
 /*
  * Stuff for diff mode.
  */
@@ -3676,9 +3710,10 @@ typedef void diffline_T;
 typedef void diffline_change_T;
 #endif
 
-#define SNAP_HELP_IDX	0
-#define SNAP_AUCMD_IDX	1
-#define SNAP_COUNT	2
+#define SNAP_HELP_IDX	    0
+#define SNAP_AUCMD_IDX	    1
+#define SNAP_QUICKFIX_IDX   2
+#define SNAP_COUNT	    3
 
 /*
  * Tab pages point to the top frame of each tab page.
@@ -3897,6 +3932,7 @@ typedef struct
     int	foldopen;
     int	foldclosed;
     int	foldsep;
+    int	foldinner;
     int	diff;
     int	eob;
     int	lastline;
@@ -4046,6 +4082,7 @@ struct window_S
     int		w_popup_border[4];  // popup border top/right/bot/left
     char_u	*w_border_highlight[4];  // popup border highlight
     int		w_border_char[8];   // popup border characters
+    int		w_popup_shadow;     // popup shadow (right and bottom edges)
 
     int		w_popup_leftoff;    // columns left of the screen
     int		w_popup_rightoff;   // columns right of the screen
@@ -4211,14 +4248,6 @@ struct window_S
     // transform a pointer to a "onebuf" option into a "allbuf" option
 #define GLOBAL_WO(p)	((char *)(p) + sizeof(winopt_T))
 
-    // A few options have local flags for P_INSECURE.
-#ifdef FEAT_STL_OPT
-    long_u	w_p_stl_flags;	    // flags for 'statusline'
-#endif
-#ifdef FEAT_EVAL
-    long_u	w_p_fde_flags;	    // flags for 'foldexpr'
-    long_u	w_p_fdt_flags;	    // flags for 'foldtext'
-#endif
 #if defined(FEAT_SIGNS) || defined(FEAT_FOLDING) || defined(FEAT_DIFF)
     int		*w_p_cc_cols;	    // array of columns to highlight or NULL
     char_u	w_p_culopt_flags;   // flags for cursorline highlighting
@@ -4876,12 +4905,20 @@ typedef enum {
 
 // Symbolic names for some registers.
 #define DELETION_REGISTER	36
-#ifdef FEAT_CLIPBOARD
+#if defined(FEAT_CLIPBOARD) || defined(HAVE_CLIPMETHOD)
 # define STAR_REGISTER		37
 #  if defined(FEAT_X11) || defined(FEAT_WAYLAND)
 #   define PLUS_REGISTER	38
+#   define REAL_PLUS_REGISTER	PLUS_REGISTER
 #  else
 #   define PLUS_REGISTER	STAR_REGISTER	    // there is only one
+#   ifdef FEAT_EVAL
+// Make it so that if clipmethod is "none", the plus register is not available,
+// but if clipmethod is a provider, then expose the plus register for use.
+#    define REAL_PLUS_REGISTER	38
+#   else
+#    define REAL_PLUS_REGISTER	STAR_REGISTER
+#   endif
 #  endif
 #endif
 #ifdef FEAT_DND
@@ -4892,10 +4929,14 @@ typedef enum {
 # ifdef FEAT_DND
 #  define NUM_REGISTERS		(TILDE_REGISTER + 1)
 # else
-#  define NUM_REGISTERS		(PLUS_REGISTER + 1)
+#  define NUM_REGISTERS		(REAL_PLUS_REGISTER + 1)
 # endif
 #else
-# define NUM_REGISTERS		37
+# ifdef HAVE_CLIPMETHOD
+#  define NUM_REGISTERS		(REAL_PLUS_REGISTER + 1)
+# else
+#  define NUM_REGISTERS		37
+# endif
 #endif
 
 // structure used by block_prep, op_delete and op_yank for blockwise operators
@@ -5227,7 +5268,7 @@ typedef struct
 #define KEYVALUE_ENTRY(k, v) \
     {(k), {((char_u *)v), STRLEN_LITERAL(v)}}
 
-#if defined(UNIX) || defined(MSWIN) || defined(VMS)
+#if defined(UNIX) || defined(MSWIN) || defined(VMS) || defined(AMIGA)
 // Defined as signed, to return -1 on error
 struct cellsize {
     int cs_xpixel;
@@ -5237,20 +5278,26 @@ struct cellsize {
 
 #ifdef FEAT_WAYLAND
 
+typedef struct vwl_connection_S vwl_connection_T;
+typedef struct vwl_seat_S vwl_seat_T;
+
+# ifdef FEAT_WAYLAND_CLIPBOARD
+
+typedef struct vwl_data_offer_S vwl_data_offer_T;
+typedef struct vwl_data_source_S vwl_data_source_T;
+typedef struct vwl_data_device_S vwl_data_device_T;
+typedef struct vwl_data_device_manager_S vwl_data_device_manager_T;
+
+typedef struct vwl_data_device_listener_S vwl_data_device_listener_T;
+typedef struct vwl_data_source_listener_S vwl_data_source_listener_T;
+typedef struct vwl_data_offer_listener_S vwl_data_offer_listener_T;
+
 // Wayland selections
 typedef enum {
-    WAYLAND_SELECTION_NONE	    = 0x0,
-    WAYLAND_SELECTION_REGULAR	    = 0x1,
-    WAYLAND_SELECTION_PRIMARY	    = 0x2,
+    WAYLAND_SELECTION_NONE	= 0,
+    WAYLAND_SELECTION_REGULAR	= 1 << 0,
+    WAYLAND_SELECTION_PRIMARY	= 1 << 1,
 } wayland_selection_T;
 
-// Callback when another client wants us to send data to them
-typedef void (*wayland_cb_send_data_func_T)(
-	const char *mime_type,
-	int fd,
-	wayland_selection_T type);
-
-// Callback when the selection is lost (data source object overwritten)
-typedef void (*wayland_cb_selection_cancelled_func_T)(wayland_selection_T type);
-
-#endif // FEAT_WAYLAND
+# endif
+#endif

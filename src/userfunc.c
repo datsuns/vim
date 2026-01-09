@@ -13,7 +13,7 @@
 
 #include "vim.h"
 
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
 /*
  * All user-defined functions are found in this hashtable.
  */
@@ -563,7 +563,7 @@ parse_argument_types(
 			{
 			    if (obj_members != NULL
 				    && STRCMP(aname,
-					obj_members[om].ocm_name) == 0)
+					obj_members[om].ocm_name.string) == 0)
 			    {
 				type = obj_members[om].ocm_type;
 				break;
@@ -573,7 +573,7 @@ parse_argument_types(
 		    else
 			type = parse_type(&p, &fp->uf_type_list, fp, cctx, TRUE);
 		}
-		if (type == NULL)
+		if (type == NULL || !valid_declaration_type(type))
 		    return FAIL;
 		fp->uf_arg_types[i] = type;
 		if (i < fp->uf_args.ga_len
@@ -740,7 +740,7 @@ alloc_ufunc(char_u *name, size_t namelen)
     return fp;
 }
 
-#if defined(FEAT_LUA) || defined(PROTO)
+#if defined(FEAT_LUA)
 /*
  * Registers a native C callback which can be called from Vim script.
  * Returns the name of the Vim script function.
@@ -1405,7 +1405,7 @@ get_function_body(
 	    // For a :def function "python << EOF" concatenates all the lines,
 	    // to be used for the instruction later.
 	    ga_concat(&heredoc_ga, theline);
-	    ga_concat(&heredoc_ga, (char_u *)"\n");
+	    ga_concat_len(&heredoc_ga, (char_u *)"\n", 1);
 	    p = vim_strnsave((char_u *)"", 0);
 	}
 	else
@@ -3592,7 +3592,7 @@ delete_script_functions(int sid)
     }
 }
 
-#if defined(EXITFREE) || defined(PROTO)
+#if defined(EXITFREE)
     void
 free_all_functions(void)
 {
@@ -4524,7 +4524,8 @@ trans_function_name_ext(
 	else if (lv.ll_tv->v_type == VAR_CLASS
 					     && lv.ll_tv->vval.v_class != NULL)
 	{
-	    name = vim_strsave(lv.ll_tv->vval.v_class->class_name);
+	    name = vim_strnsave(lv.ll_tv->vval.v_class->class_name.string,
+		lv.ll_tv->vval.v_class->class_name.length);
 	    *pp = end;
 	}
 	else if (lv.ll_tv->v_type == VAR_PARTIAL
@@ -4637,7 +4638,7 @@ trans_function_name_ext(
 		else
 		{
 		    // dropping "g:" without setting "is_global" won't work in
-		    // Vim9script, put it back later
+		    // Vim9 script, put it back later
 		    prefix_g = TRUE;
 		    extra = 2;
 		}
@@ -5955,7 +5956,7 @@ defcompile_function(ufunc_T *ufunc, class_T *cl)
 	(void)compile_def_function(ufunc, FALSE, compile_type, NULL);
     else
 	smsg(_("Function %s%s%s does not need compiling"),
-				cl != NULL ? cl->class_name : (char_u *)"",
+				cl != NULL ? cl->class_name.string : (char_u *)"",
 				cl != NULL ? (char_u *)"." : (char_u *)"",
 				ufunc->uf_name);
 }
@@ -6095,7 +6096,7 @@ function_exists(char_u *name, int no_deref)
     return n;
 }
 
-#if defined(FEAT_PYTHON) || defined(FEAT_PYTHON3) || defined(PROTO)
+#if defined(FEAT_PYTHON) || defined(FEAT_PYTHON3)
     char_u *
 get_expanded_name(char_u *name, int check)
 {

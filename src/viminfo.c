@@ -41,7 +41,7 @@ typedef struct {
     int		bv_allocated;	// bv_string was allocated
 } bval_T;
 
-#if defined(FEAT_VIMINFO) || defined(PROTO)
+#if defined(FEAT_VIMINFO)
 
 static int  viminfo_errcnt;
 
@@ -1242,7 +1242,7 @@ viminfo_encoding(vir_T *virp)
     return viminfo_readline(virp);
 }
 
-#if defined(FEAT_EVAL) || defined(PROTO)
+#if defined(FEAT_EVAL)
 /*
  * Restore global vars that start with a capital from the viminfo file
  */
@@ -1907,9 +1907,9 @@ write_viminfo_registers(FILE *fp)
 
     for (i = 0; i < NUM_REGISTERS; i++)
     {
-#ifdef FEAT_CLIPBOARD
+#if defined(FEAT_CLIPBOARD) || defined(FEAT_CLIPBOARD_PROVIDER)
 	// Skip '*'/'+' register, we don't want them back next time
-	if (i == STAR_REGISTER || i == PLUS_REGISTER)
+	if (i == STAR_REGISTER || i == PLUS_REGISTER || i == REAL_PLUS_REGISTER)
 	    continue;
 #endif
 #ifdef FEAT_DND
