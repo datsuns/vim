@@ -124,7 +124,8 @@ frames_locked(void)
 /*
  * When the window layout cannot be changed give an error and return TRUE.
  * "cmd" indicates the action being performed and is used to pick the relevant
- * error message.
+ * error message.  When closing window(s) and the command isn't easy to know,
+ * passing CMD_SIZE will also work.
  */
     int
 window_layout_locked(enum CMD_index cmd)
@@ -2530,6 +2531,8 @@ close_windows(
 	if (wp->w_buffer == buf && (!keep_curwin || wp != curwin)
 		&& !(win_locked(wp) || wp->w_buffer->b_locked > 0))
 	{
+	    if (window_layout_locked(CMD_SIZE))
+		goto theend;  // Only give one error message.
 	    if (win_close(wp, FALSE) == FAIL)
 		// If closing the window fails give up, to avoid looping
 		// forever.
@@ -2551,6 +2554,8 @@ close_windows(
 		if (wp->w_buffer == buf
 		    && !(win_locked(wp) || wp->w_buffer->b_locked > 0))
 		{
+		    if (window_layout_locked(CMD_SIZE))
+			goto theend;  // Only give one error message.
 		    win_close_othertab(wp, FALSE, tp);
 
 		    // Start all over, the tab page may be closed and
@@ -2560,6 +2565,7 @@ close_windows(
 		}
     }
 
+theend:
     if (RedrawingDisabled > 0)
 	--RedrawingDisabled;
 
@@ -3015,15 +3021,10 @@ trigger_winclosed(win_T *win)
     recursive = FALSE;
 }
 
-/*
- * directly is TRUE if the window is closed by ':tabclose' or ':tabonly'.
- * This allows saving the session before closing multi-window tab.
- */
     void
-trigger_tabclosedpre(tabpage_T *tp, int directly)
+trigger_tabclosedpre(tabpage_T *tp)
 {
     static int	recursive = FALSE;
-    static int	skip = FALSE;
     tabpage_T	*ptp = curtab;
 
     // Quickly return when no TabClosedPre autocommands to be executed or
@@ -3031,19 +3032,8 @@ trigger_tabclosedpre(tabpage_T *tp, int directly)
     if (!has_tabclosedpre() || recursive)
 	return;
 
-    // Skip if the event have been triggered by ':tabclose' recently
-    if (skip)
-    {
-	skip = FALSE;
-	return;
-    }
-
     if (valid_tabpage(tp))
-    {
 	goto_tabpage_tp(tp, FALSE, FALSE);
-	if (directly)
-	    skip = TRUE;
-    }
     recursive = TRUE;
     window_layout_lock();
     apply_autocmds(EVENT_TABCLOSEDPRE, NULL, NULL, FALSE, NULL);
@@ -3051,10 +3041,10 @@ trigger_tabclosedpre(tabpage_T *tp, int directly)
     recursive = FALSE;
     // tabpage may have been modified or deleted by autocmds
     if (valid_tabpage(ptp))
-	// try to recover the tappage first
+	// try to recover the tabpage first
 	goto_tabpage_tp(ptp, FALSE, FALSE);
     else
-	// fall back to the first tappage
+	// fall back to the first tabpage
 	goto_tabpage_tp(first_tabpage, FALSE, FALSE);
 }
 
@@ -3420,6 +3410,10 @@ win_close_othertab(win_T *win, int free_buf, tabpage_T *tp)
     tabpage_T   *ptp = NULL;
     int		free_tp = FALSE;
 
+    // Commands that may call win_close_othertab() already check this, but
+    // check here again just in case.
+    if (window_layout_locked(CMD_SIZE))
+	return;
     // Get here with win->w_buffer == NULL when win_close() detects the tab
     // page changed.
     if (win_locked(win) || (win->w_buffer != NULL
@@ -3437,9 +3431,9 @@ win_close_othertab(win_T *win, int free_buf, tabpage_T *tp)
 	    return;
     }
 
-    if (tp->tp_firstwin == tp->tp_lastwin)
+    if (tp->tp_firstwin == tp->tp_lastwin && !tp->tp_did_tabclosedpre)
     {
-	trigger_tabclosedpre(tp, FALSE);
+	trigger_tabclosedpre(tp);
 	// autocmd may have freed the window already.
 	if (!win_valid_any_tab(win))
 	    return;
@@ -3462,6 +3456,8 @@ win_close_othertab(win_T *win, int free_buf, tabpage_T *tp)
 	{
 	    win->w_buffer = firstbuf;
 	    ++firstbuf->b_nwindows;
+	    if (win == curwin)
+		curbuf = curwin->w_buffer;
 	    win_init_empty(win);
 	}
 	return;

@@ -776,14 +776,23 @@ aucmd_abort:
 
     // Autocommands may have opened or closed windows for this buffer.
     // Decrement the count for the close we do here.
-    if (buf->b_nwindows > 0)
+    // Don't decrement b_nwindows if the buffer wasn't displayed in any window
+    // before calling buf_freeall().
+    if (nwindows > 0 && buf->b_nwindows > 0)
 	--buf->b_nwindows;
 
     /*
      * Remove the buffer from the list.
-     * Do not wipe out the buffer if it is used in a window.
+     * Do not wipe out the buffer if it is used in a window, or if autocommands
+     * wiped out all other buffers (unless when inside free_all_mem() where all
+     * buffers need to be freed and autocommands are blocked).
      */
-    if (wipe_buf && buf->b_nwindows <= 0)
+    if (wipe_buf && buf->b_nwindows <= 0
+			    && (buf->b_prev != NULL || buf->b_next != NULL
+#if defined(EXITFREE)
+				|| entered_free_all_mem
+#endif
+				))
     {
 	tabpage_T	*tp;
 	win_T		*wp;
@@ -1877,6 +1886,7 @@ set_curbuf(buf_T *buf, int action)
     prevbuf = curbuf;
     set_bufref(&prevbufref, prevbuf);
     set_bufref(&newbufref, buf);
+    int prev_nwindows = prevbuf->b_nwindows;
 
     // Autocommands may delete the current buffer and/or the buffer we want to
     // go to.  In those cases don't close the buffer.
@@ -1895,8 +1905,8 @@ set_curbuf(buf_T *buf, int action)
 	// autocommands may have opened a new window
 	// with prevbuf, grr
 	if (unload ||
-	    (last_winid != get_last_winid() &&
-	     strchr((char *)"wdu", prevbuf->b_p_bh[0]) != NULL))
+		(prev_nwindows <= 1 && last_winid != get_last_winid()
+		 && action == DOBUF_GOTO && !buf_hide(prevbuf)))
 	    close_windows(prevbuf, FALSE);
 #if defined(FEAT_EVAL)
 	if (bufref_valid(&prevbufref) && !aborting())
@@ -5255,17 +5265,12 @@ build_stl_str_hl(
 	{
 	    char_u  *end = out + outputlen;
 
-	    if (has_mbyte)
+	    n = 0;
+	    while (width >= maxwidth)
 	    {
-		n = 0;
-		while (width >= maxwidth)
-		{
-		    width -= ptr2cells(s + n);
-		    n += (*mb_ptr2len)(s + n);
-		}
+		width -= ptr2cells(s + n);
+		n += (*mb_ptr2len)(s + n);
 	    }
-	    else
-		n = width - maxwidth + 1;
 	    p = s + n;
 	    mch_memmove(s + 1, p, (size_t)(end - p) + 1);	// +1 for NUL
 	    end -= (size_t)(p - (s + 1));

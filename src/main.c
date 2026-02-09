@@ -689,9 +689,6 @@ vim_main2(void)
     if (!gui.in_use)
 #  endif
     {
-	sprintf(wayland_vim_special_mime, "application/x-vim-instance-%ld",
-		mch_get_pid());
-
 	if (wayland_init_connection(wayland_display_name) == OK)
 	{
 	    TIME_MSG("connected to Wayland display");
@@ -2184,7 +2181,7 @@ command_line_scan(mparm_T *parmp)
 		    usage();
 		else if (STRICMP(argv[0] + argv_idx, "version") == 0)
 		{
-		    Columns = 80;	// need to init Columns
+		    cmdline_width = Columns = 80;   // need to init Columns
 		    info_message = TRUE; // use mch_msg(), not mch_errmsg()
 # if defined(FEAT_GUI) && !defined(ALWAYS_USE_GUI) && !defined(VIMDLL)
 		    gui.starting = FALSE; // not starting GUI, will exit

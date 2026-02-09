@@ -4795,7 +4795,6 @@ _OnMouseWheel(HWND hwnd UNUSED, WPARAM wParam, LPARAM lParam, int horizontal)
 	update_screen(0);
 	setcursor();
 	out_flush();
-	return;
     }
 #endif
 

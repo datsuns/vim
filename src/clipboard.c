@@ -452,11 +452,12 @@ clip_auto_select(void)
     int
 clip_isautosel_star(void)
 {
-    return (
 # ifdef FEAT_GUI
-	    gui.in_use ? (vim_strchr(p_go, GO_ASEL) != NULL) :
+    if (gui.in_use)
+	return vim_strchr(p_go, GO_ASEL) != NULL
+	    && vim_strchr(p_go, GO_ASELPLUS) == NULL;
 # endif
-	    clip_autoselect_star);
+    return clip_autoselect_star;
 }
 
 /*
@@ -466,11 +467,11 @@ clip_isautosel_star(void)
     int
 clip_isautosel_plus(void)
 {
-    return (
 # ifdef FEAT_GUI
-	    gui.in_use ? (vim_strchr(p_go, GO_ASELPLUS) != NULL) :
+    if (gui.in_use)
+	return vim_strchr(p_go, GO_ASELPLUS) != NULL;
 # endif
-	    clip_autoselect_plus);
+    return clip_autoselect_plus;
 }
 
 
@@ -2676,7 +2677,7 @@ vwl_data_device_listener_event_selection(
     // There are two cases when sel->offer is NULL
     // 1. No one owns the selection
     // 2. We own the selection (we'll just access the register directly)
-    if (offer == NULL || offer->from_vim)
+    if (offer == NULL || sel->source != NULL)
     {
 	// Selection event is from us, so we are the source client. Therefore
 	// ignore it. Or the selection is cleared, so set sel->offer to NULL
@@ -3233,7 +3234,6 @@ clip_wl_own_selection(Clipboard_T *cbd)
     vwl_data_source_add_listener(sel->source, &vwl_data_source_listener, sel);
 
     // Advertise mime types
-    vwl_data_source_offer(sel->source, wayland_vim_special_mime);
     for (int i = 0; i < (int)ARRAY_LENGTH(supported_mimes); i++)
 	vwl_data_source_offer(sel->source, supported_mimes[i]);
 

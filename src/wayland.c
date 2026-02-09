@@ -234,7 +234,7 @@ vwl_log_handler(const char *fmt, va_list args)
 	return;
 
     vim_strncpy((char_u*)buf, (char_u*)prefix, len);
-    vim_vsnprintf(buf + len, 4096 - len, fmt, args);
+    vim_vsnprintf(buf + len, 512 - len, fmt, args);
 
     // Remove newline that libwayland puts
     buf[STRLEN(buf) - 1] = NUL;
@@ -1268,10 +1268,7 @@ static const struct zwp_primary_selection_source_v1_listener
 	    const char *mime_type) \
     { \
 	vwl_data_offer_T *self = data; \
-	if (STRCMP(mime_type, wayland_vim_special_mime) == 0) \
-	    self->from_vim = true; \
-	else if (!self->from_vim && \
-		self->listener->offer(self->data, self, mime_type)) \
+	if (self->listener->offer(self->data, self, mime_type)) \
 	{ \
 	    char *mime = (char *)vim_strsave((char_u *)mime_type); \
 	    if (ga_grow(&self->mime_types, 1) == FAIL) \

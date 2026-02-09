@@ -1871,7 +1871,7 @@ getcmdline_int(
 				// that occurs while typing a command should
 				// cause the command not to be executed.
 
-	if (stuff_empty() && typebuf.tb_len == 0)
+	if (ex_normal_busy == 0 && stuff_empty() && typebuf.tb_len == 0)
 	    // There is no pending input from sources other than user input, so
 	    // Vim is going to wait for the user to type a key.  Consider the
 	    // command line typed even if next key will trigger a mapping.
@@ -1994,7 +1994,7 @@ getcmdline_int(
 
 	int key_is_wc = (c == p_wc && KeyTyped) || c == p_wcm;
 	if ((cmdline_pum_active() || wild_menu_showing || did_wild_list)
-		&& !key_is_wc)
+		&& !key_is_wc && xpc.xp_numfiles > 0)
 	{
 	    // Ctrl-Y: Accept the current selection and close the popup menu.
 	    // Ctrl-E: cancel the cmdline popup menu and return the original
