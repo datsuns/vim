@@ -228,6 +228,7 @@
 #define PV_WFB		OPT_WIN(WV_WFB)
 #define PV_WFH		OPT_WIN(WV_WFH)
 #define PV_WFW		OPT_WIN(WV_WFW)
+#define PV_WHL		OPT_WIN(WV_WHL)
 #define PV_WRAP		OPT_WIN(WV_WRAP)
 #define PV_CRBIND	OPT_WIN(WV_CRBIND)
 #ifdef FEAT_CONCEAL
@@ -2518,6 +2519,14 @@ static struct vimoption options[] =
 			    (char_u *)NULL, PV_NONE, NULL, NULL,
 #endif
 			    {(char_u *)"", (char_u *)0L} SCTX_INIT},
+    {"statuslineopt"  ,"stlo",  P_STRING|P_VI_DEF|P_ALLOCED|P_RSTAT|P_MLE
+			    |P_ONECOMMA|P_COLON|P_NODUP,
+#ifdef FEAT_STL_OPT
+			    (char_u *)&p_stlo, PV_NONE, did_set_statuslineopt, expand_set_statuslineopt,
+#else
+			    (char_u *)NULL, PV_NONE, NULL, NULL,
+#endif
+			    {(char_u *)"", (char_u *)0L} SCTX_INIT},
     {"suffixes",    "su",   P_STRING|P_VI_DEF|P_ONECOMMA|P_NODUP,
 			    (char_u *)&p_su, PV_NONE, NULL, NULL,
 			    {(char_u *)".bak,~,.o,.h,.info,.swp,.obj",
@@ -2971,6 +2980,9 @@ static struct vimoption options[] =
 			    (char_u *)&p_wh, PV_NONE,
 			    did_set_winheight_helpheight, NULL,
 			    {(char_u *)1L, (char_u *)0L} SCTX_INIT},
+    {"winhighlight", "whl", P_STRING|P_VI_DEF|P_RALL|P_ONECOMMA|P_NODUP|P_COLON,
+			    (char_u *)VAR_WIN, PV_WHL, did_set_winhighlight, expand_set_winhighlight,
+			    {(char_u *)"", (char_u *)NULL} SCTX_INIT},
     {"winminheight", "wmh", P_NUM|P_VI_DEF,
 			    (char_u *)&p_wmh, PV_NONE, did_set_winminheight, NULL,
 			    {(char_u *)1L, (char_u *)0L} SCTX_INIT},

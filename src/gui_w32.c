@@ -8292,7 +8292,7 @@ gui_mch_tearoff(
     if (submenuWidth != 0)
     {
 	submenuWidth = GetTextWidth(hdc, (char_u *)TEAROFF_SUBMENU_LABEL,
-					  (int)STRLEN(TEAROFF_SUBMENU_LABEL));
+				  (int)STRLEN_LITERAL(TEAROFF_SUBMENU_LABEL));
 	textWidth += submenuWidth;
     }
     dlgwidth = GetTextWidthEnc(hdc, title, (int)STRLEN(title));
@@ -8415,7 +8415,7 @@ gui_mch_tearoff(
 	}
 	else
 	{
-	    len += (int)STRLEN(TEAROFF_SUBMENU_LABEL);
+	    len += (int)STRLEN_LITERAL(TEAROFF_SUBMENU_LABEL);
 	    menuID = (WORD)((long_u)(menu->submenu_id) | (DWORD)0x8000);
 	}
 
@@ -8440,7 +8440,7 @@ gui_mch_tearoff(
 	if (menu->children != NULL)
 	{
 	    STRCPY(text, TEAROFF_SUBMENU_LABEL);
-	    text += STRLEN(TEAROFF_SUBMENU_LABEL);
+	    text += STRLEN_LITERAL(TEAROFF_SUBMENU_LABEL);
 	}
 	else
 	{

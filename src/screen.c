@@ -111,26 +111,31 @@ conceal_check_cursor_line(int was_concealed)
 #endif
 
 /*
- * Get 'wincolor' attribute for window "wp".  If not set and "wp" is a popup
- * window then get the "Pmenu" highlight attribute.
+ * Get HLF_WIN attribute for window "wp".  If not set and "wp" is a popup window
+ * then get the "Pmenu" highlight attribute.
  */
     int
-get_wcr_attr(win_T *wp)
+get_win_attr(win_T *wp)
 {
-    int wcr_attr = 0;
+    int win_attr = wp->w_hlfwin_id;
 
-    if (*wp->w_p_wcr != NUL)
-	wcr_attr = syn_name2attr(wp->w_p_wcr);
+    if (win_attr != 0)
+    {
+	if (win_attr != -1)
+	    win_attr = syn_id2attr(win_attr);
+	else
+	    win_attr = 0;
+    }
 #ifdef FEAT_PROP_POPUP
     else if (WIN_IS_POPUP(wp))
     {
 	if (wp->w_popup_flags & POPF_INFO)
-	    wcr_attr = HL_ATTR(HLF_PSI);    // PmenuSel
+	    win_attr = HL_ATTR(HLF_PSI);    // PmenuSel
 	else
-	    wcr_attr = HL_ATTR(HLF_PNI);    // Pmenu
+	    win_attr = HL_ATTR(HLF_PNI);    // Pmenu
     }
 #endif
-    return wcr_attr;
+    return win_attr;
 }
 
 /*
@@ -184,9 +189,9 @@ win_draw_end(
 {
     int		n = 0;
     int		attr = HL_ATTR(hl);
-    int		wcr_attr = get_wcr_attr(wp);
+    int		win_attr = get_win_attr(wp);
 
-    attr = hl_combine_attr(wcr_attr, attr);
+    attr = hl_combine_attr(win_attr, attr);
 
     if (draw_margin)
     {
@@ -196,19 +201,19 @@ win_draw_end(
 	if (fdc > 0)
 	    // draw the fold column
 	    n = screen_fill_end(wp, ' ', ' ', n, fdc,
-		      row, endrow, hl_combine_attr(wcr_attr, HL_ATTR(HLF_FC)));
+		      row, endrow, hl_combine_attr(win_attr, HL_ATTR(HLF_FC)));
 #endif
 #ifdef FEAT_SIGNS
 	if (signcolumn_on(wp))
 	    // draw the sign column
 	    n = screen_fill_end(wp, ' ', ' ', n, 2,
-		      row, endrow, hl_combine_attr(wcr_attr, HL_ATTR(HLF_SC)));
+		      row, endrow, hl_combine_attr(win_attr, HL_ATTR(HLF_SC)));
 #endif
 	if ((wp->w_p_nu || wp->w_p_rnu)
 				  && vim_strchr(p_cpo, CPO_NUMCOL) == NULL)
 	    // draw the number column
 	    n = screen_fill_end(wp, ' ', ' ', n, number_width(wp) + 1,
-		       row, endrow, hl_combine_attr(wcr_attr, HL_ATTR(HLF_N)));
+		       row, endrow, hl_combine_attr(win_attr, HL_ATTR(HLF_N)));
     }
 
 #ifdef FEAT_RIGHTLEFT
@@ -583,12 +588,155 @@ screen_line(
 		redraw_this = TRUE;
 	}
 #endif
-	// Do not redraw if under the popup menu.
-	if (redraw_this && skip_for_popup(row, col + coloff))
-	    redraw_this = FALSE;
-	// Also skip the second cell for double-width characters.
+	// skip the second cell for double-width characters.
 	if (redraw_this && char_cells == 2 && skip_for_popup(row, col + coloff + 1))
 	    redraw_this = FALSE;
+	// Check if the character is occluded by a popup.
+	if (redraw_this && skip_for_popup(row, col + coloff))
+	{
+#ifdef FEAT_PROP_POPUP
+	    // For transparent popup cells, update the background character
+	    // so it shows through the popup.
+	    if (screen_opacity_popup && screen_opacity_popup->w_popup_blend > 0)
+	    {
+		ScreenLines[off_to] = ScreenLines[off_from];
+		ScreenAttrs[off_to] = ScreenAttrs[off_from];
+		if (enc_utf8)
+		{
+		    ScreenLinesUC[off_to] = ScreenLinesUC[off_from];
+		    if (ScreenLinesUC[off_from] != 0)
+		    {
+			for (int i = 0; i < Screen_mco; ++i)
+			ScreenLinesC[i][off_to] = ScreenLinesC[i][off_from];
+		    }
+		}
+		if (char_cells == 2)
+		{
+		    ScreenLines[off_to + 1] = ScreenLines[off_from + 1];
+		    ScreenAttrs[off_to + 1] = ScreenAttrs[off_from];
+		}
+		if (enc_dbcs == DBCS_JPNU) // Copilot's suggestion for DBCS_JPNU
+		    ScreenLines2[off_to] = ScreenLines2[off_from];
+
+		if (enc_dbcs != 0 && char_cells == 2)
+		    screen_char_2(off_to, row, col + coloff);
+		else
+		    screen_char(off_to, row, col + coloff);
+	    }
+	    else
+#endif
+		redraw_this = FALSE;
+	}
+
+#ifdef FEAT_PROP_POPUP
+	// For popup with opacity windows: if drawing a space, show the
+	// underlying character with the popup's attributes blended in.
+	int opacity_blank = FALSE;
+	// Check if the popup is drawing a space and the background is the
+	// second cell of a wide character. Skip drawing to preserve the
+	// wide character that was drawn in the previous cell.
+	if (screen_opacity_popup != NULL
+		&& (flags & SLF_POPUP)
+		&& ScreenLines[off_from] == ' '
+		&& (!enc_utf8 || ScreenLinesUC[off_from] == 0)
+		&& ScreenLines[off_to] == 0
+		&& (!enc_utf8 || ScreenLinesUC[off_to] == 0)
+		&& off_to > 0
+		&& enc_utf8 && ScreenLinesUC[off_to - 1] != 0
+		&& utf_char2cells(ScreenLinesUC[off_to - 1]) == 2)
+	{
+	    // This is the second cell of a wide character. Don't overwrite it.
+	    opacity_blank = TRUE;
+	    redraw_this = FALSE;
+	}
+	else if (screen_opacity_popup != NULL
+		&& (flags & SLF_POPUP)
+		&& ScreenLines[off_from] == ' '
+		&& (!enc_utf8 || ScreenLinesUC[off_from] == 0)
+		&& (ScreenLines[off_to] != 0
+		    || (enc_utf8 && ScreenLinesUC[off_to] != 0)))
+	{
+	    int bg_char_cells = 1;
+	    if (enc_utf8 && ScreenLinesUC[off_to] != 0)
+		bg_char_cells = utf_char2cells(ScreenLinesUC[off_to]);
+
+	    // For wide background character, check if the next popup cell
+	    // is also a space.  If not, the wide char would be partially
+	    // covered by a popup character, so don't show it.
+	    if (bg_char_cells == 2)
+	    {
+		if (col + 1 >= endcol || off_from + 1 >= max_off_from
+						   || off_to + 1 >= max_off_to)
+		{
+		    // Wide char doesn't fit at the edge.  Replace with a
+		    // blended space so opacity is still applied.
+		    int char_attr = ScreenAttrs[off_from];
+		    int popup_attr = get_win_attr(screen_opacity_popup);
+		    int combined = hl_combine_attr(popup_attr, char_attr);
+		    int blend = screen_opacity_popup->w_popup_blend;
+		    ScreenLines[off_to] = ' ';
+		    if (enc_utf8)
+			ScreenLinesUC[off_to] = 0;
+		    ScreenAttrs[off_to] = hl_blend_attr(ScreenAttrs[off_to],
+						    combined, blend, TRUE);
+		    screen_char(off_to, row, col + coloff);
+		    opacity_blank = TRUE;
+		    redraw_this = FALSE;
+		    goto skip_opacity;
+		}
+		int next_off_from = off_from + 1;
+		if (!(ScreenLines[next_off_from] == ' '
+			&& (!enc_utf8 || ScreenLinesUC[next_off_from] == 0)))
+		{
+		    // Next cell is not a space, don't show the wide char.
+		    goto skip_opacity;
+		}
+	    }
+
+	    opacity_blank = TRUE;
+	    // Keep the underlying character and blend its foreground color
+	    // from popup background color to original color.
+	    // Combine the popup window color with the character's own
+	    // attribute (e.g. match highlight) so that its background
+	    // color is preserved on blank cells.
+	    int char_attr = ScreenAttrs[off_from];
+	    int popup_attr = get_win_attr(screen_opacity_popup);
+	    int combined = hl_combine_attr(popup_attr, char_attr);
+	    int blend = screen_opacity_popup->w_popup_blend;
+	    ScreenAttrs[off_to] = hl_blend_attr(ScreenAttrs[off_to],
+						combined, blend, TRUE);
+	    screen_char(off_to, row, col + coloff);
+	    // For wide background character, also update the second cell.
+	    if (bg_char_cells == 2)
+		ScreenAttrs[off_to + 1] = ScreenAttrs[off_to];
+	    redraw_this = FALSE;
+	}
+	// When a popup space overlaps the second half of a destroyed wide
+	// character (e.g., the first half was overwritten by popup content),
+	// the underlying cell has ScreenLines == 0 and no valid wide char
+	// at the previous cell.  Apply opacity blending so that the cell
+	// matches surrounding opacity-blended cells instead of appearing
+	// as a solid-colored gap.
+	else if (screen_opacity_popup != NULL
+		&& (flags & SLF_POPUP)
+		&& ScreenLines[off_from] == ' '
+		&& (!enc_utf8 || ScreenLinesUC[off_from] == 0)
+		&& ScreenLines[off_to] == 0
+		&& (!enc_utf8 || ScreenLinesUC[off_to] == 0))
+	{
+	    int char_attr = ScreenAttrs[off_from];
+	    int popup_attr = get_win_attr(screen_opacity_popup);
+	    int combined = hl_combine_attr(popup_attr, char_attr);
+	    int blend = screen_opacity_popup->w_popup_blend;
+	    ScreenLines[off_to] = ' ';
+	    ScreenAttrs[off_to] = hl_blend_attr(ScreenAttrs[off_to],
+						combined, blend, TRUE);
+	    screen_char(off_to, row, col + coloff);
+	    opacity_blank = TRUE;
+	    redraw_this = FALSE;
+	}
+skip_opacity:
+#endif
 
 	if (redraw_this)
 	{
@@ -690,7 +838,11 @@ screen_line(
 		}
 	    }
 	    if (char_cells == 2)
+	    {
 		ScreenLines[off_to + 1] = ScreenLines[off_from + 1];
+		if (enc_utf8)
+		    ScreenLinesUC[off_to + 1] = 0;
+	    }
 
 #if defined(FEAT_GUI) || defined(UNIX)
 	    // The bold trick makes a single column of pixels appear in the
@@ -723,11 +875,27 @@ screen_line(
 		redraw_next = TRUE;
 #endif
 	    ScreenAttrs[off_to] = ScreenAttrs[off_from];
+#ifdef FEAT_PROP_POPUP
+	    // For popup with opacity text: blend background with default (0)
+	    if (screen_opacity_popup != NULL
+		    && (flags & SLF_POPUP)
+		    && screen_opacity_popup->w_popup_blend > 0)
+	    {
+		int char_attr = ScreenAttrs[off_from];
+		int popup_attr = get_win_attr(screen_opacity_popup);
+		int blend = screen_opacity_popup->w_popup_blend;
+		// Combine popup window color with the character's own
+		// attribute (e.g. syntax highlighting) so that the
+		// character's foreground color is preserved.
+		int combined = hl_combine_attr(popup_attr, char_attr);
+		ScreenAttrs[off_to] = hl_blend_attr(0, combined, blend, FALSE);
+	    }
+#endif
 
 	    // For simplicity set the attributes of second half of a
 	    // double-wide character equal to the first half.
 	    if (char_cells == 2)
-		ScreenAttrs[off_to + 1] = ScreenAttrs[off_from];
+		ScreenAttrs[off_to + 1] = ScreenAttrs[off_to];
 
 	    if (enc_dbcs != 0 && char_cells == 2)
 		screen_char_2(off_to, row, col + coloff);
@@ -738,7 +906,7 @@ screen_line(
 #ifdef FEAT_GUI
 		&& !gui.in_use
 #endif
-		&& col + coloff > 0)
+		&& col + coloff > 0 && off_to > 0)
 	{
 	    if (ScreenAttrs[off_to] == ScreenAttrs[off_to - 1])
 	    {
@@ -752,9 +920,14 @@ screen_line(
 		screen_stop_highlight();
 	}
 
-	ScreenCols[off_to] = ScreenCols[off_from];
-	if (char_cells == 2)
-	    ScreenCols[off_to + 1] = ScreenCols[off_from + 1];
+#ifdef FEAT_PROP_POPUP
+	if (!opacity_blank)
+#endif
+	{
+	    ScreenCols[off_to] = ScreenCols[off_from];
+	    if (char_cells == 2)
+		ScreenCols[off_to + 1] = ScreenCols[off_from + 1];
+	}
 
 	off_to += char_cells;
 	off_from += char_cells;
@@ -1028,6 +1201,7 @@ win_redr_custom(
     int		width;
     int		n;
     int		len;
+    int		stlh_cnt;
     int		fillchar;
     char_u	buf[MAXPATHL];
     char_u	*stl;
@@ -1118,64 +1292,80 @@ win_redr_custom(
     ewp = wp == NULL ? curwin : wp;
     p_crb_save = ewp->w_p_crb;
     ewp->w_p_crb = FALSE;
+    stlh_cnt = draw_ruler || stl == p_tal ? 1 : wp->w_status_height;
 
     // Make a copy, because the statusline may include a function call that
     // might change the option value and free the memory.
     stl = vim_strsave(stl);
-    width = build_stl_str_hl(ewp, buf, sizeof(buf),
-				(stl == NULL) ? (char_u *)"" : stl, opt_name, opt_scope,
-				fillchar, maxwidth, &hltab, &tabtab);
-    vim_free(stl);
+    char_u *stl_tmp = (stl == NULL) ? (char_u *)"" : stl;
+    int col_save = col;
+
+    for (int i = 0; i < stlh_cnt; i++)
+    {
+	col = col_save;
+	buf[0] = NUL;
+	width = build_stl_str_hl_mline(ewp, buf, sizeof(buf),
+			&stl_tmp,
+			opt_name, opt_scope,
+			fillchar, maxwidth, &hltab, &tabtab);
+
+	// Make all characters printable.
+	p = transstr(buf);
+	if (p != NULL)
+	{
+	    len = vim_snprintf((char *)buf, sizeof(buf), "%s", p);
+	    vim_free(p);
+	}
+	else
+	    len = (int)STRLEN(buf);
+
+	// fill up with "fillchar"
+	while (width < maxwidth && len < (int)sizeof(buf) - 1)
+	{
+	    len += (*mb_char2bytes)(fillchar, buf + len);
+	    ++width;
+	}
+	buf[len] = NUL;
+
+	/*
+	 * Draw each snippet with the specified highlighting.
+	 */
+	curattr = attr;
+	p = buf;
+	for (n = 0; hltab[n].start != NULL; n++)
+	{
+	    len = (int)(hltab[n].start - p);
+	    screen_puts_len(p, len, row + i, col, curattr);
+	    col += vim_strnsize(p, len);
+	    p = hltab[n].start;
+
+	    if (hltab[n].userhl == 0)
+		curattr = attr;
+	    else if (hltab[n].userhl < 0)
+		curattr = syn_id2attr(-hltab[n].userhl);
+# ifdef FEAT_TERMINAL
+	    else if (wp != NULL && wp != curwin && bt_terminal(wp->w_buffer)
+						    && wp->w_status_height != 0)
+		curattr = highlight_stltermnc[hltab[n].userhl - 1];
+	    else if (wp != NULL && bt_terminal(wp->w_buffer)
+						    && wp->w_status_height != 0)
+		curattr = highlight_stlterm[hltab[n].userhl - 1];
+# endif
+	    else if (wp != NULL && wp != curwin && wp->w_status_height != 0)
+		curattr = highlight_stlnc[hltab[n].userhl - 1];
+	    else
+		curattr = highlight_user[hltab[n].userhl - 1];
+	}
+	screen_puts(p, row + i, col, curattr);
+    }
     ewp->w_p_crb = p_crb_save;
 
-    // Make all characters printable.
-    p = transstr(buf);
-    if (p != NULL)
-    {
-	len = vim_snprintf((char *)buf, sizeof(buf), "%s", p);
-	vim_free(p);
-    }
-    else
-	len = (int)STRLEN(buf);
-
-    // fill up with "fillchar"
-    while (width < maxwidth && len < (int)sizeof(buf) - 1)
-    {
-	len += (*mb_char2bytes)(fillchar, buf + len);
-	++width;
-    }
-    buf[len] = NUL;
-
-    /*
-     * Draw each snippet with the specified highlighting.
-     */
-    curattr = attr;
-    p = buf;
-    for (n = 0; hltab[n].start != NULL; n++)
-    {
-	len = (int)(hltab[n].start - p);
-	screen_puts_len(p, len, row, col, curattr);
-	col += vim_strnsize(p, len);
-	p = hltab[n].start;
-
-	if (hltab[n].userhl == 0)
-	    curattr = attr;
-	else if (hltab[n].userhl < 0)
-	    curattr = syn_id2attr(-hltab[n].userhl);
-# ifdef FEAT_TERMINAL
-	else if (wp != NULL && wp != curwin && bt_terminal(wp->w_buffer)
-						   && wp->w_status_height != 0)
-	    curattr = highlight_stltermnc[hltab[n].userhl - 1];
-	else if (wp != NULL && bt_terminal(wp->w_buffer)
-						   && wp->w_status_height != 0)
-	    curattr = highlight_stlterm[hltab[n].userhl - 1];
-# endif
-	else if (wp != NULL && wp != curwin && wp->w_status_height != 0)
-	    curattr = highlight_stlnc[hltab[n].userhl - 1];
-	else
-	    curattr = highlight_user[hltab[n].userhl - 1];
-    }
-    screen_puts(p, row, col, curattr);
+    // Note: In the loop, build_stl_str_hl_mline() may replace stl_tmp with
+    // a newly allocated buffer (when "%!" evaluation occurs), freeing the
+    // original "stl" internally.  After the loop, stl_tmp must be freed
+    // instead of stl, as it holds the current buffer ownership.
+    if (stl != NULL)
+	vim_free(stl_tmp);
 
     if (wp == NULL)
     {
@@ -1339,11 +1529,14 @@ screen_puts_len(
 #endif
 	    && mb_fix_col(col, row) != col)
     {
+	// Keep the original attribute to preserve background color
+	// when drawing over popup windows.
 	if (!skip_for_popup(row, col - 1))
 	{
 	    ScreenLines[off - 1] = ' ';
-	    ScreenAttrs[off - 1] = 0;
-	    if (enc_utf8)
+	    if (enc_dbcs == DBCS_JPNU)
+		ScreenAttrs[off - 1] = 0;
+	    else if (enc_utf8)
 	    {
 		ScreenLinesUC[off - 1] = 0;
 		ScreenLinesC[0][off - 1] = 0;
@@ -1567,7 +1760,6 @@ start_search_hl(void)
 
     end_search_hl();  // just in case it wasn't called before
     last_pat_prog(&screen_search_hl.rm);
-    screen_search_hl.attr = HL_ATTR(HLF_L);
 }
 
 /*
@@ -2206,9 +2398,17 @@ screen_fill(
 	    // double wide-char clear out the right half.  Only needed in a
 	    // terminal.
 	    if (start_col > 0 && mb_fix_col(start_col, row) != start_col)
-		screen_puts_len((char_u *)" ", 1, row, start_col - 1, 0);
+	    {
+		// start_col is the right half, clear the left half
+		int left_attr = ScreenAttrs[LineOffset[row] + start_col - 1];
+		screen_puts_len((char_u *)" ", 1, row, start_col - 1, left_attr);
+	    }
 	    if (end_col < screen_Columns && mb_fix_col(end_col, row) != end_col)
-		screen_puts_len((char_u *)" ", 1, row, end_col, 0);
+	    {
+		// end_col is the right half of a wide char, preserve its attribute
+		int right_attr = ScreenAttrs[LineOffset[row] + end_col];
+		screen_puts_len((char_u *)" ", 1, row, end_col, right_attr);
+	    }
 	}
 	/*
 	 * Try to use delete-line termcap code, when no attributes or in a
@@ -2276,6 +2476,51 @@ screen_fill(
 		    // Skip if under a(nother) popup.
 		    && !skip_for_popup(row, col))
 	    {
+#ifdef FEAT_PROP_POPUP
+		// For popup with opacity: show underlying character with
+		// popup's background color applied.
+		if (screen_opacity_popup != NULL && c == ' ')
+		{
+		    // Skip if background is the second cell of a wide character.
+		    // Check if previous cell is a wide character.
+		    if (ScreenLines[off] == 0
+			    && off > 0
+			    && enc_utf8 && ScreenLinesUC[off - 1] != 0
+			    && utf_char2cells(ScreenLinesUC[off - 1]) == 2)
+			goto next_col;
+		}
+		if (screen_opacity_popup != NULL && c == ' '
+						       && ScreenLines[off] != 0)
+		{
+		    int bg_char_cells = 1;
+		    if (enc_utf8 && ScreenLinesUC[off] != 0)
+			bg_char_cells = utf_char2cells(ScreenLinesUC[off]);
+
+		    // For wide background character, check if the next cell
+		    // is also being filled with space.  If not, the wide char
+		    // would be partially covered, so don't show it.
+		    if (bg_char_cells == 2)
+		    {
+			if (col + 1 >= end_col)
+			    // At the edge, skip wide char.
+			    goto skip_opacity_fill;
+			// In screen_fill, we're filling with 'c' which is ' '.
+			// The next cell will also be filled with c2 (usually ' ').
+			// If c2 is not space, skip the wide char.
+			if (c2 != ' ')
+			    goto skip_opacity_fill;
+		    }
+
+		    int popup_attr = get_win_attr(screen_opacity_popup);
+		    int blend = screen_opacity_popup->w_popup_blend;
+		    // Blend both foreground and background for padding area
+		    ScreenAttrs[off] = hl_blend_attr(ScreenAttrs[off],
+							popup_attr, blend, TRUE);
+		    screen_char(off, row, col);
+		    goto next_col;
+		}
+skip_opacity_fill:
+#endif
 #if defined(FEAT_GUI) || defined(UNIX)
 		// The bold trick may make a single row of pixels appear in
 		// the next character.  When a bold character is removed, the
@@ -2316,6 +2561,9 @@ screen_fill(
 		if (!did_delete || c != ' ')
 		    screen_char(off, row, col);
 	    }
+#ifdef FEAT_PROP_POPUP
+next_col:
+#endif
 	    ScreenCols[off] = -1;
 	    ++off;
 	    if (col == start_col)
@@ -4323,9 +4571,9 @@ draw_tabline(void)
     int		modified;
     int		c;
     int		len;
-    int		attr_sel = HL_ATTR(HLF_TPS);
-    int		attr_nosel = HL_ATTR(HLF_TP);
-    int		attr_fill = HL_ATTR(HLF_TPF);
+    int		attr_sel;
+    int		attr_nosel = 0;
+    int		attr_fill = 0;
     char_u	*p;
     int		room;
     int		use_sep_chars = (t_colors < 8
@@ -4336,6 +4584,7 @@ draw_tabline(void)
 					    && !p_tgc
 #endif
 					    );
+    bool	override_success;
 
 #if defined(FEAT_TABPANEL)
     col = firstwin->w_wincol;
@@ -4373,12 +4622,20 @@ draw_tabline(void)
 	if (tabwidth < 6)
 	    tabwidth = 6;
 
-	attr = attr_nosel;
 	tabcount = 0;
 	for (tp = first_tabpage; tp != NULL && col < Columns - 4;
 							     tp = tp->tp_next)
 	{
 	    scol = col;
+
+	    override_success = push_highlight_overrides(
+		    tp->tp_curwin->w_hl, tp->tp_curwin->w_hl_len);
+
+	    // Update them each time since highlight override might change them.
+	    attr_sel = HL_ATTR(HLF_TPS);
+	    attr_nosel = HL_ATTR(HLF_TP);
+	    attr_fill = HL_ATTR(HLF_TPF);
+	    attr = attr_nosel;
 
 	    if (tp->tp_topframe == topframe)
 		attr = attr_sel;
@@ -4461,6 +4718,9 @@ draw_tabline(void)
 	    ++tabcount;
 	    while (scol < col)
 		TabPageIdxs[scol++] = tabcount;
+
+	    if (override_success)
+		pop_highlight_overrides();
 	}
 
 	if (use_sep_chars)
@@ -4766,6 +5026,7 @@ static struct charstab lcstab[] =
     CHARSTAB_ENTRY(&lcs_chars.prec,	    "precedes"),
     CHARSTAB_ENTRY(&lcs_chars.space,	    "space"),
     CHARSTAB_ENTRY(&lcs_chars.tab2,	    "tab"),
+    CHARSTAB_ENTRY(&lcs_chars.leadtab2,	    "leadtab"),
     CHARSTAB_ENTRY(&lcs_chars.trail,	    "trail"),
     CHARSTAB_ENTRY(&lcs_chars.lead,	    "lead"),
 #ifdef FEAT_CONCEAL
@@ -4827,6 +5088,8 @@ set_chars_option(win_T *wp, char_u *value, int is_listchars, int apply,
     // first round: check for valid value, second round: assign values
     for (round = 0; round <= (apply ? 1 : 0); ++round)
     {
+	int has_tab = FALSE, has_leadtab = FALSE;
+
 	if (round > 0)
 	{
 	    // After checking that the value is valid: set defaults.
@@ -4837,6 +5100,8 @@ set_chars_option(win_T *wp, char_u *value, int is_listchars, int apply,
 			*(tab[i].cp) = NUL;
 		lcs_chars.tab1 = NUL;
 		lcs_chars.tab3 = NUL;
+		lcs_chars.leadtab1 = NUL;
+		lcs_chars.leadtab3 = NUL;
 
 		if (multispace_len > 0)
 		{
@@ -4972,7 +5237,8 @@ set_chars_option(win_T *wp, char_u *value, int is_listchars, int apply,
 		    return field_value_err(errbuf, errbuflen,
 					 e_wrong_character_width_for_field_str,
 					 tab[i].name.string);
-		if (tab[i].cp == &lcs_chars.tab2)
+		if (tab[i].cp == &lcs_chars.tab2 ||
+		    tab[i].cp == &lcs_chars.leadtab2)
 		{
 		    if (*s == NUL)
 			return field_value_err(errbuf, errbuflen,
@@ -4991,6 +5257,10 @@ set_chars_option(win_T *wp, char_u *value, int is_listchars, int apply,
 					 e_wrong_character_width_for_field_str,
 					 tab[i].name.string);
 		    }
+		    if (tab[i].cp == &lcs_chars.tab2)
+			has_tab = TRUE;
+		    else  // tab[i].cp == &lcs_chars.leadtab2
+			has_leadtab = TRUE;
 		}
 
 		if (*s == ',' || *s == NUL)
@@ -5003,9 +5273,14 @@ set_chars_option(win_T *wp, char_u *value, int is_listchars, int apply,
 			    lcs_chars.tab2 = c2;
 			    lcs_chars.tab3 = c3;
 			}
+			else if (tab[i].cp == &lcs_chars.leadtab2)
+			{
+			    lcs_chars.leadtab1 = c1;
+			    lcs_chars.leadtab2 = c2;
+			    lcs_chars.leadtab3 = c3;
+			}
 			else if (tab[i].cp != NULL)
 			    *(tab[i].cp) = c1;
-
 		    }
 		    p = s;
 		    break;
@@ -5022,6 +5297,9 @@ set_chars_option(win_T *wp, char_u *value, int is_listchars, int apply,
 	    if (*p == ',')
 		++p;
 	}
+
+	if (is_listchars && has_leadtab && !has_tab)
+	    return e_leadtab_requires_tab;
     }
 
     if (apply)

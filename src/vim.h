@@ -712,6 +712,7 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 #define POPF_INFO	0x200	// used for info of popup menu
 #define POPF_INFO_MENU	0x400	// align info popup with popup menu
 #define POPF_POSINVERT	0x800	// vertical position can be inverted
+#define POPF_OPACITY 0x1000	// popup has opacity/transparency setting
 
 // flags used in w_popup_handled
 #define POPUP_HANDLED_1	    0x01    // used by mouse_find_win()
@@ -1476,6 +1477,7 @@ enum auto_event
     EVENT_SAFESTATE,		// going to wait for a character
     EVENT_SAFESTATEAGAIN,	// still waiting for a character
     EVENT_SESSIONLOADPOST,	// after loading a session file
+    EVENT_SESSIONLOADPRE,	// before loading a session file
     EVENT_SESSIONWRITEPOST,	// after writing a session file
     EVENT_SHELLCMDPOST,		// after ":!cmd"
     EVENT_SHELLFILTERPOST,	// after ":1,2!cmd", ":w !cmd", ":r !cmd".
@@ -1598,6 +1600,7 @@ typedef enum
     , HLF_TPLS	    // tabpanel selected
     , HLF_TPLF	    // tabpanel filler
     , HLF_PRI	    // "preinsert" in 'completeopt'
+    , HLF_WIN	    // window colour
     , HLF_COUNT	    // MUST be the last one
 } hlf_T;
 
@@ -1610,7 +1613,7 @@ typedef enum
 		  '+', '=', 'k', '<','[', ']', '{', '}', 'x', 'X', 'j', 'H', \
 		  '*', '#', '_', '!', '.', 'o', 'q', \
 		  'z', 'Z', 'g', \
-		  '%', '^', '&', 'I'}
+		  '%', '^', '&', 'I', '('}
 
 /*
  * Values for behaviour in spell_move_to
@@ -1697,7 +1700,8 @@ typedef UINT32_TYPEDEF UINT32_T;
 #define MIN_COLUMNS	12	// minimal columns for screen
 #define MIN_LINES	2	// minimal lines for screen
 #define MIN_CMDHEIGHT	1	// minimal height for command line
-#define STATUS_HEIGHT	1	// height of a status line under a window
+#define STATUS_HEIGHT	1	// default height of a status line under a
+				// window
 #ifdef FEAT_MENU		// height of a status line under a window
 # define WINBAR_HEIGHT(wp)	(wp)->w_winbar_height
 # define VISIBLE_HEIGHT(wp)	((wp)->w_height + (wp)->w_winbar_height)
@@ -2455,6 +2459,19 @@ typedef enum {
     ESTACK_STACK,
     ESTACK_SCRIPT,
 } estack_arg_T;
+
+// For temporarily backward compatibility, to be removed soon.
+#define ENABLE_STL_MODE_MULTI_NL
+
+// Argument for build_stl_str_hl_local().
+typedef enum {
+    STL_MODE_SINGLE,	    // Does not accept line breaks "%@"
+    STL_MODE_MULTI,	    // Accept line breaks "%@"
+    STL_MODE_GET_RENDERED_HEIGHT,   // Just get stl rendered height
+#ifdef ENABLE_STL_MODE_MULTI_NL
+    STL_MODE_MULTI_NL,	    // Accept line breaks "%@" and "\n"
+#endif
+} stl_mode_T;
 
 // Return value of match_keyprotocol()
 typedef enum {

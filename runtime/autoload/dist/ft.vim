@@ -3,7 +3,7 @@ vim9script
 # Vim functions for file type detection
 #
 # Maintainer:		The Vim Project <https://github.com/vim/vim>
-# Last Change:		2026 Feb 06
+# Last Change:		2026 Feb 24
 # Former Maintainer:	Bram Moolenaar <Bram@vim.org>
 
 # These functions are moved here from runtime/filetype.vim to make startup
@@ -1832,6 +1832,8 @@ const ft_from_ext = {
   "tlh": "cpp",
   # Cascading Style Sheets
   "css": "css",
+  # Common Expression Language (CEL) - https://cel.dev
+  "cel": "cel",
   # Century Term Command Scripts (*.cmd too)
   "con": "cterm",
   # ChordPro
@@ -2380,6 +2382,8 @@ const ft_from_ext = {
   # N1QL
   "n1ql": "n1ql",
   "nql": "n1ql",
+  # Neon
+  "neon": "neon",
   # NetLinx
   "axs": "netlinx",
   "axi": "netlinx",
@@ -2569,6 +2573,9 @@ const ft_from_ext = {
   "rakumod": "raku",
   "rakudoc": "raku",
   "rakutest": "raku",
+  # Razor
+  "cshtml": "razor",
+  "razor": "razor",
   # Renderman Interface Bytestream
   "rib": "rib",
   # Rego Policy Language
@@ -3012,6 +3019,9 @@ const ft_from_ext = {
   "raml": "raml",
   # YANG
   "yang": "yang",
+  # YARA, YARA-X
+  "yara": "yara",
+  "yar": "yara",
   # Yuck
   "yuck": "yuck",
   # Zimbu

@@ -2012,14 +2012,22 @@ str2special(
     void
 str2specialbuf(char_u *sp, char_u *buf, int len)
 {
-    char_u	*s;
+    char_u     *s;
+    size_t     buf_len = 0;
+    size_t     s_len;
 
     *buf = NUL;
     while (*sp)
     {
 	s = str2special(&sp, FALSE, FALSE);
-	if ((int)(STRLEN(s) + STRLEN(buf)) < len)
-	    STRCAT(buf, s);
+	s_len = STRLEN(s);
+	if (buf_len + s_len < (size_t)len)
+	{
+	    STRCPY(buf + buf_len, s);
+	    buf_len += s_len;
+	}
+	else
+	    break;
     }
 }
 
@@ -2058,7 +2066,8 @@ msg_prt_line(char_u *s, int list)
 	}
 	// find end of leading whitespace
 	if (curwin->w_lcs_chars.lead
-				 || curwin->w_lcs_chars.leadmultispace != NULL)
+				 || curwin->w_lcs_chars.leadmultispace != NULL
+				 || curwin->w_lcs_chars.leadtab1 != NUL)
 	{
 	    lead = s;
 	    while (VIM_ISWHITE(lead[0]))
@@ -2138,11 +2147,22 @@ msg_prt_line(char_u *s, int list)
 		}
 		else
 		{
-		    c = (n_extra == 0 && curwin->w_lcs_chars.tab3)
-						? curwin->w_lcs_chars.tab3
-						: curwin->w_lcs_chars.tab1;
-		    c_extra = curwin->w_lcs_chars.tab2;
-		    c_final = curwin->w_lcs_chars.tab3;
+		    int lcs_tab1 = curwin->w_lcs_chars.tab1;
+		    int lcs_tab2 = curwin->w_lcs_chars.tab2;
+		    int lcs_tab3 = curwin->w_lcs_chars.tab3;
+
+		    // check if leadtab is set in 'listchars'
+		    if (lead != NULL && s <= lead
+					&& curwin->w_lcs_chars.leadtab1 != NUL)
+		    {
+			lcs_tab1 = curwin->w_lcs_chars.leadtab1;
+			lcs_tab2 = curwin->w_lcs_chars.leadtab2;
+			lcs_tab3 = curwin->w_lcs_chars.leadtab3;
+		    }
+
+		    c = (n_extra == 0 && lcs_tab3) ? lcs_tab3 : lcs_tab1;
+		    c_extra = lcs_tab2;
+		    c_final = lcs_tab3;
 		    attr = HL_ATTR(HLF_8);
 		}
 	    }

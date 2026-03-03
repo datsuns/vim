@@ -1601,8 +1601,30 @@ inside_block(exarg_T *eap)
     cstack_T	*cstack = eap->cstack;
     int		i;
 
+    // Control flow commands handle '|' themselves and must not be treated
+    // as if inside a block even when they are - otherwise '|' separators
+    // in "try | catch | endtry" etc. would not be recognized.
+    switch (eap->cmdidx)
+    {
+	case CMD_if:
+	case CMD_elseif:
+	case CMD_else:
+	case CMD_endif:
+	case CMD_while:
+	case CMD_endwhile:
+	case CMD_for:
+	case CMD_endfor:
+	case CMD_try:
+	case CMD_catch:
+	case CMD_finally:
+	case CMD_endtry:
+	    return FALSE;
+	default:
+	    break;
+    }
+
     for (i = 0; i <= cstack->cs_idx; ++i)
-	if (cstack->cs_flags[cstack->cs_idx] & CSF_BLOCK)
+	if (cstack->cs_flags[i] & CSF_BLOCK)
 	    return TRUE;
     return FALSE;
 }
