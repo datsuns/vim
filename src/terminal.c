@@ -2172,7 +2172,7 @@ for_all_windows_and_curwin(win_T **wp, int *did_curwin)
  * Terminal-Normal mode.
  * When "redraw" is TRUE redraw the windows that show the terminal.
  */
-    static void
+    void
 may_move_terminal_to_buffer(term_T *term, int redraw)
 {
     if (term->tl_vterm == NULL)
@@ -7133,6 +7133,15 @@ conpty_term_and_job_init(
 	goto failed;
 
     term->tl_siex.StartupInfo.cb = sizeof(term->tl_siex);
+
+    // Explicitly invalidate std handles to prevent inheritance of
+    // the debugger's stdout (e.g., in Visual Studio debugging sessions),
+    // which could cause job output to go to the debugger instead of
+    // the intended ConPTY, even with bInheritHandles set to FALSE in CreateProcess.
+    term->tl_siex.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    term->tl_siex.StartupInfo.hStdInput = INVALID_HANDLE_VALUE;
+    term->tl_siex.StartupInfo.hStdOutput = INVALID_HANDLE_VALUE;
+    term->tl_siex.StartupInfo.hStdError = INVALID_HANDLE_VALUE;
 
     // Set up pipe inheritance safely: Vista or later.
     pInitializeProcThreadAttributeList(NULL, 1, 0, &breq);

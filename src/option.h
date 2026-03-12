@@ -1036,6 +1036,10 @@ EXTERN char_u	*p_tenc;	// 'termencoding'
 #ifdef FEAT_TERMGUICOLORS
 EXTERN int	p_tgc;		// 'termguicolors'
 #endif
+#ifdef UNIX
+EXTERN char_u	*p_trz;		// 'termresize'
+#endif
+EXTERN int	p_tsy;		// 'termsync'
 #ifdef FEAT_TERMINAL
 EXTERN long	p_twsl;		// 'termwinscroll'
 #endif
@@ -1386,6 +1390,7 @@ enum
 #endif
 #ifdef FEAT_STL_OPT
     , WV_STL
+    , WV_STLO
 #endif
     , WV_WFB
     , WV_WFH

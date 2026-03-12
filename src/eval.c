@@ -2553,8 +2553,15 @@ tv_op_blob(typval_T *tv1, typval_T *tv2, char_u *op)
     blob_T	*b2 = tv2->vval.v_blob;
     int		len = blob_len(b2);
 
-    for (int i = 0; i < len; i++)
-	ga_append(&b1->bv_ga, blob_get(b2, i));
+    if (len > 0 && ga_grow(&b1->bv_ga, len) == OK)
+    {
+	mch_memmove((char_u *)b1->bv_ga.ga_data + b1->bv_ga.ga_len,
+		    (char_u *)b2->bv_ga.ga_data, (size_t)len);
+	b1->bv_ga.ga_len += len;
+    }
+    else
+	for (int i = 0; i < len; i++)
+	    (void)ga_append(&b1->bv_ga, blob_get(b2, i));
 
     return OK;
 }
@@ -6945,6 +6952,10 @@ var2fpos(
 	pos.col = 0;
 	if (name[1] == '0')		// "w0": first visible line
 	{
+#ifdef FEAT_TERMINAL
+	    if (bt_terminal(curwin->w_buffer))
+		may_move_terminal_to_buffer(curwin->w_buffer->b_term, TRUE);
+#endif
 	    update_topline();
 	    // In silent Ex mode topline is zero, but that's not a valid line
 	    // number; use one instead.
@@ -6953,6 +6964,10 @@ var2fpos(
 	}
 	else if (name[1] == '$')	// "w$": last visible line
 	{
+#ifdef FEAT_TERMINAL
+	    if (bt_terminal(curwin->w_buffer))
+		may_move_terminal_to_buffer(curwin->w_buffer->b_term, TRUE);
+#endif
 	    validate_botline();
 	    // In silent Ex mode botline is zero, return zero then.
 	    pos.lnum = curwin->w_botline > 0 ? curwin->w_botline - 1 : 0;

@@ -184,11 +184,11 @@ typedef struct
 typedef struct hl_overrides_S hl_overrides_T;
 struct hl_overrides_S
 {
-    hl_override_T   *arr;
+    hl_override_T   *arr;   // May be NULL if "arr" was freed
     int		    len;
-    hl_overrides_T  *next; // Used to handle recursive calls
+    hl_overrides_T  *next;  // Used to handle recursive calls
 
-    int attr[HLF_COUNT]; // highlight_attr[] before being updated.
+    int attr[HLF_COUNT];    // highlight_attr[] before being updated.
 };
 
 static hl_overrides_T *overrides = NULL;
@@ -3120,6 +3120,10 @@ blend_colors(guicolor_T popup_color, guicolor_T bg_color, int blend_val)
     if (popup_color == INVALCOLOR)
 	return INVALCOLOR;
 
+    // Fully transparent: use underlying color as-is.
+    if (blend_val >= 100)
+	return bg_color;
+
     r1 = (popup_color >> 16) & 0xFF;
     g1 = (popup_color >> 8) & 0xFF;
     b1 = popup_color & 0xFF;
@@ -3162,8 +3166,8 @@ hl_blend_attr(int char_attr, int popup_attr, int blend, int blend_fg UNUSED)
     // If both attrs are 0, return 0
     if (char_attr == 0 && popup_attr == 0)
 	return 0;
-    if (blend >= 100)
-	return char_attr;  // Fully transparent, show background only
+    if (blend >= 100 && blend_fg)
+	return char_attr;  // Fully transparent for both fg and bg
 
 #ifdef FEAT_GUI
     if (gui.in_use)
@@ -3205,14 +3209,15 @@ hl_blend_attr(int char_attr, int popup_attr, int blend, int blend_fg UNUSED)
 		    // blend_fg=FALSE: use popup foreground
 		    new_en.ae_u.gui.fg_color = popup_aep->ae_u.gui.fg_color;
 		}
-		// Blend background color
+		// Blend background color: blend popup bg toward underlying bg
 		if (popup_aep->ae_u.gui.bg_color != INVALCOLOR)
 		{
-		    // Always use popup background, fade to black based on blend
-		    int r = ((popup_aep->ae_u.gui.bg_color >> 16) & 0xFF) * (100 - blend) / 100;
-		    int g = ((popup_aep->ae_u.gui.bg_color >> 8) & 0xFF) * (100 - blend) / 100;
-		    int b = (popup_aep->ae_u.gui.bg_color & 0xFF) * (100 - blend) / 100;
-		    new_en.ae_u.gui.bg_color = (r << 16) | (g << 8) | b;
+		    guicolor_T underlying_bg = INVALCOLOR;
+		    if (char_aep != NULL)
+			underlying_bg = char_aep->ae_u.gui.bg_color;
+		    new_en.ae_u.gui.bg_color = blend_colors(
+			    popup_aep->ae_u.gui.bg_color,
+			    underlying_bg, blend);
 		}
 	    }
 	}
@@ -3269,11 +3274,13 @@ hl_blend_attr(int char_attr, int popup_attr, int blend, int blend_fg UNUSED)
 		    new_en.ae_u.cterm.fg_rgb = popup_aep->ae_u.cterm.fg_rgb;
 		if (popup_aep->ae_u.cterm.bg_rgb != INVALCOLOR)
 		{
-		    // Always use popup background, fade to black based on blend
-		    int r = ((popup_aep->ae_u.cterm.bg_rgb >> 16) & 0xFF) * (100 - blend) / 100;
-		    int g = ((popup_aep->ae_u.cterm.bg_rgb >> 8) & 0xFF) * (100 - blend) / 100;
-		    int b = (popup_aep->ae_u.cterm.bg_rgb & 0xFF) * (100 - blend) / 100;
-		    new_en.ae_u.cterm.bg_rgb = (r << 16) | (g << 8) | b;
+		    // Blend popup bg toward underlying bg
+		    guicolor_T underlying_bg = INVALCOLOR;
+		    if (char_aep != NULL)
+			underlying_bg = char_aep->ae_u.cterm.bg_rgb;
+		    new_en.ae_u.cterm.bg_rgb = blend_colors(
+			    popup_aep->ae_u.cterm.bg_rgb,
+			    underlying_bg, blend);
 		}
 #endif
 	    }
@@ -4364,8 +4371,14 @@ highlight_changed(void)
 	}
     }
 
+    // Highlight ids may have been changed, so keep windows up to date
     FOR_ALL_WINDOWS(wp)
-	wp->w_hlfwin_id = hlf_get_id(wp, HLF_WIN);
+    {
+	char *errmsg = update_winhighlight(wp, wp->w_p_whl);
+
+	if (errmsg != NULL)
+	    emsg(_(errmsg));
+    }
 
 #ifdef FEAT_TERMINAL
     term_update_hlfwin_all();
@@ -5473,6 +5486,24 @@ update_highlight_overrides(hl_override_T *old, hl_override_T *hl_new, int newlen
 	{
 	    set->arr = hl_new;
 	    set->len = newlen;
+	}
+    }
+}
+
+/*
+ * If "arr" is in the highlight overrides list, then mark it as invalid.
+ */
+    void
+remove_highlight_overrides(hl_override_T *arr)
+{
+    if (arr == NULL || overrides == NULL)
+	return;
+
+    for (hl_overrides_T *set = overrides; set != NULL; set = set->next)
+    {
+	if (set->arr == arr)
+	{
+	    set->arr = NULL;
 	    break;
 	}
     }

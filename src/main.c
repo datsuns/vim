@@ -892,6 +892,8 @@ vim_main2(void)
     may_req_termresponse();
 
     may_req_bg_color();
+
+    may_req_dec_setting();
 # endif
 
     // start in insert mode
@@ -1854,6 +1856,8 @@ getout(int exitval)
 #ifdef MSWIN
     free_cmd_argsW();
 #endif
+
+    term_disable_dec();
 
     mch_exit(exitval);
 }
@@ -2845,11 +2849,14 @@ scripterror:
     // one.
     if (parmp->n_commands > 0)
     {
-	p = alloc(STRLEN(parmp->commands[0]) + 3);
+	size_t  plen;
+
+	plen = STRLEN(parmp->commands[0]) + 2;
+	p = alloc(plen + 1);
 	if (p != NULL)
 	{
 	    sprintf((char *)p, ":%s\r", parmp->commands[0]);
-	    set_vim_var_string(VV_SWAPCOMMAND, p, -1);
+	    set_vim_var_string(VV_SWAPCOMMAND, p, (int)plen);
 	    vim_free(p);
 	}
     }

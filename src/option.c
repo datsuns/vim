@@ -3258,41 +3258,49 @@ apply_optionset_autocmd(
 	long	newval,
 	char	*errmsg)
 {
-    char_u buf_old[12], buf_old_global[12], buf_new[12], buf_type[12];
+    char_u buf_old[12], buf_new[12], buf_type[12];
+    size_t  buf_oldlen;
+    size_t  len;
 
     // Don't do this while starting up, failure or recursively.
     if (starting || errmsg != NULL || *get_vim_var_str(VV_OPTION_TYPE) != NUL)
 	return;
 
-    vim_snprintf((char *)buf_old, sizeof(buf_old), "%ld", oldval);
-    vim_snprintf((char *)buf_old_global, sizeof(buf_old_global), "%ld",
-							oldval_g);
-    vim_snprintf((char *)buf_new, sizeof(buf_new), "%ld", newval);
-    vim_snprintf((char *)buf_type, sizeof(buf_type), "%s",
+    len = vim_snprintf_safelen((char *)buf_new, sizeof(buf_new), "%ld", newval);
+    set_vim_var_string(VV_OPTION_NEW, buf_new, (int)len);
+    len = vim_snprintf_safelen((char *)buf_type, sizeof(buf_type), "%s",
 				(opt_flags & OPT_LOCAL) ? "local" : "global");
-    set_vim_var_string(VV_OPTION_NEW, buf_new, -1);
-    set_vim_var_string(VV_OPTION_OLD, buf_old, -1);
-    set_vim_var_string(VV_OPTION_TYPE, buf_type, -1);
+    set_vim_var_string(VV_OPTION_TYPE, buf_type, (int)len);
+
+    buf_oldlen = vim_snprintf_safelen((char *)buf_old, sizeof(buf_old), "%ld", oldval);
+    set_vim_var_string(VV_OPTION_OLD, buf_old, (int)buf_oldlen);
+
     if (opt_flags & OPT_LOCAL)
     {
-	set_vim_var_string(VV_OPTION_COMMAND, (char_u *)"setlocal", -1);
-	set_vim_var_string(VV_OPTION_OLDLOCAL, buf_old, -1);
+	set_vim_var_string(VV_OPTION_COMMAND, (char_u *)"setlocal", STRLEN_LITERAL("setlocal"));
+	set_vim_var_string(VV_OPTION_OLDLOCAL, buf_old, (int)buf_oldlen);
     }
     if (opt_flags & OPT_GLOBAL)
     {
-	set_vim_var_string(VV_OPTION_COMMAND, (char_u *)"setglobal", -1);
-	set_vim_var_string(VV_OPTION_OLDGLOBAL, buf_old, -1);
+	set_vim_var_string(VV_OPTION_COMMAND, (char_u *)"setglobal", STRLEN_LITERAL("setglobal"));
+	set_vim_var_string(VV_OPTION_OLDGLOBAL, buf_old, (int)buf_oldlen);
     }
     if ((opt_flags & (OPT_LOCAL | OPT_GLOBAL)) == 0)
     {
-	set_vim_var_string(VV_OPTION_COMMAND, (char_u *)"set", -1);
-	set_vim_var_string(VV_OPTION_OLDLOCAL, buf_old, -1);
-	set_vim_var_string(VV_OPTION_OLDGLOBAL, buf_old_global, -1);
+	char_u	buf_old_global[12];
+	size_t	buf_old_globallen;
+
+	buf_old_globallen = vim_snprintf_safelen((char *)buf_old_global,
+	    sizeof(buf_old_global), "%ld", oldval_g);
+
+	set_vim_var_string(VV_OPTION_COMMAND, (char_u *)"set", STRLEN_LITERAL("set"));
+	set_vim_var_string(VV_OPTION_OLDLOCAL, buf_old, (int)buf_oldlen);
+	set_vim_var_string(VV_OPTION_OLDGLOBAL, buf_old_global, (int)buf_old_globallen);
     }
     if (opt_flags & OPT_MODELINE)
     {
-	set_vim_var_string(VV_OPTION_COMMAND, (char_u *)"modeline", -1);
-	set_vim_var_string(VV_OPTION_OLDLOCAL, buf_old, -1);
+	set_vim_var_string(VV_OPTION_COMMAND, (char_u *)"modeline", STRLEN_LITERAL("modeline"));
+	set_vim_var_string(VV_OPTION_OLDLOCAL, buf_old, (int)buf_oldlen);
     }
     apply_autocmds(EVENT_OPTIONSET, (char_u *)options[opt_idx].fullname,
 	    NULL, FALSE, NULL);
@@ -4408,6 +4416,14 @@ did_set_termguicolors(optset_T *args UNUSED)
     return NULL;
 }
 #endif
+
+    char *
+did_set_termsync(optset_T *args UNUSED)
+{
+    if (!p_tsy)
+	term_set_sync_output(TERM_SYNC_OUTPUT_OFF);
+    return NULL;
+}
 
 #if defined(FEAT_TERMINAL)
 /*
@@ -6577,6 +6593,9 @@ unset_global_local_option(char_u *name, void *from)
 	case PV_STL:
 	    clear_string_option(&((win_T *)from)->w_p_stl);
 	    break;
+	case PV_STLO:
+	    clear_string_option(&((win_T *)from)->w_p_stlo);
+	    break;
 # endif
 	case PV_UL:
 	    buf->b_p_ul = NO_LOCAL_UNDOLEVEL;
@@ -6670,6 +6689,7 @@ get_varp_scope(struct vimoption *p, int scope)
 #endif
 #ifdef FEAT_STL_OPT
 	    case PV_STL:  return (char_u *)&(curwin->w_p_stl);
+	    case PV_STLO: return (char_u *)&(curwin->w_p_stlo);
 #endif
 	    case PV_UL:   return (char_u *)&(curbuf->b_p_ul);
 	    case PV_LW:   return (char_u *)&(curbuf->b_p_lw);
@@ -6785,6 +6805,8 @@ get_varp(struct vimoption *p)
 #ifdef FEAT_STL_OPT
 	case PV_STL:	return *curwin->w_p_stl != NUL
 				    ? (char_u *)&(curwin->w_p_stl) : p->var;
+	case PV_STLO:	return *curwin->w_p_stlo != NUL
+				    ? (char_u *)&(curwin->w_p_stlo) : p->var;
 #endif
 	case PV_UL:	return curbuf->b_p_ul != NO_LOCAL_UNDOLEVEL
 				    ? (char_u *)&(curbuf->b_p_ul) : p->var;
@@ -7034,6 +7056,11 @@ win_copy_options(win_T *wp_from, win_T *wp_to)
 {
     copy_winopt(&wp_from->w_onebuf_opt, &wp_to->w_onebuf_opt);
     copy_winopt(&wp_from->w_allbuf_opt, &wp_to->w_allbuf_opt);
+#ifdef FEAT_STL_OPT
+    // w_stl_rendered_height is in win_T directly, not in winvar_T, so it is
+    // not copied by copy_winopt().  Copy it explicitly here.
+    wp_to->w_stl_rendered_height = wp_from->w_stl_rendered_height;
+#endif
     after_copy_winopt(wp_to);
 }
 
@@ -7103,6 +7130,9 @@ copy_winopt(winopt_T *from, winopt_T *to)
 #endif
 #ifdef FEAT_STL_OPT
     to->wo_stl = copy_option_val(from->wo_stl);
+    to->wo_stlo = copy_option_val(from->wo_stlo);
+    to->wo_stlo_fh = from->wo_stlo_fh;
+    to->wo_stlo_mh = from->wo_stlo_mh;
 #endif
     to->wo_wrap = from->wo_wrap;
 #ifdef FEAT_DIFF
@@ -7225,6 +7255,7 @@ check_winopt(winopt_T *wop UNUSED)
 #endif
 #ifdef FEAT_STL_OPT
     check_string_option(&wop->wo_stl);
+    check_string_option(&wop->wo_stlo);
 #endif
 #ifdef FEAT_SYN_HL
     check_string_option(&wop->wo_culopt);
@@ -7279,6 +7310,7 @@ clear_winopt(winopt_T *wop UNUSED)
 #endif
 #ifdef FEAT_STL_OPT
     clear_string_option(&wop->wo_stl);
+    clear_string_option(&wop->wo_stlo);
 #endif
 #ifdef FEAT_SYN_HL
     clear_string_option(&wop->wo_culopt);

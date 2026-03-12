@@ -785,12 +785,24 @@ apply_general_options(win_T *wp, dict_T *dict)
     if (di != NULL)
     {
 	nr = dict_get_number(dict, "opacity");
-	if (nr > 0 && nr <= 100)
+	if (nr == 0)
 	{
-	    // opacity: 0-100, where 0=transparent, 100=opaque
+	    // opacity: 0, fully transparent
+	    wp->w_popup_flags |= POPF_OPACITY;
+	    wp->w_popup_blend = 100;
+	}
+	else if (nr > 0 && nr < 100)
+	{
+	    // opacity: 1-99, partially transparent
 	    // Convert to blend (0=opaque, 100=transparent)
 	    wp->w_popup_flags |= POPF_OPACITY;
 	    wp->w_popup_blend = 100 - nr;
+	}
+	else if (nr == 100)
+	{
+	    // Fully opaque, same as no opacity set.
+	    wp->w_popup_flags &= ~POPF_OPACITY;
+	    wp->w_popup_blend = 0;
 	}
 	else
 	{
@@ -1098,7 +1110,8 @@ apply_options(win_T *wp, dict_T *dict, int create)
 	wp->w_valid &= ~VALID_BOTLINE;
     }
 
-    popup_mask_refresh = TRUE;
+    if (create)
+	popup_mask_refresh = TRUE;
     popup_highlight_curline(wp);
 
     return OK;
@@ -3106,7 +3119,15 @@ f_popup_settext(typval_T *argvars, typval_T *rettv UNUSED)
 	return;
 
     popup_set_buffer_text(wp->w_buffer, argvars[1]);
-    redraw_win_later(wp, UPD_NOT_VALID);
+
+    // Redraw the popup window without triggering a full screen redraw.
+    // Using redraw_win_later() with UPD_NOT_VALID would set the global
+    // must_redraw, causing may_update_popup_mask() to refresh the mask and
+    // redraw windows behind the popup, resulting in flickering.
+    wp->w_redr_type = UPD_NOT_VALID;
+    wp->w_lines_valid = 0;
+    if (must_redraw < UPD_VALID)
+	must_redraw = UPD_VALID;
     popup_adjust_position(wp);
 }
 
@@ -3391,6 +3412,7 @@ f_popup_setoptions(typval_T *argvars, typval_T *rettv UNUSED)
     char_u	*old_thumb_highlight;
     char_u	*old_border_highlight[4];
     int		need_redraw = FALSE;
+    int		need_reposition = FALSE;
     int		i;
 
     if (in_vim9script()
@@ -3419,13 +3441,25 @@ f_popup_setoptions(typval_T *argvars, typval_T *rettv UNUSED)
 
     (void)apply_options(wp, dict, FALSE);
 
+    // Keep "firstline" sticky across popup_setoptions(): when it is set, any
+    // property update should reapply it and restore the displayed top line.
+    if (wp->w_firstline > 0
+	    && wp->w_firstline <= wp->w_buffer->b_ml.ml_line_count)
+	wp->w_topline = wp->w_firstline;
+
     // Check if visual options changed and redraw if needed
     if (old_firstline != wp->w_firstline)
 	need_redraw = TRUE;
     if (old_zindex != wp->w_zindex)
+    {
 	need_redraw = TRUE;
+	need_reposition = TRUE;
+    }
     if (old_popup_flags != wp->w_popup_flags)
+    {
 	need_redraw = TRUE;
+	need_reposition = TRUE;
+    }
     if (old_scrollbar_highlight != wp->w_scrollbar_highlight)
 	need_redraw = TRUE;
     if (old_thumb_highlight != wp->w_thumb_highlight)
@@ -3437,8 +3471,23 @@ f_popup_setoptions(typval_T *argvars, typval_T *rettv UNUSED)
 	    break;
 	}
 
-    if (need_redraw)
+    if (need_reposition)
+    {
 	redraw_win_later(wp, UPD_NOT_VALID);
+	popup_mask_refresh = TRUE;
+    }
+    else if (need_redraw)
+    {
+	// Only content changed (e.g. firstline, highlight): redraw the
+	// popup window without updating the popup mask or triggering a
+	// full screen redraw.  This avoids flickering of windows behind
+	// the popup.
+	wp->w_redr_type = UPD_NOT_VALID;
+	wp->w_lines_valid = 0;
+	if (must_redraw < UPD_VALID)
+	    must_redraw = UPD_VALID;
+    }
+
 #ifdef FEAT_PROP_POPUP
     // Force redraw if opacity value changed
     if (old_blend != wp->w_popup_blend)
@@ -3446,8 +3495,14 @@ f_popup_setoptions(typval_T *argvars, typval_T *rettv UNUSED)
 	redraw_win_later(wp, UPD_NOT_VALID);
 	// Also redraw windows below the popup
 	redraw_all_later(UPD_NOT_VALID);
+	popup_mask_refresh = TRUE;
     }
 #endif
+
+    // Always recalculate popup position/size: other options like border,
+    // close, padding may have changed without affecting w_popup_flags.
+    // popup_adjust_position() only sets popup_mask_refresh when the
+    // position or size actually changed.
     popup_adjust_position(wp);
 }
 
@@ -4196,6 +4251,38 @@ popup_need_position_adjust(win_T *wp)
 }
 
 /*
+ * Force background windows to redraw rows under an opacity popup.
+ */
+    static void
+redraw_win_under_opacity_popup(win_T *wp)
+{
+    int	    height;
+    int	    r;
+
+    if (!(wp->w_popup_flags & POPF_OPACITY) || wp->w_popup_blend <= 0
+	    || (wp->w_popup_flags & POPF_HIDDEN))
+	return;
+
+    height = popup_height(wp);
+    for (r = wp->w_winrow;
+		       r < wp->w_winrow + height && r < screen_Rows; ++r)
+    {
+	int	    line_cp = r;
+	int	    col_cp = wp->w_wincol;
+	win_T	    *twp;
+
+	twp = mouse_find_win(&line_cp, &col_cp, IGNORE_POPUP);
+	if (twp != NULL && line_cp < twp->w_height)
+	{
+	    linenr_T lnum;
+
+	    (void)mouse_comp_pos(twp, &line_cp, &col_cp, &lnum, NULL);
+	    redrawWinline(twp, lnum);
+	}
+    }
+}
+
+/*
  * Update "popup_mask" if needed.
  * Also recomputes the popup size and positions.
  * Also updates "popup_visible" and "popup_uses_mouse_move".
@@ -4231,6 +4318,16 @@ may_update_popup_mask(int type)
 	    popup_mask_refresh |= check_popup_unhidden(wp);
 	else if (popup_need_position_adjust(wp))
 	    popup_mask_refresh = TRUE;
+
+    // Force background windows to redraw rows under opacity popups.
+    // Opacity popups don't participate in popup_mask, so their area
+    // wouldn't normally be redrawn.  Without this, ScreenAttrs retains
+    // blended values from the previous cycle, causing blend accumulation.
+    // This must run every cycle, not just when popup_mask_refresh is set.
+    FOR_ALL_POPUPWINS(wp)
+	redraw_win_under_opacity_popup(wp);
+    FOR_ALL_POPUPWINS_IN_TAB(curtab, wp)
+	redraw_win_under_opacity_popup(wp);
 
     if (!popup_mask_refresh)
 	return;
@@ -5261,21 +5358,9 @@ update_popups(void (*win_update)(win_T *wp))
     }
 
 #ifdef FEAT_PROP_POPUP
-    if (base_screenlines != NULL)
-    {
-	vim_free(base_screenlines);
-	base_screenlines = NULL;
-    }
-    if (base_screenattrs != NULL)
-    {
-	vim_free(base_screenattrs);
-	base_screenattrs = NULL;
-    }
-    if (base_screenlinesuc != NULL)
-    {
-	vim_free(base_screenlinesuc);
-	base_screenlinesuc = NULL;
-    }
+    VIM_CLEAR(base_screenlines);
+    VIM_CLEAR(base_screenattrs);
+    VIM_CLEAR(base_screenlinesuc);
     base_screen_rows = 0;
     base_screen_cols = 0;
 #endif
