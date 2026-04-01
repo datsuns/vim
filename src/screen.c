@@ -600,7 +600,13 @@ screen_line(
     {
 	ScreenLines[off_to - 1] = ' ';
 	ScreenLinesUC[off_to - 1] = 0;
-	screen_char(off_to - 1, row, col + coloff - 1);
+	// Skip screen output when drawing an opacity popup: the
+	// background draw already output this cell, and outputting
+	// a space here would briefly erase it causing flicker.
+# ifdef FEAT_PROP_POPUP
+	if (screen_opacity_popup == NULL)
+# endif
+	    screen_char(off_to - 1, row, col + coloff - 1);
     }
 #endif
 
@@ -914,6 +920,14 @@ skip_opacity:
 	    // redraw that one if this one changed, no matter attributes.
 	    if (gui.in_use && changed_this)
 		redraw_next = TRUE;
+# ifdef FEAT_DIRECTX
+	    // DirectWrite subpixel rendering (especially with CFF/OTF
+	    // fonts) can extend pixels beyond cell boundaries to the
+	    // left.  Redraw the current character if the previous one
+	    // changed.
+	    if (gui.directx_enabled && changed_this)
+		redraw_this = TRUE;
+# endif
 #endif
 
 	    ScreenAttrs[off_to] = ScreenAttrs[off_from];
@@ -1004,7 +1018,13 @@ skip_opacity:
 	ScreenLines[off_to] = ' ';
 	if (enc_utf8)
 	    ScreenLinesUC[off_to] = 0;
-	screen_char(off_to, row, col + coloff);
+	// Skip screen output when drawing an opacity popup: the
+	// background already has this cell, outputting a space here
+	// would briefly erase it causing flicker.
+#ifdef FEAT_PROP_POPUP
+	if (screen_opacity_popup == NULL)
+#endif
+	    screen_char(off_to, row, col + coloff);
     }
 
     if (clear_width > 0
@@ -1720,6 +1740,12 @@ screen_puts_len(
 		    force_redraw_next = TRUE;
 	    }
 #endif
+#ifdef FEAT_DIRECTX
+	    // DirectWrite subpixel rendering can extend pixels beyond
+	    // cell boundaries.  Redraw the next character too.
+	    if (gui.directx_enabled && need_redraw)
+		force_redraw_next = TRUE;
+#endif
 	    // When at the end of the text and overwriting a two-cell
 	    // character with a one-cell character, need to clear the next
 	    // cell.  Also when overwriting the left half of a two-cell char
@@ -2219,6 +2245,23 @@ screen_char(unsigned off, int row, int col)
     if (row >= screen_Rows || col >= screen_Columns)
 	return;
 
+#ifdef FEAT_PROP_POPUP
+    // If this cell is under a higher-zindex opacity popup, suppress
+    // output to prevent flicker.  The higher popup's redraw will
+    // output the final blended result.
+    // Also suppress if this is a wide character whose second cell
+    // is under an opacity popup.
+    if (popup_is_under_opacity(row, col)
+	    || (enc_utf8 && ScreenLinesUC[off] != 0
+		&& utf_char2cells(ScreenLinesUC[off]) == 2
+		&& col + 1 < screen_Columns
+		&& popup_is_under_opacity(row, col + 1)))
+    {
+	screen_cur_col = 9999;
+	return;
+    }
+#endif
+
     // Outputting a character in the last cell on the screen may scroll the
     // screen up.  Only do it when the "xn" termcap property is set, otherwise
     // mark the character invalid (update it when scrolled up).
@@ -2325,6 +2368,15 @@ screen_char_2(unsigned off, int row, int col)
 	ScreenCols[off] = -1;
 	return;
     }
+
+#ifdef FEAT_PROP_POPUP
+    // If under a higher-zindex opacity popup, suppress output.
+    if (popup_is_under_opacity(row, col))
+    {
+	screen_cur_col = 9999;
+	return;
+    }
+#endif
 
     // Output the first byte normally (positions the cursor), then write the
     // second byte directly.
@@ -2493,7 +2545,15 @@ screen_fill(
 		&& (attr == 0
 		    || (norm_term
 			&& attr <= HL_ALL
-			&& ((attr & ~(HL_BOLD | HL_ITALIC)) == 0))))
+			&& ((attr & ~(HL_BOLD | HL_ITALIC)) == 0)))
+#ifdef FEAT_PROP_POPUP
+		// Do not use T_CE optimization if any cell in the
+		// range is under an opacity popup.  The clear-to-eol
+		// command would erase the popup area on screen.
+		&& !popup_is_under_opacity_range(row,
+						start_col, end_col)
+#endif
+		)
 	{
 	    /*
 	     * check if we really need to clear something
@@ -2617,6 +2677,12 @@ skip_opacity_fill:
 			force_next = FALSE;
 		}
 #endif // FEAT_GUI || defined(UNIX)
+#ifdef FEAT_DIRECTX
+		// DirectWrite subpixel rendering can extend pixels
+		// beyond cell boundaries.  Redraw the next character.
+		if (gui.directx_enabled)
+		    force_next = TRUE;
+#endif
 		ScreenLines[off] = c;
 		if (enc_utf8)
 		{
@@ -3456,6 +3522,17 @@ windgoto(int row, int col)
 			break;
 		    }
 	    }
+#ifdef FEAT_PROP_POPUP
+	    // Don't output characters over opacity popup cells, it
+	    // would show unblended background values.
+	    if (cost < 999)
+		for (i = wouldbe_col; i < col; ++i)
+		    if (popup_is_under_opacity(row, i))
+		    {
+			cost = 999;
+			break;
+		    }
+#endif
 	}
 
 	/*
@@ -3742,7 +3819,7 @@ win_do_lines(
 	    && wp->w_width == topframe->fr_width)
     {
 	if (!no_win_do_lines_ins)
-	    screenclear();	    // will set wp->w_lines_valid to 0
+	    redraw_as_cleared();    // don't clear the screen to avoid flicker
 	return FAIL;
     }
 
@@ -3767,6 +3844,13 @@ win_do_lines(
      */
     if (!no_win_do_lines_ins)
 	clear_cmdline = TRUE;
+
+#if defined(FEAT_TABPANEL)
+    // Terminal scroll operations affect the full screen width, which would
+    // corrupt the vertical tabpanel area and cause flicker.
+    if (tabpanel_width() > 0)
+	return FAIL;
+#endif
 
     /*
      * If the terminal can set a scroll region, use that.
@@ -4340,17 +4424,20 @@ screen_del_lines(
 
 /*
  * Return TRUE when postponing displaying the mode message: when not redrawing
- * or inside a mapping.
+ * or inside a mapping or a script.
  */
     int
 skip_showmode(void)
 {
-    // Call char_avail() only when we are going to show something, because it
-    // takes a bit of time.  redrawing() may also call char_avail().
+    // Check the stuff buffer, typeahead buffer and script input for pending
+    // characters, instead of char_avail() which also reads raw terminal input
+    // and may pick up terminal response sequences (e.g. t_RV response),
+    // falsely preventing the mode from being shown.
     if (global_busy
 	    || msg_silent != 0
 	    || !redrawing()
-	    || (char_avail() && !KeyTyped))
+	    || ((!stuff_empty() || typebuf.tb_len > 0 || using_script())
+		&& !KeyTyped))
     {
 	redraw_mode = TRUE;		// show mode later
 	return TRUE;

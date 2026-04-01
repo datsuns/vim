@@ -1380,7 +1380,7 @@ static argcheck_T arg45_sign_place[] = {arg_number, arg_string, arg_string, arg_
 static argcheck_T arg23_slice[] = {arg_slice1, arg_number, arg_number};
 static argcheck_T arg13_sortuniq[] = {arg_list_any_mod, arg_sort_how, arg_dict_any};
 static argcheck_T arg24_strpart[] = {arg_string, arg_number, arg_number, arg_bool};
-static argcheck_T arg12_system[] = {arg_string, arg_str_or_nr_or_list};
+static argcheck_T arg12_system[] = {arg_string_or_list_any, arg_str_or_nr_or_list};
 static argcheck_T arg23_win_execute[] = {arg_number, arg_string_or_list_string, arg_string};
 static argcheck_T arg23_writefile[] = {arg_list_or_blob, arg_string, arg_string};
 static argcheck_T arg24_match_func[] = {arg_string_or_list_any, arg_string, arg_number, arg_number};
@@ -2083,6 +2083,8 @@ static const funcentry_T global_functions[] =
 			ret_job,	    JOB_FUNC(f_ch_getjob)},
     {"ch_info",		1, 1, FEARG_1,	    arg1_chan_or_job,
 			ret_dict_any,	    JOB_FUNC(f_ch_info)},
+    {"ch_listen",	1, 2, FEARG_1,	    arg2_string_dict,
+			ret_channel,	    JOB_FUNC(f_ch_listen)},
     {"ch_log",		1, 2, FEARG_1,	    arg2_string_chan_or_job,
 			ret_void,	    f_ch_log},
     {"ch_logfile",	1, 2, FEARG_1,	    arg2_string,
@@ -5434,9 +5436,13 @@ common_function(typval_T *argvars, typval_T *rettv, int is_funcref)
 	    else
 	    {
 		// generic function
-		STRCPY(IObuff, name);
-		STRCAT(IObuff, start_bracket);
-		rettv->vval.v_string = vim_strsave(IObuff);
+		size_t len = STRLEN(name) + STRLEN(start_bracket);
+		rettv->vval.v_string = alloc(len + 1);
+		if (rettv->vval.v_string != NULL)
+		{
+		    STRCPY(rettv->vval.v_string, name);
+		    STRCAT(rettv->vval.v_string, start_bracket);
+		}
 		vim_free(name);
 	    }
 	}
@@ -6674,6 +6680,13 @@ f_has(typval_T *argvars, typval_T *rettv)
 		0
 #endif
 		},
+	{"android",
+#ifdef __ANDROID__
+		1
+#else
+		0
+#endif
+		},
 	{"arp",
 #if defined(AMIGA) && defined(FEAT_ARP)
 		1
@@ -6753,6 +6766,13 @@ f_has(typval_T *argvars, typval_T *rettv)
 		},
 	{"sun",
 #ifdef SUN_SYSTEM
+		1
+#else
+		0
+#endif
+		},
+	{"termux",
+#ifdef __TERMUX__
 		1
 #else
 		0
@@ -9893,6 +9913,9 @@ f_perleval(typval_T *argvars, typval_T *rettv)
     char_u	*str;
     char_u	buf[NUMBUFLEN];
 
+    if (check_restricted() || check_secure())
+	return;
+
     if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
 	return;
 
@@ -10821,6 +10844,9 @@ f_rubyeval(typval_T *argvars, typval_T *rettv)
 {
     char_u	*str;
     char_u	buf[NUMBUFLEN];
+
+    if (check_restricted() || check_secure())
+	return;
 
     if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
 	return;

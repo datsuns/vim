@@ -16,7 +16,6 @@
 #include "vim.h"
 
 #include <sys/types.h>
-#include <signal.h>
 #include <limits.h>
 
 #include <process.h>
@@ -106,12 +105,42 @@ mch_exit_g(int r)
 
 
 /*
+ * Get version number including build number
+ */
+typedef BOOL (WINAPI *PfnRtlGetVersion)(LPOSVERSIONINFOW);
+DWORD win_version;
+    static void
+win_version_init(void)
+{
+    OSVERSIONINFOW	osver;
+    HMODULE		hNtdll;
+    PfnRtlGetVersion	pRtlGetVersion;
+
+    hNtdll = GetModuleHandle("ntdll.dll");
+    if (hNtdll == NULL)
+	return;
+
+    pRtlGetVersion =
+	(PfnRtlGetVersion) GetProcAddress(hNtdll, "RtlGetVersion");
+    if (pRtlGetVersion == NULL)
+	return;
+
+    osver.dwOSVersionInfoSize = sizeof(OSVERSIONINFOW);
+    pRtlGetVersion(&osver);
+    win_version = MAKE_VER(min(osver.dwMajorVersion, 0xFF),
+	    min(osver.dwMinorVersion, 0xFF),
+	    min(osver.dwBuildNumber, 0xFFFF));
+}
+
+/*
  * Init the tables for toupper() and tolower().
  */
     void
 mch_early_init(void)
 {
     int		i;
+
+    win_version_init();
 
     PlatformId();
 
@@ -1163,8 +1192,6 @@ AbortProc(HDC hdcPrn UNUSED, int iCode UNUSED)
     return !*bUserAbort;
 }
 
-# if !defined(FEAT_GUI) || defined(VIMDLL)
-
     static UINT_PTR CALLBACK
 PrintHookProc(
 	HWND hDlg,	// handle to dialog box
@@ -1217,7 +1244,6 @@ PrintHookProc(
 
     return FALSE;
 }
-# endif
 
     void
 mch_print_cleanup(void)
@@ -1233,7 +1259,7 @@ mch_print_cleanup(void)
 
     if (prt_dlg.hDC != NULL)
 	DeleteDC(prt_dlg.hDC);
-    if (!*bUserAbort)
+    if (!*bUserAbort && hDlgPrint != NULL)
 	SendMessage(hDlgPrint, WM_COMMAND, 0, 0);
 }
 
@@ -1371,18 +1397,11 @@ mch_print_init(prt_settings_T *psettings, char_u *jobname, int forceit)
 	prt_dlg.hDevMode = stored_dm;
 	prt_dlg.hDevNames = stored_devn;
 	prt_dlg.lCustData = stored_nCopies; // work around bug in print dialog
-# if !defined(FEAT_GUI) || defined(VIMDLL)
-#  ifdef VIMDLL
-	if (!gui.in_use)
-#  endif
-	{
-	    /*
-	     * Use hook to prevent console window being sent to back
-	     */
-	    prt_dlg.lpfnPrintHook = PrintHookProc;
-	    prt_dlg.Flags |= PD_ENABLEPRINTHOOK;
-	}
-# endif
+	/*
+	 * Use hook to prevent print dialog being sent to back.
+	 */
+	prt_dlg.lpfnPrintHook = PrintHookProc;
+	prt_dlg.Flags |= PD_ENABLEPRINTHOOK;
 	prt_dlg.Flags |= stored_nFlags;
     }
 
@@ -1599,7 +1618,7 @@ mch_print_begin(prt_settings_T *psettings)
 mch_print_end(prt_settings_T *psettings UNUSED)
 {
     EndDoc(prt_dlg.hDC);
-    if (!*bUserAbort)
+    if (!*bUserAbort && hDlgPrint != NULL)
 	SendMessage(hDlgPrint, WM_COMMAND, 0, 0);
 }
 

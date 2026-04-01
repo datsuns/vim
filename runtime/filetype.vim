@@ -1,7 +1,7 @@
 " Vim support file to detect file types
 "
 " Maintainer:		The Vim Project <https://github.com/vim/vim>
-" Last Change:		2026 Feb 18
+" Last Change:		2026 Mar 24
 " Former Maintainer:	Bram Moolenaar <Bram@vim.org>
 
 " If the filetype can be detected from extension or file name(the final path component),
@@ -119,10 +119,13 @@ au BufNewFile,BufRead */boot/grub/menu.lst,*/boot/grub/grub.conf,*/etc/grub.conf
 " *.mc omitted - used by dist#ft#McSetf()
 au BufNewFile,BufRead *.demo,*.dm{1,2,3,t},*.wxm,maxima-init.mac setf maxima
 
+" ObjectScript routine or assembly
+au BufNewFile,BufRead *.mac			call dist#ft#FTmac()
+
 " Assembly (all kinds)
 " *.lst is not pure assembly, it has two extra columns (address, byte codes)
 " *.[sS], *.[aA] usually Assembly - GNU
-au BufNewFile,BufRead *.asm,*.[sS],*.[aA],*.mac,*.lst	call dist#ft#FTasm()
+au BufNewFile,BufRead *.asm,*.[sS],*.[aA],*.lst	call dist#ft#FTasm()
 
 " BASIC or Visual Basic
 au BufNewFile,BufRead *.bas			call dist#ft#FTbas()
@@ -572,6 +575,9 @@ au BufNewFile,BufRead *.pro			call dist#ft#ProtoCheck('idlang')
 " Initng
 au BufNewFile,BufRead */etc/initng/*/*.i,*.ii	setf initng
 
+" Intel HEX or ObjectScript routine
+au BufNewFile,BufRead *.int			call dist#ft#FTint()
+
 " Innovation Data Processing
 au BufNewFile,BufRead upstream.dat\c,upstream.*.dat\c,*.upstream.dat\c	setf upstreamdat
 au BufNewFile,BufRead fdrupstream.log,upstream.log\c,upstream.*.log\c,*.upstream.log\c,UPSTREAM-*.log\c	setf upstreamlog
@@ -886,6 +892,9 @@ au BufNewFile,BufRead requires/*.txt		setf requirements
 " Pkl
 au BufNewFile,BufRead *.pkl,*.pcf,pkl-lsp://*	setf pkl
 
+" WIC kickstarter files
+au BufNewFile,BufRead *.wks,*.wks.in,*.wks.inc	setf wks
+
 " Povray, Pascal, PHP or assembly
 au BufNewFile,BufRead *.inc			call dist#ft#FTinc()
 
@@ -1054,7 +1063,7 @@ au BufNewFile,BufRead *.scm,*.ss,*.sld,*.stsg,*/supertux2/config,.lips_repl_hist
 " SiSU
 au BufNewFile,BufRead *.sst.meta,*.-sst.meta,*._sst.meta setf sisu
 
-" Smalltalk (and Rexx, TeX, and Visual Basic)
+" Smalltalk (and ObjectScript, Rexx, TeX, and Visual Basic)
 au BufNewFile,BufRead *.cls			call dist#ft#FTcls()
 
 " SMIL or XML
@@ -1570,6 +1579,9 @@ au BufNewFile,BufRead *vimrc*			call s:StarSetf('vim')
 
 " Subversion commit file
 au BufNewFile,BufRead svn-commit*.tmp		setf svn
+
+" Wireguard config
+au BufNewFile,BufRead */etc/wireguard/*.conf    setf dosini
 
 " X resources file
 au BufNewFile,BufRead Xresources*,*/app-defaults/*,*/Xresources/* call s:StarSetf('xdefaults')

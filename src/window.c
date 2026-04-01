@@ -2717,10 +2717,10 @@ win_close_buffer(win_T *win, int action, int abort_if_last)
 	bufref_T    bufref;
 
 	set_bufref(&bufref, curbuf);
-	win->w_locked = TRUE;
-	close_buffer(win, win->w_buffer, action, abort_if_last, TRUE);
+	++win->w_locked;
+	close_buffer(win, win->w_buffer, action, abort_if_last, TRUE, TRUE);
 	if (win_valid_any_tab(win))
-	    win->w_locked = FALSE;
+	    --win->w_locked;
 	// Make sure curbuf is valid. It can become invalid if 'bufhidden' is
 	// "wipe".
 	if (!bufref_valid(&bufref))
@@ -2823,19 +2823,19 @@ win_close(win_T *win, int free_buf)
 	    other_buffer = TRUE;
 	    if (!win_valid(win))
 		return FAIL;
-	    win->w_locked = TRUE;
+	    ++win->w_locked;
 	    apply_autocmds(EVENT_BUFLEAVE, NULL, NULL, FALSE, curbuf);
 	    if (!win_valid(win))
 		return FAIL;
-	    win->w_locked = FALSE;
+	    --win->w_locked;
 	    if (last_window())
 		return FAIL;
 	}
-	win->w_locked = TRUE;
+	++win->w_locked;
 	apply_autocmds(EVENT_WINLEAVE, NULL, NULL, FALSE, curbuf);
 	if (!win_valid(win))
 	    return FAIL;
-	win->w_locked = FALSE;
+	--win->w_locked;
 	if (last_window())
 	    return FAIL;
 #ifdef FEAT_EVAL
@@ -2901,6 +2901,9 @@ win_close(win_T *win, int free_buf)
 #ifdef MESSAGE_QUEUE
     ++dont_parse_messages;
 #endif
+
+    if (win->w_buffer != NULL)
+	--win->w_buffer->b_nwindows;
 
     // Free the memory used for the window and get the window that received
     // the screen space.
@@ -3476,7 +3479,7 @@ win_close_othertab(win_T *win, int free_buf, tabpage_T *tp)
     if (win->w_buffer != NULL)
 	// Close the link to the buffer.
 	close_buffer(win, win->w_buffer, free_buf ? DOBUF_UNLOAD : 0,
-								 FALSE, TRUE);
+							    FALSE, TRUE, TRUE);
 
     // Careful: Autocommands may have closed the tab page or made it the
     // current tab page.
@@ -3528,6 +3531,9 @@ win_close_othertab(win_T *win, int free_buf, tabpage_T *tp)
 	if (h != tabline_height())
 	    shell_new_rows();
     }
+
+    if (win->w_buffer != NULL)
+	--win->w_buffer->b_nwindows;
 
     // Free the memory used for the window.
     win_free_mem(win, &dir, tp);
@@ -4884,7 +4890,21 @@ win_new_tabpage(int after)
 #endif
 #if defined(FEAT_TABPANEL)
 	if (prev_columns != COLUMNS_WITHOUT_TPL())
+	{
+	    tabpage_T	*tp2;
+	    int		w = COLUMNS_WITHOUT_TPL();
+
 	    shell_new_columns();
+	    // shell_new_columns() only updates the current tab page; fix up
+	    // all others.
+	    FOR_ALL_TABPAGES(tp2)
+		if (tp2 != curtab)
+		{
+		    frame_new_width(tp2->tp_topframe, w, FALSE, TRUE);
+		    if (!frame_check_width(tp2->tp_topframe, w))
+			frame_new_width(tp2->tp_topframe, w, FALSE, FALSE);
+		}
+	}
 #endif
 	redraw_all_later(UPD_NOT_VALID);
 	apply_autocmds(EVENT_WINNEW, NULL, NULL, FALSE, curbuf);
@@ -6153,7 +6173,10 @@ win_free_popup(win_T *win)
 	if (bt_popup(win->w_buffer))
 	    win_close_buffer(win, DOBUF_WIPE_REUSE, FALSE);
 	else
-	    close_buffer(win, win->w_buffer, 0, FALSE, FALSE);
+	    close_buffer(win, win->w_buffer, 0, FALSE, FALSE, TRUE);
+
+	if (win->w_buffer != NULL)
+	    --win->w_buffer->b_nwindows;
     }
 # if defined(FEAT_TIMERS)
     // the timer may have been cleared, making the pointer invalid
@@ -6650,7 +6673,7 @@ frame_setheight(frame_T *curfrp, int height)
 	    room_reserved = room + room_cmdline - height;
 	// If there is only a 'winfixheight' window and making the
 	// window smaller, need to make the other window taller.
-	if (take < 0 && room - curfrp->fr_height < room_reserved)
+	if (take < 0 && room - curfrp->fr_height <= room_reserved)
 	    room_reserved = 0;
 
 	if (take > 0 && room_cmdline > 0)
@@ -7654,8 +7677,78 @@ last_status_rec(frame_T *fr, int statusline)
     else if (fr->fr_layout == FR_ROW)
     {
 	// vertically split windows, set status line for each one
-	FOR_ALL_FRAMES(fp, fr->fr_child)
-	    last_status_rec(fp, statusline);
+	if (!statusline)
+	{
+	    FOR_ALL_FRAMES(fp, fr->fr_child)
+		last_status_rec(fp, statusline);
+	}
+	else
+	{
+	    frame_T	*fp2;
+	    int		max_stlh = 0;
+	    int		new_row_height;
+
+	    // Find the max status height needed across all leaf windows.
+	    FOR_ALL_FRAMES(fp, fr->fr_child)
+		if (fp->fr_win != NULL && fp->fr_win->w_status_height == 0)
+		{
+		    int h = statusline_height(fp->fr_win);
+		    if (h > max_stlh)
+			max_stlh = h;
+		}
+	    if (max_stlh == 0)
+		return;
+
+	    // Find a frame to take max_stlh lines from.
+	    fp2 = fr;
+	    while (fp2->fr_height - frame_minheight(fp2, NULL) < max_stlh)
+	    {
+		if (fp2 == topframe)
+		{
+		    emsg(_(e_not_enough_room));
+		    return;
+		}
+		if (fp2->fr_parent->fr_layout == FR_COL
+						&& fp2->fr_prev != NULL)
+		    fp2 = fp2->fr_prev;
+		else
+		    fp2 = fp2->fr_parent;
+	    }
+
+	    if (fp2 != fr)
+	    {
+		frame_new_height(fp2, fp2->fr_height - max_stlh,
+							FALSE, FALSE, FALSE);
+		new_row_height = fr->fr_height + max_stlh;
+	    }
+	    else
+		new_row_height = fr->fr_height;
+
+	    // Set status and content heights for all leaves.
+	    FOR_ALL_FRAMES(fp, fr->fr_child)
+	    {
+		if (fp->fr_win != NULL)
+		{
+		    wp = fp->fr_win;
+		    if (wp->w_status_height == 0)
+		    {
+			wp->w_status_height = statusline_height(wp);
+			win_new_height(wp,
+				  new_row_height - wp->w_status_height);
+			frame_fix_height(wp);
+			comp_col();
+			redraw_all_later(UPD_SOME_VALID);
+			if (abs(wp->w_height - wp->w_prev_height) == 1)
+			    wp->w_prev_height = wp->w_height;
+		    }
+		}
+		else
+		    last_status_rec(fp, statusline); // nested frames
+	    }
+
+	    fr->fr_height = new_row_height;
+	    win_comp_pos();
+	}
     }
     else
     {

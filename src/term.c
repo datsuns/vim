@@ -62,7 +62,7 @@ static void got_code_from_term(char_u *code, int len);
 static void check_for_codes_from_term(void);
 #endif
 static void del_termcode_idx(int idx);
-static int find_term_bykeys(char_u *src);
+static int find_term_bykeys(char_u *src, int *len);
 static int term_is_builtin(char_u *name);
 static int term_7to8bit(char_u *p);
 static void accept_modifiers_for_function_keys(void);
@@ -130,14 +130,6 @@ static termrequest_T u7_status = TERMREQUEST_INIT;
 // Request xterm compatibility check:
 static termrequest_T xcc_status = TERMREQUEST_INIT;
 
-// Request synchronized output report
-static termrequest_T sync_output_status = TERMREQUEST_INIT;
-
-#ifdef UNIX
-// Request in-band window resize events report
-static termrequest_T win_resize_status = TERMREQUEST_INIT;
-#endif
-
 #ifdef FEAT_TERMRESPONSE
 # ifdef FEAT_TERMINAL
 // Request foreground color report:
@@ -173,10 +165,6 @@ static termrequest_T *all_termrequests[] = {
     &rbm_status,
     &rcs_status,
     &winpos_status,
-    &sync_output_status,
-# ifdef UNIX
-    &win_resize_status,
-# endif
     NULL
 };
 
@@ -685,6 +673,27 @@ static tcap_entry_T builtin_kitty[] = {
     {(int)KS_RBG,	"\033]11;?\033\\"},
 
     {(int)KS_NAME,	NULL}  // end marker
+};
+
+#ifdef HAVE_TGETENT
+/*
+ * Additions for enabling/disabling synchronized output mode for terminal.
+ */
+static tcap_entry_T builtin_sync_output[] = {
+    {(int)KS_BSU,	"\033[?2026h"},
+    {(int)KS_ESU,	"\033[?2026l"},
+    {(int)KS_NAME,	NULL}  // end marker
+};
+#endif
+
+/*
+ * List of DECRQM modes that Vim supports
+ */
+static int dec_modes[] = {
+    2026,   // Synchronized output
+#ifdef UNIX
+    2048    // In-band terminal resize events
+#endif
 };
 
 #ifdef FEAT_TERMGUICOLORS
@@ -2202,6 +2211,8 @@ set_termname(char_u *term)
 #ifdef HAVE_TGETENT
 	if (term_strings_not_set(KS_CF))
 	    apply_builtin_tcap(term, special_term, TRUE);
+	if (term_strings_not_set(KS_BSU) && term_strings_not_set(KS_ESU))
+	    apply_builtin_tcap(term, builtin_sync_output, TRUE);
 #endif
     }
 
@@ -2221,14 +2232,6 @@ set_termname(char_u *term)
     if (strstr((char *)term, "kitty") != NULL
 					   && (T_CRV == NULL || *T_CRV == NUL))
 	T_CRV = (char_u *)"\033[>c";
-
-    // These are the DECSET/DECRESET codes for synchronized output. iTerm
-    // supports another way, but this is the de facto standard terminal codes
-    // that are used (from what I can tell - 64bitman).
-    if (T_BSU == NULL || T_BSU == empty_option)
-	T_BSU = (char_u *)"\033[?2026h";
-    if (T_ESU == NULL || T_ESU == empty_option)
-	T_ESU = (char_u *)"\033[?2026l";
 
 #ifdef UNIX
 /*
@@ -2804,7 +2807,7 @@ termcapinit(char_u *name)
 /*
  * The number of calls to ui_write is reduced by using "out_buf".
  */
-#define OUT_SIZE	2047
+#define OUT_SIZE	8191
 
 // add one to allow mch_write() in os_win32.c to append a NUL
 static char_u		out_buf[OUT_SIZE + 1];
@@ -5757,13 +5760,11 @@ handle_csi(
 	    {
 		case 2026:
 		    sync_output_setting = setting;
-		    sync_output_status.tr_progress = STATUS_GOT;
 		    set_option_value_give_err((char_u *)"termsync",
 			    setting == 1 || setting == 2, NULL, 0);
 		    break;
 #ifdef UNIX
 		case 2048:
-		    win_resize_status.tr_progress = STATUS_GOT;
 		    win_resize_setting = setting;
 
 		    term_set_win_resize(true);
@@ -5785,7 +5786,10 @@ handle_csi(
 	key_name[0] = (int)KS_EXTRA;
 	key_name[1] = (int)KE_IGNORE;
 
-	set_shellsize(width, height, true);
+	// Only update if needed. Avoids intro message from disappearing on
+	// startup (due to initial event).
+	if (height != Rows || width != Columns)
+	    set_shellsize(width, height, true);
     }
 #endif
 
@@ -7080,13 +7084,14 @@ replace_termcodes(
 	 */
 	if (do_key_code)
 	{
-	    i = find_term_bykeys(src);
+	    int len;
+	    i = find_term_bykeys(src, &len);
 	    if (i >= 0)
 	    {
 		result[dlen++] = K_SPECIAL;
 		result[dlen++] = termcodes[i].name[0];
 		result[dlen++] = termcodes[i].name[1];
-		src += termcodes[i].len;
+		src += len;
 		// If terminal code matched, continue after it.
 		continue;
 	    }
@@ -7194,18 +7199,88 @@ replace_termcodes(
  * Return the index in termcodes[], or -1 if not found.
  */
     static int
-find_term_bykeys(char_u *src)
+find_term_bykeys(char_u *src, int *matchlen)
 {
-    int		i;
-    int		slen = (int)STRLEN(src);
+    int		i, j;
+    int		len = (int)STRLEN(src);
+    int         found = -1;
+    // Don't return a match for a single character
+    int         foundlen = 1;
+    int         slen, modslen;
+    int         thislen;
 
+    // find longest match
+    // borrows part of check_termcode
     for (i = 0; i < tc_len; ++i)
     {
-	if (slen == termcodes[i].len
+	slen = termcodes[i].len;
+	modslen = termcodes[i].modlen;
+
+	/*
+	 * Check for code with modifier, like xterm uses:
+	 * <Esc>[123;*X  (modslen == slen - 3)
+	 * <Esc>[@;*X    (matches <Esc>[X and <Esc>[1;9X )
+	 * Also <Esc>O*X and <M-O>*X (modslen == slen - 2).
+	 * When there is a modifier the * matches a number.
+	 * When there is no modifier the ;* or * is omitted.
+	 */
+	if (modslen > 0)
+	{
+	    if (len > modslen
+			&& STRNCMP(termcodes[i].code, src, (size_t)modslen) == 0)
+	    {
+		thislen = 0;
+
+		if (src[modslen] == termcodes[i].code[slen - 1])
+		    // no modifiers
+		    thislen = modslen + 1;
+		else if (src[modslen] != ';' && modslen == slen - 3)
+		    // no match for "code;*X" with "code;"
+		    continue;
+		else if (termcodes[i].code[modslen] == '@'
+				&& (src[modslen] != '1'
+					    || src[modslen + 1] != ';'))
+		    // no match for "<Esc>[@" with "<Esc>[1;"
+		    continue;
+		else
+		{
+		    // Skip over the digits, the final char must
+		    // follow. URXVT can use a negative value, thus
+		    // also accept '-'.
+		    for (j = slen - 2; j < len && (SAFE_isdigit(src[j])
+			       || src[j] == '-' || src[j] == ';'); ++j)
+			;
+		    ++j;
+		    if (len < j)	// got a partial sequence
+			continue;
+		    if (src[j - 1] != termcodes[i].code[slen - 1])
+			continue;	// no match
+
+		    thislen = j;
+		}
+
+		if (thislen > foundlen)
+		{
+		    found = i;
+		    foundlen = thislen;
+		}
+	    }
+	}
+	else
+	{
+	    if (slen > foundlen && len >= slen
 			&& STRNCMP(termcodes[i].code, src, (size_t)slen) == 0)
-	    return i;
+	    {
+		found = i;
+		foundlen = slen;
+	    }
+	}
     }
-    return -1;
+
+    if (matchlen != NULL && found >= 0)
+	*matchlen = foundlen;
+
+    return found;
 }
 
 /*
@@ -7511,7 +7586,7 @@ got_code_from_term(char_u *code, int len)
 # endif
 	    else
 	    {
-		i = find_term_bykeys(str);
+		i = find_term_bykeys(str, NULL);
 		if (i >= 0 && name[0] == termcodes[i].name[0]
 					    && name[1] == termcodes[i].name[1])
 		{
@@ -7519,6 +7594,14 @@ got_code_from_term(char_u *code, int len)
 # ifdef FEAT_EVAL
 		    ch_log(NULL, "got_code_from_term(): Entry %c%c did not change",
 							     name[0], name[1]);
+# endif
+		}
+		else if (i >= 0 && name[0] == 'K' && VIM_ISDIGIT(name[1]))
+		{
+		    // Would replace existing entry with keypad key - skip.
+# ifdef FEAT_EVAL
+		    ch_log(NULL, "got_code_from_term(): Skipping entry %c%c in favor of %c%c with matching keys %s",
+			    name[0], name[1], termcodes[i].name[0], termcodes[i].name[1], str);
 # endif
 		}
 		else
@@ -7896,51 +7979,23 @@ term_replace_keycodes(char_u *ta_buf, int ta_len, int len_arg)
     return len;
 }
 
-#ifdef FEAT_TERMRESPONSE
 /*
- * Query the setting for the following DEC modes from the terminal:
- * - DEC mode 2026 (synchronized output)
- * - DEC mode 2048 (window resize events)
+ * Query the settings for the DEC modes we support
  */
     void
-may_req_dec_setting(void)
+send_decrqm_modes(void)
 {
-    if (can_get_termresponse() && starting == 0)
+    if (termcap_active && cur_tmode == TMODE_RAW)
     {
-	bool didit = false;
-
-	if (sync_output_status.tr_progress == STATUS_GET)
+	// Request setting of relevant DEC modes via DECRQM
+	for (int i = 0; i < (int)ARRAY_LENGTH(dec_modes); i++)
 	{
-	    MAY_WANT_TO_LOG_THIS;
-	    LOG_TR1("Sending synchronized output request");
-
-	    out_str((char_u *)"\033[?2026$p");
-	    termrequest_sent(&sync_output_status);
-	    didit = true;
+	    vim_snprintf((char *)IObuff, IOSIZE, "\033[?%d$p", dec_modes[i]);
+	    out_str(IObuff);
 	}
-
-# ifdef UNIX
-	if (win_resize_status.tr_progress == STATUS_GET)
-	{
-	    MAY_WANT_TO_LOG_THIS;
-	    LOG_TR1("Sending in-band window resize events request");
-
-	    out_str((char_u *)"\033[?2048$p");
-	    termrequest_sent(&win_resize_status);
-	    didit = true;
-	}
-# endif
-
-	if (didit)
-	{
-	    // check for the characters now, otherwise they might be eaten by
-	    // get_keystroke()
-	    out_flush();
-	    (void)vpeekc_nomap();
-	}
+	out_flush();
     }
 }
-#endif
 
 /*
  * Should be called when cleaning up terminal state.
@@ -8004,12 +8059,19 @@ term_set_win_resize(bool state)
  * Enable or disable synchronized output if possible. Specification can be found
  * here:
  * https://github.com/contour-terminal/vt-extensions/blob/master/synchronized-output.md
+ *
+ * BSU/ESU do not need to bypass out_buf and go straight to ui_write().
+ * What matters is the order in which they reach the terminal:
+ * - BSU must be emitted before the batched redraw bytes.
+ * - ESU must be emitted after those redraw bytes.
+ * - A FLUSH must emit ESU and BSU together, then flush immediately.
+ * As long as out_flush() is done at those boundaries, putting BSU/ESU in
+ * out_buf reduces small writes without changing the observable protocol.
  */
     void
 term_set_sync_output(int flags)
 {
     bool    allowed;
-    char_u  *str;
 #ifdef FEAT_GUI
     bool    in_gui = gui.in_use;
 #else
@@ -8020,12 +8082,13 @@ term_set_sync_output(int flags)
 
     if (flags & TERM_SYNC_OUTPUT_FLUSH)
     {
-	// Tell terminal to display screen contents
+	// Tell terminal to display screen contents, then resume batching.
 	if (allowed && !in_gui && sync_output_state > 0 && *T_ESU != NUL &&
 		*T_BSU != NUL)
 	{
-	    ui_write((char_u *)T_ESU, (int)STRLEN(T_ESU), true);
-	    ui_write((char_u *)T_BSU, (int)STRLEN(T_BSU), true);
+	    out_str_nf(T_ESU);
+	    out_str_nf(T_BSU);
+	    out_flush();
 	}
 	return;
     }
@@ -8035,7 +8098,8 @@ term_set_sync_output(int flags)
     {
 	if (sync_output_state > 0 && *T_ESU != NUL)
 	{
-	    ui_write((char_u *)T_ESU, (int)STRLEN(T_ESU), true);
+	    out_str_nf(T_ESU);
+	    out_flush();
 	    sync_output_state = 0;
 	}
 	return;
@@ -8050,20 +8114,22 @@ term_set_sync_output(int flags)
     {
 	if (sync_output_state++ > 0)
 	    return;
-	str = T_BSU;
+	out_str_nf(T_BSU);
     }
     else if (flags & TERM_SYNC_OUTPUT_DISABLE)
     {
 	if (sync_output_state == 0 || --sync_output_state > 0)
 	    return;
-	str = T_ESU;
+	// Flush the output buffer before ending the sync batch so that
+	// all drawing output is sent to the terminal within the
+	// BSU..ESU window.  Without this, the drawing data remaining in
+	// out_buf would be sent after ESU, outside the sync batch.
+	out_str_nf(T_ESU);
+	out_flush();
     }
     else
     {
 	siemsg("Unknown sync output value %d", flags);
 	return;
     }
-
-    // Directly write to terminal instead of using output buffer
-    ui_write((char_u *)str, (int)STRLEN(str), true);
 }

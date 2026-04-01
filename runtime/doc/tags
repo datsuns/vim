@@ -4573,7 +4573,6 @@ E1335	vim9class.txt	/*E1335*
 E1336	options.txt	/*E1336*
 E1337	vim9class.txt	/*E1337*
 E1338	vim9class.txt	/*E1338*
-E1339	textprop.txt	/*E1339*
 E134	change.txt	/*E134*
 E1340	vim9class.txt	/*E1340*
 E1341	vim9class.txt	/*E1341*
@@ -4770,6 +4769,9 @@ E157	sign.txt	/*E157*
 E1570	builtin.txt	/*E1570*
 E1571	builtin.txt	/*E1571*
 E1572	options.txt	/*E1572*
+E1573	channel.txt	/*E1573*
+E1574	channel.txt	/*E1574*
+E1575	builtin.txt	/*E1575*
 E158	sign.txt	/*E158*
 E159	sign.txt	/*E159*
 E16	cmdline.txt	/*E16*
@@ -6229,6 +6231,7 @@ alt-input	debugger.txt	/*alt-input*
 alternate-file	editing.txt	/*alternate-file*
 amiga-window	starting.txt	/*amiga-window*
 and()	builtin.txt	/*and()*
+android	builtin.txt	/*android*
 anonymous-function	eval.txt	/*anonymous-function*
 ant.vim	syntax.txt	/*ant.vim*
 ap	motion.txt	/*ap*
@@ -6584,6 +6587,7 @@ ch_evalraw()	channel.txt	/*ch_evalraw()*
 ch_getbufnr()	channel.txt	/*ch_getbufnr()*
 ch_getjob()	channel.txt	/*ch_getjob()*
 ch_info()	channel.txt	/*ch_info()*
+ch_listen()	channel.txt	/*ch_listen()*
 ch_log()	channel.txt	/*ch_log()*
 ch_logfile()	channel.txt	/*ch_logfile()*
 ch_open()	channel.txt	/*ch_open()*
@@ -6634,6 +6638,7 @@ channel-demo	channel.txt	/*channel-demo*
 channel-drop	channel.txt	/*channel-drop*
 channel-functions	usr_41.txt	/*channel-functions*
 channel-functions-details	channel.txt	/*channel-functions-details*
+channel-listen-demo	channel.txt	/*channel-listen-demo*
 channel-mode	channel.txt	/*channel-mode*
 channel-more	channel.txt	/*channel-more*
 channel-noblock	channel.txt	/*channel-noblock*
@@ -11079,6 +11084,7 @@ termresponse-variable	eval.txt	/*termresponse-variable*
 termrfgresp-variable	eval.txt	/*termrfgresp-variable*
 termstyleresp-variable	eval.txt	/*termstyleresp-variable*
 termu7resp-variable	eval.txt	/*termu7resp-variable*
+termux	builtin.txt	/*termux*
 ternary	eval.txt	/*ternary*
 test-functions	usr_41.txt	/*test-functions*
 test-functions-details	testing.txt	/*test-functions-details*

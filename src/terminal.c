@@ -810,6 +810,11 @@ ex_terminal(exarg_T *eap)
     int		opt_shell = FALSE;
     char_u	*cmd;
     char_u	*tofree = NULL;
+    int		scroll_save = msg_scroll;
+
+    msg_scroll = FALSE;		// don't scroll here
+    autowrite_all();
+    msg_scroll = scroll_save;
 
     init_job_options(&opt);
 
@@ -2302,9 +2307,9 @@ term_enter_normal_mode(void)
  * Terminal-Normal mode.
  */
     int
-term_in_normal_mode(void)
+term_in_normal_mode(buf_T *buf)
 {
-    term_T *term = curbuf->b_term;
+    term_T *term = buf->b_term;
 
     return term != NULL && term->tl_normal_mode;
 }
@@ -3326,7 +3331,9 @@ handle_movecursor(
 	    position_cursor(wp, &pos);
     }
     if (term->tl_buffer == curbuf && !term->tl_normal_mode)
-	update_cursor(term, term->tl_cursor_visible);
+	// Don't redraw here, it will be done after
+	// vterm_input_write() is finished.
+	update_cursor(term, FALSE);
 
     return 1;
 }
@@ -3730,14 +3737,16 @@ term_after_channel_closed(term_T *term)
 	    aucmd_prepbuf(&aco, term->tl_buffer);
 	    if (curbuf == term->tl_buffer)
 	    {
+		win_T	*wp = curwin;
+
 		// Avoid closing the window if we temporarily use it.
-		if (is_aucmd_win(curwin))
+		if (is_aucmd_win(wp))
 		    do_set_w_locked = TRUE;
 		if (do_set_w_locked)
-		    curwin->w_locked = TRUE;
+		    ++wp->w_locked;
 		do_bufdel(DOBUF_WIPE, (char_u *)"", 1, fnum, fnum, FALSE);
 		if (do_set_w_locked)
-		    curwin->w_locked = FALSE;
+		    --wp->w_locked;
 		aucmd_restbuf(&aco);
 	    }
 #ifdef FEAT_PROP_POPUP
@@ -4006,8 +4015,11 @@ update_system_term(term_T *term)
     screen = vterm_obtain_screen(term->tl_vterm);
 
     // Scroll up to make more room for terminal lines if needed.
+    // Use the cursor position to determine how much to scroll, because
+    // ConPTY may damage all rows on initialization even when most are
+    // empty, which would cause unnecessary scrolling.
     while (term->tl_toprow > 0
-			  && (Rows - term->tl_toprow) < term->tl_dirty_row_end)
+		  && (Rows - term->tl_toprow) < term->tl_cursor_pos.row + 1)
     {
 	int save_p_more = p_more;
 
@@ -4951,6 +4963,7 @@ create_vterm(term_T *term, int rows, int cols)
     }
 
     vterm_screen_set_callbacks(screen, &screen_callbacks, term);
+    vterm_screen_set_damage_merge(screen, VTERM_DAMAGE_SCROLL);
     // TODO: depends on 'encoding'.
     vterm_set_utf8(vterm, 1);
 

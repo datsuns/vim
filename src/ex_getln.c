@@ -245,7 +245,7 @@ parse_pattern_and_range(
     // Skip over the range to find the command.
     cmd = skip_range(ea.cmd, TRUE, NULL);
 
-    if (vim_strchr((char_u *)"sgvl", *cmd) == NULL)
+    if (vim_strchr((char_u *)"sgvlu", *cmd) == NULL)
 	return FALSE;
 
     // Skip over command name to find pattern separator
@@ -1898,6 +1898,21 @@ getcmdline_int(
 	    cursorcmd();		// set the cursor on the right spot
 	    c = safe_vgetc();
 	} while (c == K_IGNORE || c == K_NOP);
+
+	// If the cmdline was replaced externally (e.g. by setcmdline()
+	// during an <expr> mapping), clean up the wildmenu completion
+	// state to avoid using stale completion data.
+	if (ccline.cmdbuff_replaced && xpc.xp_numfiles > 0)
+	{
+	    if (cmdline_pum_active())
+		cmdline_pum_remove(&ccline, FALSE);
+	    (void)ExpandOne(&xpc, NULL, NULL, 0, WILD_FREE);
+	    did_wild_list = FALSE;
+	    xpc.xp_context = EXPAND_NOTHING;
+	    wim_index = 0;
+	    wildmenu_cleanup(&ccline);
+	}
+	ccline.cmdbuff_replaced = FALSE;
 
 	// Skip wildmenu during history navigation via Up/Down keys
 	if (c == K_WILD && did_hist_navigate)
@@ -4518,6 +4533,7 @@ set_cmdline_str(char_u *str, int pos)
 
     p->cmdpos = pos < 0 || pos > p->cmdlen ? p->cmdlen : pos;
     new_cmdpos = p->cmdpos;
+    p->cmdbuff_replaced = TRUE;
 
     redrawcmd();
 
@@ -4769,7 +4785,7 @@ open_cmdwin(void)
 	// win_close() autocommands may have already deleted the buffer.
 	if (newbuf_status == OK && bufref_valid(&bufref) &&
 		bufref.br_buf != curbuf)
-	    close_buffer(NULL, bufref.br_buf, DOBUF_WIPE, FALSE, FALSE);
+	    close_buffer(NULL, bufref.br_buf, DOBUF_WIPE, FALSE, FALSE, FALSE);
 
 	cmdwin_type = 0;
 	cmdwin_win = NULL;
@@ -4984,7 +5000,7 @@ open_cmdwin(void)
 	// win_close() may have already wiped the buffer when 'bh' is
 	// set to 'wipe', autocommands may have closed other windows
 	if (bufref_valid(&bufref) && bufref.br_buf != curbuf)
-	    close_buffer(NULL, bufref.br_buf, DOBUF_WIPE, FALSE, FALSE);
+	    close_buffer(NULL, bufref.br_buf, DOBUF_WIPE, FALSE, FALSE, FALSE);
 
 	// Restore window sizes.
 	win_size_restore(&winsizes);
