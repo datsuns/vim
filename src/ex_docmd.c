@@ -2734,7 +2734,7 @@ ex_errmsg(char *msg, char_u *arg)
  * The "+" string used in place of an empty command in Ex mode.
  * This string is used in pointer comparison.
  */
-static char exmode_plus[] = "+";
+static const char exmode_plus[] = "+";
 
 /*
  * Handle a range without a command.
@@ -8366,7 +8366,7 @@ do_sleep(long msec, int hide_cursor)
 	// actual time passed
 	done = ELAPSED_FUNC(start_tv);
 #else
-	// guestimate time passed (will actually be more)
+	// guesstimate time passed (will actually be more)
 	done += wait_now;
 #endif
     }

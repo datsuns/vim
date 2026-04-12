@@ -104,6 +104,10 @@ EXTERN int redrawing_for_callback INIT(= 0);
  */
 EXTERN short	*TabPageIdxs INIT(= NULL);
 
+// Click regions for 'tabline' (%[FuncName]).
+EXTERN stl_click_region_T *tabline_stl_click INIT(= NULL);
+EXTERN int	tabline_stl_click_count INIT(= 0);
+
 #ifdef FEAT_PROP_POPUP
 // Array with size Rows x Columns containing zindex of popups.
 EXTERN short	*popup_mask INIT(= NULL);
@@ -124,6 +128,23 @@ EXTERN int	screen_zindex INIT(= 0);
 // Currently drawing popup with opacity window, or NULL.
 EXTERN win_T	*screen_opacity_popup INIT(= NULL);
 #endif
+
+// Pum opacity level (0 = fully transparent, 100 = fully opaque).
+// Set via 'pumopt' opacity: key.
+EXTERN long	p_po INIT(= 100);
+
+// Blend value for popup menu opacity (0 = off, 1-99 = blend level).
+// Set during pum drawing when pum opacity is active.
+EXTERN int	screen_pum_blend INIT(= 0);
+
+// Saved background screen content for pum opacity blending.
+EXTERN sattr_T	*pum_bg_attrs INIT(= NULL);
+EXTERN schar_T	*pum_bg_lines INIT(= NULL);
+EXTERN u8char_T	*pum_bg_linesUC INIT(= NULL);
+EXTERN u8char_T	*pum_bg_linesC[MAX_MCO];
+EXTERN int	pum_bg_top INIT(= 0);
+EXTERN int	pum_bg_bot INIT(= 0);
+EXTERN int	pum_bg_cols INIT(= 0);
 
 EXTERN int	screen_Rows INIT(= 0);	    // actual size of ScreenLines[]
 EXTERN int	screen_Columns INIT(= 0);   // actual size of ScreenLines[]
@@ -1737,17 +1758,17 @@ EXTERN win_T	*cmdwin_win INIT(= NULL); // window of cmdline window or NULL
 EXTERN char_u no_lines_msg[]	INIT(= N_("--No lines in buffer--"));
 
 EXTERN char typename_unknown[]	INIT(= N_("unknown"));
-EXTERN char typename_int[]	INIT(= N_("int"));
-EXTERN char typename_longint[]	INIT(= N_("long int"));
-EXTERN char typename_longlongint[]	INIT(= N_("long long int"));
-EXTERN char typename_unsignedint[]	INIT(= N_("unsigned int"));
-EXTERN char typename_unsignedlongint[]	INIT(= N_("unsigned long int"));
-EXTERN char typename_unsignedlonglongint[]	INIT(= N_("unsigned long long int"));
+EXTERN char typename_int[]	INIT(= "int");
+EXTERN char typename_longint[]	INIT(= "long int");
+EXTERN char typename_longlongint[]	INIT(= "long long int");
+EXTERN char typename_unsignedint[]	INIT(= "unsigned int");
+EXTERN char typename_unsignedlongint[]	INIT(= "unsigned long int");
+EXTERN char typename_unsignedlonglongint[]	INIT(= "unsigned long long int");
 EXTERN char typename_pointer[]	INIT(= N_("pointer"));
 EXTERN char typename_percent[]	INIT(= N_("percent"));
-EXTERN char typename_char[] INIT(= N_("char"));
+EXTERN char typename_char[] INIT(= "char");
 EXTERN char typename_string[]	INIT(= N_("string"));
-EXTERN char typename_float[]	INIT(= N_("float"));
+EXTERN char typename_float[]	INIT(= "float");
 
 /*
  * When ":global" is used to number of substitutions and changed lines is

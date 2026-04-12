@@ -507,7 +507,8 @@ do_by_tplmode(
 #endif
 			(args.cwp, buf, sizeof(buf),
 			&usefmt, opt_name, opt_scope, TPL_FILLCHAR,
-			args.col_end - args.col_start, &hltab, &tabtab);
+			args.col_end - args.col_start, &hltab, &tabtab,
+			NULL);
 
 		args.prow = &row;
 		args.pcol = &col;
@@ -544,7 +545,7 @@ do_by_tplmode(
     }
 
     // fill the area of TabPanelFill.
-    screen_fill_tailing_area(tplmode, row - args.offsetrow, args.maxrow,
+    screen_fill_tailing_area(tplmode, MAX(row - args.offsetrow, 0), args.maxrow,
 	    args.col_start, args.col_end, attr_tplf);
 }
 
