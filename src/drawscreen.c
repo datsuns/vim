@@ -371,10 +371,20 @@ update_screen(int type_arg)
     pum_will_redraw = save_pum_will_redraw;
     pum_may_redraw();
 
+    // Redraw vertical separators to update VertSplit/VertSplitNC highlights
+    // when the current window has changed.
+    if (redraw_vseps)
+    {
+	redraw_vseps = FALSE;
+	FOR_ALL_WINDOWS(wp)
+	    if (wp->w_vsep_width > 0)
+		draw_vsep_win(wp, 0);
+    }
+
     // Reset b_mod_set flags.  Going through all windows is probably faster
     // than going through all buffers (there could be many buffers).
     FOR_ALL_WINDOWS(wp)
-	wp->w_buffer->b_mod_set = FALSE;
+	wp->w_buffer->b_mod_set = false;
 
 #ifdef FEAT_PROP_POPUP
     // Display popup windows on top of the windows and command line.
@@ -600,12 +610,12 @@ win_redr_status(win_T *wp, int ignore_pum UNUSED)
      */
     if (wp->w_vsep_width != 0 && wp->w_status_height != 0 && redrawing())
     {
-	if (stl_connected(wp))
-	    fillchar = fillchar_status(&attr, wp);
-	else
-	    fillchar = fillchar_vsep(&attr, wp);
 	for (i = 0; i < wp->w_status_height; i++)
-	    screen_putchar(fillchar, row + i, W_ENDCOL(wp), attr);
+	{
+	    int r = row + i;
+	    fillchar = sep_cell_at_row(&attr, wp, r);
+	    screen_putchar(fillchar, r, W_ENDCOL(wp), attr);
+	}
     }
     busy = FALSE;
 }
@@ -2836,13 +2846,13 @@ win_update(win_T *wp)
 	    if (wp->w_redr_type != 0)
 	    {
 		// Don't update for changes in buffer again.
-		i = curbuf->b_mod_set;
-		curbuf->b_mod_set = FALSE;
+		bool b = curbuf->b_mod_set;
+		curbuf->b_mod_set = false;
 		j = curbuf->b_mod_xlines;
 		curbuf->b_mod_xlines = 0;
 		curs_columns(TRUE);
 		win_update(curwin);
-		curbuf->b_mod_set = i;
+		curbuf->b_mod_set = b;
 		curbuf->b_mod_xlines = j;
 	    }
 	    // Other windows might have w_redr_type raised in update_topline().
@@ -3414,6 +3424,13 @@ redraw_statuslines(void)
 	    if (ret)
 		pop_highlight_overrides();
 	}
+    if (redraw_vseps)
+    {
+	redraw_vseps = FALSE;
+	FOR_ALL_WINDOWS(wp)
+	    if (wp->w_vsep_width > 0)
+		draw_vsep_win(wp, 0);
+    }
     if (redraw_tabline)
 	draw_tabline();
 

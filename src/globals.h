@@ -108,6 +108,10 @@ EXTERN short	*TabPageIdxs INIT(= NULL);
 EXTERN stl_click_region_T *tabline_stl_click INIT(= NULL);
 EXTERN int	tabline_stl_click_count INIT(= 0);
 
+// Click regions for 'tabpanel' (%[FuncName]).
+EXTERN stl_click_region_T *tabpanel_stl_click INIT(= NULL);
+EXTERN int	tabpanel_stl_click_count INIT(= 0);
+
 #ifdef FEAT_PROP_POPUP
 // Array with size Rows x Columns containing zindex of popups.
 EXTERN short	*popup_mask INIT(= NULL);
@@ -1090,6 +1094,7 @@ EXTERN tabpage_T    *first_tabpage;
 EXTERN tabpage_T    *curtab;
 EXTERN tabpage_T    *lastused_tabpage;
 EXTERN int	    redraw_tabline INIT(= FALSE);  // need to redraw tabline
+EXTERN int	    redraw_vseps INIT(= FALSE);	   // need to redraw vseps
 
 #if defined(FEAT_TABPANEL)
 EXTERN int	    redraw_tabpanel INIT(= FALSE);  // need to redraw tabpanel

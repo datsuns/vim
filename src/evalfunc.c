@@ -4391,6 +4391,9 @@ f_echoraw(typval_T *argvars, typval_T *rettv UNUSED)
 {
     char_u *str;
 
+    if (check_secure())
+	return;
+
     if (in_vim9script() && check_for_string_arg(argvars, 0) == FAIL)
 	return;
 
@@ -10413,6 +10416,7 @@ f_getreginfo(typval_T *argvars, typval_T *rettv)
 {
     int		regname;
     char_u	buf[NUMBUFLEN + 2];
+    size_t	buflen;
     long	reglen = 0;
     dict_T	*dict;
     list_T	*list;
@@ -10436,23 +10440,34 @@ f_getreginfo(typval_T *argvars, typval_T *rettv)
 	return;
     (void)dict_add_list(dict, "regcontents", list);
 
-    buf[0] = NUL;
-    buf[1] = NUL;
     switch (get_reg_type(regname, &reglen))
     {
-	case MLINE: buf[0] = 'V'; break;
-	case MCHAR: buf[0] = 'v'; break;
+	case MLINE:
+	    buf[0] = 'V';
+	    buf[1] = NUL;
+	    buflen = 1;
+	    break;
+	case MCHAR:
+	    buf[0] = 'v';
+	    buf[1] = NUL;
+	    buflen = 1;
+	    break;
 	case MBLOCK:
-		    vim_snprintf((char *)buf, sizeof(buf), "%c%ld", Ctrl_V,
-			    reglen + 1);
-		    break;
+	    buflen = vim_snprintf_safelen((char *)buf, sizeof(buf),
+		"%c%ld", Ctrl_V, reglen + 1);
+	    break;
+	default:
+	    buf[0] = NUL;
+	    buflen = 0;
+	    break;
     }
-    (void)dict_add_string(dict, (char *)"regtype", buf);
+    (void)dict_add_string_len(dict, (char *)"regtype", buf, (int)buflen);
 
     buf[0] = get_register_name(get_unname_register());
     buf[1] = NUL;
+    buflen = (buf[0] == NUL) ? 0 : 1;
     if (regname == '"')
-	(void)dict_add_string(dict, (char *)"points_to", buf);
+	(void)dict_add_string_len(dict, (char *)"points_to", buf, (int)buflen);
     else
     {
 	dictitem_T	*item = dictitem_alloc((char_u *)"isunnamed");
@@ -10470,11 +10485,11 @@ f_getreginfo(typval_T *argvars, typval_T *rettv)
     static void
 return_register(int regname, typval_T *rettv)
 {
-    char_u buf[2] = {0, 0};
+    char_u buf[2] = {NUL, NUL};
 
     buf[0] = (char_u)regname;
     rettv->v_type = VAR_STRING;
-    rettv->vval.v_string = vim_strsave(buf);
+    rettv->vval.v_string = vim_strnsave(buf, (buf[0] == NUL) ? 0 : 1);
 }
 
 /*
@@ -10581,7 +10596,7 @@ repeat_string(typval_T *str_tv, int n, typval_T *rettv)
     int		slen;
     int		len;
     char_u	*r;
-    int		i;
+    int		done;
 
     p = tv_get_string(str_tv);
     rettv->v_type = VAR_STRING;
@@ -10596,8 +10611,17 @@ repeat_string(typval_T *str_tv, int n, typval_T *rettv)
     if (r == NULL)
 	return;
 
-    for (i = 0; i < n; i++)
-	mch_memmove(r + i * slen, p, (size_t)slen);
+    mch_memmove(r, p, (size_t)slen);
+    done = slen;
+    while (done < len)
+    {
+	int copy_len = done;
+
+	if (copy_len > len - done)
+	    copy_len = len - done;
+	mch_memmove(r + done, r, (size_t)copy_len);
+	done += copy_len;
+    }
     r[len] = NUL;
 
     rettv->vval.v_string = r;

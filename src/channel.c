@@ -1400,8 +1400,7 @@ theend:
     channel_T *
 channel_listen_func(typval_T *argvars)
 {
-    char_u	*address;
-    char_u	*p;
+    char_u	*arg;
     char	*rest;
     int		port;
     int		is_unix = FALSE;
@@ -1409,62 +1408,31 @@ channel_listen_func(typval_T *argvars)
     channel_T	*channel = NULL;
 
     if (in_vim9script()
-	    && (check_for_string_arg(argvars, 0) == FAIL
-		|| check_for_opt_dict_arg(argvars, 1) == FAIL))
+	    && check_for_string_arg(argvars, 0) == FAIL)
 	return NULL;
 
-    address = tv_get_string(&argvars[0]);
-    if (argvars[1].v_type != VAR_UNKNOWN
-	    && check_for_nonnull_dict_arg(argvars, 1) == FAIL)
-	return NULL;
-
-    if (*address == NUL)
+    arg = tv_get_string(&argvars[0]);
+    if (*arg == NUL)
     {
-	semsg(_(e_invalid_argument_str), address);
+	semsg(_(e_invalid_argument_str), arg);
 	return NULL;
     }
 
-    if (!STRNCMP(address, "unix:", 5))
+    if (!STRNCMP(arg, "unix:", 5))
     {
 	is_unix = TRUE;
-	address += 5;
+	arg += 5;
 	port = 0;
-    }
-    else if (*address == '[')
-    {
-	// ipv6 address
-	p = vim_strchr(address + 1, ']');
-	if (p == NULL || *++p != ':')
-	{
-	    semsg(_(e_invalid_argument_str), address);
-	    return NULL;
-	}
-	port = strtol((char *)(p + 1), &rest, 10);
-	if (port < 0 || port >= 65536 || *rest != NUL)
-	{
-	    semsg(_(e_invalid_argument_str), address);
-	    return NULL;
-	}
-	// strip '[' and ']'
-	++address;
-	*(p - 1) = NUL;
     }
     else
     {
-	// ipv4 address
-	p = vim_strchr(address, ':');
-	if (p == NULL)
-	{
-	    semsg(_(e_invalid_argument_str), address);
-	    return NULL;
-	}
-	port = strtol((char *)(p + 1), &rest, 10);
+	port = strtol((char *)(arg), &rest, 10);
 	if (port < 0 || port >= 65536 || *rest != NUL)
 	{
-	    semsg(_(e_invalid_argument_str), address);
+	    semsg(_(e_invalid_argument_str), arg);
 	    return NULL;
 	}
-	*p = NUL;
+	*arg = NUL;
     }
 
     // parse options
@@ -1481,9 +1449,9 @@ channel_listen_func(typval_T *argvars)
     }
 
     if (is_unix)
-	channel = channel_listen_unix((char *)address, NULL);
+	channel = channel_listen_unix((char *)arg, NULL);
     else
-	channel = channel_listen((char *)address, port, NULL);
+	channel = channel_listen(port, NULL);
     if (channel != NULL)
     {
 	opt.jo_set = JO_ALL;
@@ -1501,7 +1469,6 @@ theend:
  */
     channel_T *
 channel_listen(
-	char *hostname,
 	int port_in,
 	void (*nb_close_cb)(void))
 {
@@ -1512,12 +1479,6 @@ channel_listen(
 #endif
     int			val = 1;
     channel_T		*channel;
-
-    if (hostname == NULL || *hostname == NUL)
-    {
-	ch_error(NULL, "Hostname/address not defined.");
-	return NULL;
-    }
 
 #ifdef MSWIN
     channel_init_winsock();
@@ -1535,42 +1496,7 @@ channel_listen(
     vim_memset((char *)&server, 0, sizeof(server));
     server.sin_family = AF_INET;
     server.sin_port = htons(port_in);
-
-#ifdef FEAT_IPV6
-    struct addrinfo	hints;
-    struct addrinfo	*res = NULL;
-    int		err;
-
-    CLEAR_FIELD(hints);
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    if ((err = getaddrinfo(hostname, NULL, &hints, &res)) != 0)
-    {
-	ch_error(channel, "in getaddrinfo() in channel_listen()");
-	PERROR(_(e_gethostbyname_in_channel_listen));
-	channel_free(channel);
-	return NULL;
-    }
-    memcpy(&server.sin_addr,
-	&((struct sockaddr_in *)res->ai_addr)->sin_addr,
-	sizeof(server.sin_addr));
-    freeaddrinfo(res);
-#else
-    if ((host = gethostbyname(hostname)) == NULL)
-    {
-	ch_error(channel, "in gethostbyname() in channel_listen()");
-	PERROR(_(e_gethostbyname_in_channel_listen));
-	channel_free(channel);
-	return NULL;
-    }
-
-    char		*p;
-
-    // When using host->h_addr_list[0] directly ubsan warns for it to
-    // not be aligned.  First copy the pointer to avoid that.
-    memcpy(&p, &host->h_addr_list[0], sizeof(p));
-    memcpy((char *)&server.sin_addr, p, host->h_length);
-#endif
+    server.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
     sd = socket(AF_INET, SOCK_STREAM, 0);
     if (sd == -1)
@@ -1632,7 +1558,7 @@ channel_listen(
     channel->ch_listen = TRUE;
     channel->CH_SOCK_FD = (sock_T)sd;
     channel->ch_nb_close_cb = nb_close_cb;
-    channel->ch_hostname = (char *)vim_strsave((char_u *)hostname);
+    channel->ch_hostname = (char *)vim_strsave((char_u *)"");
     channel->ch_port = port_in;
     channel->ch_to_be_closed |= (1U << PART_SOCK);
 
@@ -1828,7 +1754,7 @@ channel_set_job(channel_T *channel, job_T *job, jobopt_T *options)
 	{
 	    // Special mode: send last-but-one line when appending a line
 	    // to the buffer.
-	    in_part->ch_bufref.br_buf->b_write_to_channel = TRUE;
+	    in_part->ch_bufref.br_buf->b_write_to_channel = true;
 	    in_part->ch_buf_append = TRUE;
 	    in_part->ch_buf_top =
 		in_part->ch_bufref.br_buf->b_ml.ml_line_count + 1;
@@ -2128,7 +2054,7 @@ channel_write_new_lines(buf_T *buf)
 	}
     }
     if (!found_one)
-	buf->b_write_to_channel = FALSE;
+	buf->b_write_to_channel = false;
 }
 
 /*
@@ -3143,7 +3069,7 @@ append_to_buffer(
 {
     aco_save_T	aco;
     linenr_T    lnum = buffer->b_ml.ml_line_count;
-    int		save_write_to = buffer->b_write_to_channel;
+    bool	save_write_to = buffer->b_write_to_channel;
     chanpart_T  *ch_part = &channel->ch_part[part];
     int		save_p_ma = buffer->b_p_ma;
     int		empty = (buffer->b_ml.ml_flags & ML_EMPTY) ? 1 : 0;
@@ -3163,7 +3089,7 @@ append_to_buffer(
     if (save_write_to)
     {
 	--lnum;
-	buffer->b_write_to_channel = FALSE;
+	buffer->b_write_to_channel = false;
     }
 
     // Append to the buffer
@@ -3242,7 +3168,7 @@ append_to_buffer(
 
 	// Find channels reading from this buffer and adjust their
 	// next-to-read line number.
-	buffer->b_write_to_channel = TRUE;
+	buffer->b_write_to_channel = true;
 	FOR_ALL_CHANNELS(ch)
 	{
 	    chanpart_T  *in_part = &ch->ch_part[PART_IN];
@@ -3742,46 +3668,98 @@ channel_part_info(channel_T *channel, dict_T *dict, char *name, ch_part_T part)
     chanpart_T *chanpart = &channel->ch_part[part];
     char	namebuf[20];  // longest is "sock_timeout"
     size_t	tail;
-    char	*status;
-    char	*s = "";
+    string_T	s;
 
     vim_strncpy((char_u *)namebuf, (char_u *)name, 4);
-    STRCAT(namebuf, "_");
     tail = STRLEN(namebuf);
+    STRCPY(namebuf + tail, "_");
+    tail += STRLEN_LITERAL("_");
 
     STRCPY(namebuf + tail, "status");
     if (chanpart->ch_fd != INVALID_FD)
-	status = "open";
+    {
+	s.string = (char_u *)"open";
+	s.length = STRLEN_LITERAL("open");
+    }
     else if (channel_has_readahead(channel, part))
-	status = "buffered";
+    {
+	s.string = (char_u *)"buffered";
+	s.length = STRLEN_LITERAL("buffered");
+    }
     else
-	status = "closed";
-    dict_add_string(dict, namebuf, (char_u *)status);
+    {
+	s.string = (char_u *)"closed";
+	s.length = STRLEN_LITERAL("closed");
+    }
+    dict_add_string_len(dict, namebuf, s.string, (int)s.length);
 
     STRCPY(namebuf + tail, "mode");
     switch (chanpart->ch_mode)
     {
-	case CH_MODE_NL: s = "NL"; break;
-	case CH_MODE_RAW: s = "RAW"; break;
-	case CH_MODE_JSON: s = "JSON"; break;
-	case CH_MODE_JS: s = "JS"; break;
-	case CH_MODE_LSP: s = "LSP"; break;
-	case CH_MODE_DAP: s = "DAP"; break;
+	case CH_MODE_NL:
+	    s.string = (char_u *)"NL";
+	    s.length = STRLEN_LITERAL("NL");
+	    break;
+	case CH_MODE_RAW:
+	    s.string = (char_u *)"RAW";
+	    s.length = STRLEN_LITERAL("RAW");
+	    break;
+	case CH_MODE_JSON:
+	    s.string = (char_u *)"JSON";
+	    s.length = STRLEN_LITERAL("JSON");
+	    break;
+	case CH_MODE_JS:
+	    s.string = (char_u *)"JS";
+	    s.length = STRLEN_LITERAL("JS");
+	    break;
+	case CH_MODE_LSP:
+	    s.string = (char_u *)"LSP";
+	    s.length = STRLEN_LITERAL("LSP");
+	    break;
+	case CH_MODE_DAP:
+	    s.string = (char_u *)"DAP";
+	    s.length = STRLEN_LITERAL("DAP");
+	    break;
+	default:
+	    s.string = (char_u *)"";
+	    s.length = 0;
+	    break;
     }
-    dict_add_string(dict, namebuf, (char_u *)s);
+    dict_add_string_len(dict, namebuf, s.string, (int)s.length);
 
     STRCPY(namebuf + tail, "io");
     if (part == PART_SOCK)
-	s = "socket";
+    {
+	s.string = (char_u *)"socket";
+	s.length = STRLEN_LITERAL("socket");
+    }
     else switch (chanpart->ch_io)
     {
-	case JIO_NULL: s = "null"; break;
-	case JIO_PIPE: s = "pipe"; break;
-	case JIO_FILE: s = "file"; break;
-	case JIO_BUFFER: s = "buffer"; break;
-	case JIO_OUT: s = "out"; break;
+	case JIO_NULL:
+	    s.string = (char_u *)"null";
+	    s.length = STRLEN_LITERAL("null");
+	    break;
+	case JIO_PIPE:
+	    s.string = (char_u *)"pipe";
+	    s.length = STRLEN_LITERAL("pipe");
+	    break;
+	case JIO_FILE:
+	    s.string = (char_u *)"file";
+	    s.length = STRLEN_LITERAL("file");
+	    break;
+	case JIO_BUFFER:
+	    s.string = (char_u *)"buffer";
+	    s.length = STRLEN_LITERAL("buffer");
+	    break;
+	case JIO_OUT:
+	    s.string = (char_u *)"out";
+	    s.length = STRLEN_LITERAL("out");
+	    break;
+	default:
+	    s.string = (char_u *)"";
+	    s.length = 0;
     }
-    dict_add_string(dict, namebuf, (char_u *)s);
+    dict_add_string_len(dict, namebuf, s.string, (int)s.length);
 
     STRCPY(namebuf + tail, "timeout");
     dict_add_number(dict, namebuf, chanpart->ch_timeout);
@@ -3796,10 +3774,7 @@ channel_info(channel_T *channel, dict_T *dict)
     if (channel->ch_hostname != NULL)
     {
 	if (channel->ch_port)
-	{
-	    dict_add_string(dict, "hostname", (char_u *)channel->ch_hostname);
 	    dict_add_number(dict, "port", channel->ch_port);
-	}
 	else
 	    // Unix-domain socket.
 	    dict_add_string(dict, "path", (char_u *)channel->ch_hostname);
@@ -5143,7 +5118,7 @@ ch_expr_common(typval_T *argvars, typval_T *rettv, int eval)
 		id = di->di_tv.vval.v_number;
 	}
 	if (ch_mode == CH_MODE_LSP && !dict_has_key(d, "jsonrpc"))
-	    dict_add_string(d, "jsonrpc", (char_u *)"2.0");
+	    dict_add_string_len(d, "jsonrpc", (char_u *)"2.0", STRLEN_LITERAL("2.0"));
 	text = json_encode_lsp_msg(&argvars[1]);
     }
     else

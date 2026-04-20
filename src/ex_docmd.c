@@ -9016,6 +9016,7 @@ ex_redrawstatus(exarg_T *eap UNUSED)
 	status_redraw_all();
     else
 	status_redraw_curbuf();
+    redraw_vseps = TRUE;
     if (msg_scrolled && (State & MODE_CMDLINE))
 	return;  // redraw later
 
@@ -10367,7 +10368,7 @@ ex_setfiletype(exarg_T *eap)
 
     set_option_value_give_err((char_u *)"filetype", 0L, arg, OPT_LOCAL);
     if (arg != eap->arg)
-	curbuf->b_did_filetype = FALSE;
+	curbuf->b_did_filetype = false;
 }
 
     static void
