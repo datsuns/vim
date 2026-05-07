@@ -3631,6 +3631,9 @@ expand_by_function(int type, char_u *base, callback_T *cb)
     int		save_State = State;
     int		retval;
     int		is_cpt_function = (cb != NULL);
+    int		use_sandbox = is_cpt_function
+			    && was_set_insecurely(curwin,
+					(char_u *)"complete", OPT_LOCAL);
 
     if (!is_cpt_function)
     {
@@ -3652,8 +3655,12 @@ expand_by_function(int type, char_u *base, callback_T *cb)
     // switching to another window, it should not be needed and may end up in
     // Insert mode in another buffer.
     ++textlock;
+    if (use_sandbox)
+	++sandbox;
 
     retval = call_callback(cb, 0, &rettv, 2, args);
+    if (use_sandbox)
+	--sandbox;
 
     // Call a function, which returns a list or dict.
     if (retval == OK)
@@ -4794,7 +4801,32 @@ get_next_cmdline_completion(void)
 
     if (expand_cmdline(&compl_xp, compl_pattern.string,
 		(int)compl_pattern.length, &num_matches, &matches) == EXPAND_OK)
-	ins_compl_add_matches(num_matches, matches, FALSE);
+    {
+	int		add_r = OK;
+	int		dir = compl_direction;
+
+	for (int i = 0; i < num_matches && add_r != FAIL; i++)
+	{
+	    char_u	*(cptext[CPT_COUNT]) = {NULL, NULL, NULL, NULL};
+
+	    if (compl_xp.xp_files_abbr != NULL)
+		cptext[CPT_ABBR] = compl_xp.xp_files_abbr[i];
+	    if (compl_xp.xp_files_kind != NULL)
+		cptext[CPT_KIND] = compl_xp.xp_files_kind[i];
+	    if (compl_xp.xp_files_menu != NULL)
+		cptext[CPT_MENU] = compl_xp.xp_files_menu[i];
+	    if (compl_xp.xp_files_info != NULL)
+		cptext[CPT_INFO] = compl_xp.xp_files_info[i];
+
+	    add_r = ins_compl_add(matches[i], -1, NULL, cptext, NULL, dir,
+		    CP_FAST, FALSE, NULL, FUZZY_SCORE_NONE);
+	    if (add_r == OK)
+		// if dir was BACKWARD then honor it just once
+		dir = FORWARD;
+	}
+	FreeWild(num_matches, matches);
+	free_xp_files_extra(&compl_xp, num_matches);
+    }
 }
 
 /*
@@ -6760,6 +6792,9 @@ get_userdefined_compl_info(
     pos_T	pos;
     int		save_State = State;
     int		is_cpt_function = (cb != NULL);
+    int		use_sandbox = is_cpt_function
+			    && was_set_insecurely(curwin,
+					(char_u *)"complete", OPT_LOCAL);
 
     if (!is_cpt_function)
     {
@@ -6782,7 +6817,11 @@ get_userdefined_compl_info(
     args[2].v_type = VAR_UNKNOWN;
     pos = curwin->w_cursor;
     ++textlock;
+    if (use_sandbox)
+	++sandbox;
     col = call_callback_retnr(cb, 2, args);
+    if (use_sandbox)
+	--sandbox;
     --textlock;
 
     State = save_State;
