@@ -725,4 +725,59 @@ func Test_netrw_bookmark_marked_file()
   bw!
 endfunc
 
+func Test_netrw_mf_command_injection()
+  CheckUnix
+  CheckExecutable touch
+  let path = tempname()
+  let fname = 'x" . execute("silent! !touch poc") . "'
+  call mkdir(path, 'R')
+  let _cwd = getcwd()
+  exe "cd " path
+  call writefile([], fname)
+  Explore .
+  call search('^x')
+  :norm mf
+  :norm mf
+  call assert_false(filereadable('poc'), 'Command injection via mf command')
+  exe "cd " _cwd
+  bw!
+endfunc
+
+function Test_netrw_NetrwMaps_CR_dirname()
+  CheckNotMSWindows
+
+  let tmpdir = tempname() . '/evil<CR>:let g:netrw_pwn=1<CR>'
+  call mkdir(tmpdir, 'pR')
+  call assert_true(isdirectory(tmpdir))
+  exe ":Explore " tmpdir
+  " Fire D
+  " If the commands are injected successfully,
+  " this fails with
+  "  Vim(let):E488: Trailing characters: \ @ command line script
+  call feedkeys("D\<C-c>\<C-c>", "xt")
+  call assert_false(exists("g:netrw_pwn"))
+
+  unlet! g:netrw_pwn
+  bw!
+endfunction
+
+func Test_netrw_injection()
+  let g:netrw_home       = getcwd()
+  let savefile           = g:netrw_home . '/.netrwhist'
+  let g:netrw_dirhistmax = 10
+  let g:netrw_dirhistcnt = 1
+  let g:netrw_dirhist_1  = "x'|let g:injected = 1|let y='z"
+  call delete(savefile)
+  try
+    call netrw#Call('NetrwBookHistSave')
+    call assert_true(filereadable(savefile), savefile . ' must be written')
+    unlet g:netrw_dirhist_1
+    execute 'source ' . fnameescape(savefile)
+    call assert_false(exists("g:injected"), 'injected statement must not execute')
+    call assert_equal("x'|let g:injected = 1|let y='z", g:netrw_dirhist_1, 'dirname must round-trip')
+  finally
+    call delete(savefile)
+    unlet! g:netrw_home g:netrw_dirhistmax g:netrw_dirhistcnt g:netrw_dirhist_1 g:injected
+  endtry
+endfunc
 " vim:ts=8 sts=2 sw=2 et

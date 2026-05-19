@@ -5180,6 +5180,32 @@ func Test_popup_opacity_zero()
   call StopVimInTerminal(buf)
 endfunc
 
+func Test_popup_opacity_terminal_no_freeze()
+  CheckFeature terminal
+  CheckUnix
+  let g:test_is_flaky = 1
+
+  let origwin = win_getid()
+  let termbuf = term_start(&shell, #{hidden: 1})
+  let winid = popup_create(termbuf, #{minwidth: 40, minheight: 10,
+        \ border: [1, 1, 1, 1], opacity: 10})
+  call WaitForAssert({-> assert_equal("run", job_status(term_getjob(termbuf)))})
+  call WaitForAssert({-> assert_equal(' ', screenstring(screenrow(), screencol() - 1))})
+
+  " Before the fix typing froze Vim: redraw under an opacity popup raised
+  " must_redraw every cycle, trapping terminal_loop in its redraw loop.
+  call feedkeys('x', 'xt')
+  call term_wait(termbuf)
+  redraw
+  call WaitForAssert({-> assert_equal('x', screenstring(screenrow(), screencol() - 1))})
+
+  call feedkeys("\<BS>", 'xt')
+  call feedkeys("exit\<CR>", 'xt')
+  call WaitForAssert({-> assert_equal("dead", job_status(term_getjob(termbuf)))})
+  call feedkeys(":quit\<CR>", 'xt')
+  call assert_equal(origwin, win_getid())
+endfunc
+
 func Test_popup_getwininfo_tabnr()
   tab split
   let winid1 = popup_create('sup', #{tabpage: 1})
@@ -5406,6 +5432,54 @@ func Test_popupwin_close_status_redraw()
   call VerifyScreenDump(buf, 'Test_popupwin_close_status_2', {})
 
   call StopVimInTerminal(buf)
+endfunc
+
+func Test_popupwin_close_copen_redraw()
+  CheckMSWindows
+  CheckFeature quickfix
+
+  func! s:OpenPopup()
+    call popup_create(repeat(['ZZZZZZZZZ'], 10), #{
+          \ pos: 'botright',
+          \ col: &columns,
+          \ line: &lines,
+          \ filter: function('s:PopupFilter'),
+          \ })
+  endfunc
+  func! s:PopupFilter(winid, key)
+    if a:key ==# 'q'
+      call popup_close(a:winid)
+      copen
+    endif
+    return 1
+  endfunc
+
+  enew!
+  call setline(1, range(1, 30))
+  call setqflist(map(range(1, 20),
+        \ {_, v -> {'bufnr': bufnr('%'), 'lnum': v, 'col': 1, 'text': 'item ' .. v}}))
+
+  call s:OpenPopup()
+  redraw
+  call feedkeys('q', 'xt')
+  redraw
+  cclose
+  redraw
+
+  call s:OpenPopup()
+  redraw
+  call feedkeys('q', 'xt')
+  redraw
+
+  for row in range(&lines - 9, &lines)
+    let line = join(map(range(1, &columns), 'screenstring(row, v:val)'), '')
+    call assert_notmatch('Z', line)
+  endfor
+
+  cclose
+  bwipe!
+  delfunc s:OpenPopup
+  delfunc s:PopupFilter
 endfunc
 
 " vim: shiftwidth=2 sts=2
