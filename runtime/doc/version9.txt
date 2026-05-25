@@ -1,4 +1,4 @@
-*version9.txt*	For Vim version 9.2.  Last change: 2026 May 17
+*version9.txt*	For Vim version 9.2.  Last change: 2026 May 22
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -52585,6 +52585,11 @@ VERSION 9.3				*version-9.3* *version9.3* *vim-9.3*
 This section is about improvements made between version 9.2 and 9.3 and is
 work in progress.
 
+GUI ~
+-----
+- Added support for the GTK 4 GUI (via patch 9.2.0501).  Enable with
+  `--enable-gui=gtk4` configure switch at build time.
+
 Popups ~
 ------
 - Support for transparency, see |popup-opacity|.
@@ -52660,6 +52665,7 @@ Changed ~
   if needed, see |wayland-primary-selection| for an example.
 - On Unix, filename completion for single-file Ex commands now treats embedded
   whitespace as part of the filename, like on other platforms.
+- Rewrite the clientserver socketserver backend to use channels and JSON.
 
 
 							*added-9.3*

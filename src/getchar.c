@@ -2018,7 +2018,7 @@ vgetc(void)
 		    continue;
 		}
 #endif
-#if defined(FEAT_GUI) && defined(FEAT_GUI_GTK) && defined(FEAT_MENU)
+#if defined(FEAT_GUI) && defined(FEAT_GUI_GTK) && !defined(USE_GTK4) && defined(FEAT_MENU)
 		// GTK: <F10> normally selects the menu, but it's passed until
 		// here to allow mapping it.  Intercept and invoke the GTK
 		// behavior if it's not mapped.
@@ -2649,6 +2649,9 @@ parse_queued_messages(void)
 # ifdef FEAT_NETBEANS_INTG
 	// Process the queued netbeans messages.
 	netbeans_parse_messages();
+# endif
+# ifdef FEAT_SOCKETSERVER
+	socketserver_parse_messages();
 # endif
 # ifdef FEAT_JOB_CHANNEL
 	// Write any buffer lines still to be written.

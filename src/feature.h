@@ -297,6 +297,14 @@
 #endif
 
 /*
+ * +gtk_print		Native GTK print dialog for :hardcopy (GTK4).
+ *			Uses GtkPrintOperation + Pango/Cairo instead of PostScript.
+ */
+#if defined(FEAT_PRINTER) && defined(FEAT_GUI_GTK) && defined(USE_GTK4)
+# define FEAT_GUI_GTK_PRINT
+#endif
+
+/*
  * +diff		Displaying diffs in a nice way.
  *			Can be enabled in autoconf already.
  */
@@ -505,7 +513,8 @@
 /*
  * GUI dark theme variant
  */
-#if (defined(FEAT_GUI_GTK) && defined(USE_GTK3)) || defined(FEAT_GUI_MSWIN)
+#if (defined(FEAT_GUI_GTK) && (defined(USE_GTK3) || defined(USE_GTK4))) \
+	|| defined(FEAT_GUI_MSWIN)
 # define FEAT_GUI_DARKTHEME
 #endif
 
@@ -805,7 +814,7 @@
  * +X11			Unix only.  Include code for xterm title saving and X
  *			clipboard.  Only works if HAVE_X11 is also defined.
  */
-#if defined(FEAT_NORMAL) || defined(FEAT_GUI_MOTIF)
+#if (defined(FEAT_NORMAL) || defined(FEAT_GUI_MOTIF)) && !defined(USE_GTK4)
 # define WANT_X11
 #endif
 
@@ -910,7 +919,8 @@
 
 #if defined(FEAT_NORMAL) \
 	&& (defined(UNIX) || defined(VMS)) \
-	&& defined(WANT_X11) && defined(HAVE_X11)
+	&& defined(WANT_X11) && defined(HAVE_X11) \
+	&& !defined(USE_GTK4)
 # define FEAT_XCLIPBOARD
 # ifndef FEAT_CLIPBOARD
 #  define FEAT_CLIPBOARD
@@ -943,9 +953,16 @@
 #endif
 
 /*
- * +socketserver	 Use UNIX domain sockets for clientserver communication
+ * The +channel feature requires +eval.
  */
-#if defined(UNIX) && defined(WANT_SOCKETSERVER)
+#if !defined(FEAT_EVAL) && defined(FEAT_JOB_CHANNEL)
+# undef FEAT_JOB_CHANNEL
+#endif
+
+/*
+ * +socketserver	 Use channels for clientserver communication
+ */
+#if (defined(UNIX) || defined(MSWIN)) && defined(FEAT_JOB_CHANNEL)
 # define FEAT_SOCKETSERVER
 #endif
 
@@ -956,6 +973,9 @@
 #if (defined(MSWIN) || defined(FEAT_XCLIPBOARD) || defined(FEAT_SOCKETSERVER)) \
     && defined(FEAT_EVAL)
 # define FEAT_CLIENTSERVER
+# if defined(FEAT_SOCKETSERVER) && (defined(FEAT_XCLIPBOARD) || defined(MSWIN))
+#  define FEAT_CLIENTSERVER_BACKENDS
+# endif
 #endif
 
 /*
@@ -1042,14 +1062,6 @@
  * +terminfo
  * +tgetent
  */
-
-
-/*
- * The +channel feature requires +eval.
- */
-#if !defined(FEAT_EVAL) && defined(FEAT_JOB_CHANNEL)
-# undef FEAT_JOB_CHANNEL
-#endif
 
 /*
  * The Netbeans feature requires +eval and +job_channel
