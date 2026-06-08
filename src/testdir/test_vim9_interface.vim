@@ -86,11 +86,11 @@ def Test_interface_basics()
   END
   v9.CheckSourceFailure(lines, 'E1065: Command cannot be shortened: endin', 3)
 
-  # "endinterface" cannot be shortened (variant incl. whitespace and colon)
+  # "endinterface" cannot be shortened (variant incl. colon-whitespace)
   lines =<< trim END
     vim9script
     interface Short
-    : 	endint
+    :   endint
   END
   v9.CheckSourceFailure(lines, 'E1065: Command cannot be shortened: endint', 3)
 

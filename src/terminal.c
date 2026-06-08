@@ -1107,7 +1107,7 @@ term_write_session(FILE *fd, win_T *wp, hashtab_T *terminal_bufs)
 	if (!HASHITEM_EMPTY(entry))
 	{
 	    // we've already opened this terminal buffer
-	    if (fprintf(fd, "execute 'buffer ' . s:term_buf_%d", bufnr) < 0)
+	    if (fprintf(fd, "execute 'buffer ' . term_buf_%d", bufnr) < 0)
 		return FAIL;
 	    return put_eol(fd);
 	}
@@ -1128,7 +1128,7 @@ term_write_session(FILE *fd, win_T *wp, hashtab_T *terminal_bufs)
     if (put_eol(fd) != OK)
 	return FAIL;
 
-    if (fprintf(fd, "let s:term_buf_%d = bufnr()", bufnr) < 0)
+    if (fprintf(fd, "var term_buf_%d: number = bufnr()", bufnr) < 0)
 	return FAIL;
 
     if (terminal_bufs != NULL && wp->w_buffer->b_nwindows > 1)
@@ -2265,7 +2265,8 @@ update_snapshot(term_T *term)
 			    int	    i;
 			    int	    c;
 
-			    for (i = 0; (c = cell.chars[i]) > 0 || i == 0; ++i)
+			    for (i = 0; i < VTERM_MAX_CHARS_PER_CELL &&
+				    ((c = cell.chars[i]) > 0 || i == 0); ++i)
 				ga.ga_len += utf_char2bytes(c == NUL ? ' ' : c,
 					     (char_u *)ga.ga_data + ga.ga_len);
 			}
