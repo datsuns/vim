@@ -712,7 +712,7 @@ func Test_xxd_color2()
 
   let $PS1='$ '
   " This needs dash, plain bashs sh does not seem to work :(
-  let buf = RunVimInTerminal('', #{rows: 20, cmd: 'sh'})
+  let buf = RunVimInTerminal('', #{rows: 20, cmd: 'dash'})
   call term_sendkeys(buf,  s:xxd_cmd .. " -R never  < XXDfile_colors\<cr>")
   call TermWait(buf)
   redraw
@@ -836,6 +836,19 @@ func Test_xxd_color_term_unset()
 
   call delete(input)
   call delete(outfile)
+endfunc
+
+func Test_xxd_reverse_long_input()
+  " triggered UB in huntype()
+  let input = 'Xxd_reverse_input'
+  call writefile([repeat('1', 515)], input, 'D')
+
+  " When this triggers undefined behaviour, there will be a warning output
+  " from the system() command
+  let out = system(s:xxd_cmd . ' -r ' . input)
+  call assert_equal('', out)
+  let out = system(s:xxd_cmd . ' -b -r ' . input)
+  call assert_equal('', out)
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

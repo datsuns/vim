@@ -29,6 +29,13 @@
 #include <gdk/gdk.h>
 #include <gtk/gtk.h>
 #include "gui_gtk4_f.h"
+#include "gui_gtk4_cb.h"
+#ifdef USE_GTK4_SNAPSHOT
+# include "gui_gtk4_da.h"
+#endif
+#ifdef FEAT_TOOLBAR
+# include "gui_gtk4_tb.h"
+#endif
 
 /*
  * Geometry string parser, replacing XParseGeometry to remove X11 dependency.
@@ -264,7 +271,9 @@ modifiers_gdk2vim(guint state)
 static GtkWidget *vbox;		// the main vertical box
 
 // Forward declarations for event callbacks
+#ifndef USE_GTK4_SNAPSHOT
 static void draw_event(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data);
+#endif
 static gboolean key_press_event(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer data);
 static void key_release_event(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer data);
 static void button_press_event(GtkGestureClick *gesture, int n_press, double x, double y, gpointer data);
@@ -274,21 +283,31 @@ static void enter_notify_event(GtkEventControllerMotion *controller, double x, d
 static gboolean scroll_event(GtkEventControllerScroll *controller, double dx, double dy, gpointer data);
 static void focus_in_event(GtkEventControllerFocus *controller, gpointer data);
 static void focus_out_event(GtkEventControllerFocus *controller, gpointer data);
+#ifdef FEAT_MENU
+static gboolean menubar_popover_closed_hook(GSignalInvocationHint *ihint, guint n_param_values, const GValue *param_values, gpointer data);
+#endif
 #ifdef FEAT_DND
 static gboolean drop_cb(GtkDropTarget *target, const GValue *value, double x, double y, gpointer data);
 #endif
 #ifdef FEAT_GUI_TABLINE
+static void tabline_enter_cb(GtkEventController *controller, double x, double y, void *udata);
 static void on_select_tab(GtkNotebook *notebook, gpointer *page, gint idx, gpointer data);
 static void on_tab_reordered(GtkNotebook *notebook, gpointer *page, gint idx, gpointer data);
+static GMenu *create_tabline_popup_menu(GActionGroup **agroup_store);
+static void tabline_menu_press_event(GtkGestureClick *gesture, int n_press, double x, double y, GtkWidget *popover);
 #endif
 static void mainwin_destroy_cb(GObject *object, gpointer data);
 static gboolean delete_event_cb(GtkWindow *window, gpointer data);
 static void mainwin_fullscreened_cb(GObject *obj, GParamSpec *pspec, gpointer user_data);
+#ifndef USE_GTK4_SNAPSHOT
 static void drawarea_realize_cb(GtkWidget *widget, gpointer data);
+#endif
 static void drawarea_unrealize_cb(GtkWidget *widget, gpointer data);
+#ifndef USE_GTK4_SNAPSHOT
 static void drawarea_resize_cb(GtkDrawingArea *area, int width, int height, gpointer data);
 static void drawarea_scale_factor_cb(GObject *object, GParamSpec *pspec, gpointer data);
 static cairo_surface_t *create_backing_surface(int width, int height);
+#endif
 static void clipboard_changed_cb(GdkClipboard *clipboard, gpointer user_data);
 #ifdef FEAT_MENU
 static void show_menubar_popover(void);
@@ -434,9 +453,9 @@ gui_mch_init_check(void)
 gui_mch_init(void)
 {
     // Allocate GdkRGBA color structs.
-    gui.fgcolor = g_new(GdkRGBA, 1);
-    gui.bgcolor = g_new(GdkRGBA, 1);
-    gui.spcolor = g_new(GdkRGBA, 1);
+    gui.fgcolor = g_new0(GdkRGBA, 1);
+    gui.bgcolor = g_new0(GdkRGBA, 1);
+    gui.spcolor = g_new0(GdkRGBA, 1);
 
     gui.def_norm_pixel = 0x00000000;	// black
     gui.def_back_pixel = 0x00ffffff;	// white
@@ -475,13 +494,28 @@ gui_mch_init(void)
 	gtk_widget_set_visible(gui.menubar, FALSE);
 	gtk_box_append(GTK_BOX(vbox), gui.menubar);
     }
+    // Return keyboard focus to the drawing area when a menubar popover
+    // closes (issue #20274).  GtkPopoverMenuBar owns its popovers
+    // privately, so attach via an emission hook on GtkPopover::closed
+    // and filter for popovers under our menubar inside the callback.
+    {
+	GTypeClass *cls = g_type_class_ref(GTK_TYPE_POPOVER);
+	guint sig_id = g_signal_lookup("closed", GTK_TYPE_POPOVER);
+
+	if (sig_id != 0)
+	    g_signal_add_emission_hook(sig_id, 0,
+		    menubar_popover_closed_hook, NULL, NULL);
+	if (cls != NULL)
+	    g_type_class_unref(cls);
+    }
 #endif
 
 #ifdef FEAT_TOOLBAR
-    gui.toolbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gui.toolbar = vim_toolbar_new();
     gtk_widget_set_name(gui.toolbar, "vim-toolbar");
     gtk_widget_set_visible(gui.toolbar, FALSE);
     gtk_box_append(GTK_BOX(vbox), gui.toolbar);
+    vim_toolbar_set_style(VIM_TOOLBAR(gui.toolbar), toolbar_flags, tbis_flags);
 #endif
 
 #ifdef FEAT_GUI_TABLINE
@@ -496,6 +530,47 @@ gui_mch_init(void)
 		     G_CALLBACK(on_select_tab), NULL);
     g_signal_connect(G_OBJECT(gui.tabline), "page-reordered",
 		     G_CALLBACK(on_tab_reordered), NULL);
+
+    {
+	GtkEventController *mcontroller = gtk_event_controller_motion_new();
+
+	g_signal_connect(mcontroller, "enter",
+		G_CALLBACK(tabline_enter_cb), NULL);
+
+	// Make sure that tabline_enter_cb() is always called before
+	// tabpage_enter_cb().
+	gtk_event_controller_set_propagation_phase(
+		mcontroller, GTK_PHASE_CAPTURE);
+	gtk_widget_add_controller(gui.tabline, mcontroller);
+    }
+
+    // Create right click popup menu for tabline
+    {
+	GtkGesture	*click;
+	GActionGroup	*agroup;
+	GMenu		*menu;
+	GtkWidget	*popover;
+
+	click = gtk_gesture_click_new();
+	menu = create_tabline_popup_menu(&agroup);
+	popover = gtk_popover_menu_new_from_model(G_MENU_MODEL(menu));
+	g_object_unref(menu);
+
+	gtk_widget_set_parent(popover, gui.tabline);
+	g_object_set_data(G_OBJECT(gui.tabline), "menu", popover);
+	gtk_widget_insert_action_group(gui.tabline, "tabline", agroup);
+	g_object_unref(agroup);
+
+	gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
+	gtk_popover_set_position(GTK_POPOVER(popover), GTK_POS_BOTTOM);
+
+	// Listen for anny mouse button
+	gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), 0);
+
+	g_signal_connect_object(click, "pressed",
+		G_CALLBACK(tabline_menu_press_event), popover, G_CONNECT_DEFAULT);
+	gtk_widget_add_controller(gui.tabline, GTK_EVENT_CONTROLLER(click));
+    }
 #endif
 
     // The form widget manages absolute positioning of scrollbars and the draw
@@ -507,25 +582,31 @@ gui_mch_init(void)
     gtk_box_append(GTK_BOX(vbox), gui.formwin);
 
     // The drawing area for the editor content.
+#ifdef USE_GTK4_SNAPSHOT
+    gui.drawarea = vim_draw_area_new();
+#else
     gui.drawarea = gtk_drawing_area_new();
     gui.surface = NULL;
+#endif
     gtk_widget_set_focusable(gui.drawarea, TRUE);
     gtk_widget_set_vexpand(gui.drawarea, TRUE);
     gtk_widget_set_hexpand(gui.drawarea, TRUE);
     vim_form_put(VIM_FORM(gui.formwin), gui.drawarea, 0, 0);
 
+#ifndef USE_GTK4_SNAPSHOT
     // Set up drawing.
     gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(gui.drawarea),
 	    (GtkDrawingAreaDrawFunc)draw_event, NULL, NULL);
 
-    g_signal_connect(G_OBJECT(gui.drawarea), "realize",
-		     G_CALLBACK(drawarea_realize_cb), NULL);
-    g_signal_connect(G_OBJECT(gui.drawarea), "unrealize",
-		     G_CALLBACK(drawarea_unrealize_cb), NULL);
     g_signal_connect(G_OBJECT(gui.drawarea), "resize",
 		     G_CALLBACK(drawarea_resize_cb), NULL);
     g_signal_connect(G_OBJECT(gui.drawarea), "notify::scale-factor",
 		     G_CALLBACK(drawarea_scale_factor_cb), NULL);
+    g_signal_connect(G_OBJECT(gui.drawarea), "realize",
+		     G_CALLBACK(drawarea_realize_cb), NULL);
+#endif
+    g_signal_connect(G_OBJECT(gui.drawarea), "unrealize",
+		     G_CALLBACK(drawarea_unrealize_cb), NULL);
 
     // Set up event controllers.
     {
@@ -607,9 +688,13 @@ gui_mch_init(void)
 		    G_CALLBACK(clipboard_changed_cb), &clip_plus);
     }
 
+    gui.regular_provider = vim_content_provider_new(&clip_plus);
+    gui.primary_provider = vim_content_provider_new(&clip_star);
+
     return OK;
 }
 
+#ifndef USE_GTK4_SNAPSHOT
 /*
  * Called when the foreground or background color has been changed.
  */
@@ -626,11 +711,14 @@ surface_fill_bg(void)
 	cairo_destroy(cr);
     }
 }
+#endif
 
     void
 gui_mch_new_colors(void)
 {
+#ifndef USE_GTK4_SNAPSHOT
     surface_fill_bg();
+#endif
     if (gui.drawarea != NULL && gtk_widget_get_realized(gui.drawarea))
 	gtk_widget_queue_draw(gui.drawarea);
 }
@@ -720,7 +808,18 @@ gui_mch_open(void)
 gui_mch_exit(int rc UNUSED)
 {
     if (gui.mainwin != NULL)
+    {
+#ifdef FEAT_GUI_TABLINE
+	// Must unparent popover menu for tabline or we will get warning
+	gtk_widget_unparent(g_object_get_data(G_OBJECT(gui.tabline), "menu"));
+#endif
+#ifdef FEAT_BEVAL_GUI
+	// Make sure to destroy popover used for balloon eval, or we will get a
+	// warning from GTK that the draw area still has children left.
+	gui_mch_destroy_beval_area(balloonEval);
+#endif
 	gtk_window_destroy(GTK_WINDOW(gui.mainwin));
+    }
 }
 
     int
@@ -878,7 +977,12 @@ gui_mch_enable_menu(int showit)
 gui_mch_show_toolbar(int showit)
 {
     if (gui.toolbar != NULL)
+    {
 	gtk_widget_set_visible(gui.toolbar, showit);
+	if (showit)
+	    vim_toolbar_set_style(VIM_TOOLBAR(gui.toolbar),
+		    toolbar_flags, tbis_flags);
+    }
 }
 #endif
 
@@ -1332,6 +1436,23 @@ gui_mch_get_rgb(guicolor_T pixel)
  * ============================================================
  */
 
+#ifdef USE_GTK4_SNAPSHOT
+    void
+gui_gtk4_update_size(void)
+{
+    vim_draw_area_set_size(VIM_DRAW_AREA(gui.drawarea),
+	    gui.num_rows, gui.num_cols);
+}
+
+# ifdef FEAT_NETBEANS_INTG
+    cairo_t *
+gui_gtk4_get_multisign_context(int x, int y, int w, int h)
+{
+    return vim_draw_area_get_multisign_cairo(
+	    VIM_DRAW_AREA(gui.drawarea), x, y, w, h);
+}
+# endif
+#else // USE_GTK4_SNAPSHOT
 static void set_cairo_source_from_pixel(cairo_t *cr, guicolor_T pixel);
 
     static void
@@ -1390,10 +1511,15 @@ create_backing_surface(int width, int height)
     cairo_surface_set_device_scale(surf, (double)scale, (double)scale);
     return surf;
 }
+#endif // !USE_GTK4_SNAPSHOT
 
     void
 gui_mch_clear_block(int row1, int col1, int row2, int col2)
 {
+#ifdef USE_GTK4_SNAPSHOT
+    vim_draw_area_clear_block(VIM_DRAW_AREA(gui.drawarea), row1,
+	    col1, row2, col2);
+#else
     cairo_t *cr;
 
     if (gui.surface == NULL)
@@ -1407,6 +1533,7 @@ gui_mch_clear_block(int row1, int col1, int row2, int col2)
 	    (row2 - row1 + 1) * gui.char_height);
     cairo_fill(cr);
     cairo_destroy(cr);
+#endif
 
     if (gui.drawarea != NULL)
 	gtk_widget_queue_draw(gui.drawarea);
@@ -1415,6 +1542,9 @@ gui_mch_clear_block(int row1, int col1, int row2, int col2)
     void
 gui_mch_clear_all(void)
 {
+#ifdef USE_GTK4_SNAPSHOT
+    vim_draw_area_clear(VIM_DRAW_AREA(gui.drawarea));
+#else
     cairo_t *cr;
 
     if (gui.surface == NULL)
@@ -1424,11 +1554,144 @@ gui_mch_clear_all(void)
     set_cairo_source_from_pixel(cr, gui.back_pixel);
     cairo_paint(cr);
     cairo_destroy(cr);
+#endif
 
     if (gui.drawarea != NULL)
 	gtk_widget_queue_draw(gui.drawarea);
 }
 
+#ifdef FEAT_IMAGE_GDK
+    void
+gui_gtk4_remove_image(win_T *wp)
+{
+    vim_draw_area_remove_image(VIM_DRAW_AREA(gui.drawarea), wp->w_id);
+}
+
+    void
+gui_mch_free_popup_image(win_T *wp)
+{
+    if (wp->w_popup_image_texture != NULL)
+	g_clear_object(&wp->w_popup_image_texture);
+}
+
+/*
+ * If "wp->w_popup_image_texture" is NULL or "force" is TRUE, then create the
+ * cached GdkTexture object.
+ */
+    static void
+maybe_set_image_texture(win_T *wp, gboolean force)
+{
+    GdkMemoryFormat fmt;
+    size_t	    stride;
+    GdkTexture	    *texture;
+    GBytes	    *bytes;
+    size_t	    size;
+
+    if (!force && wp->w_popup_image_texture != NULL)
+	return;
+
+    if (wp->w_popup_image_alpha)
+    {
+	fmt = GDK_MEMORY_A8R8G8B8;
+	size = wp->w_popup_image_w * wp->w_popup_image_h * 4;
+	stride = wp->w_popup_image_w * 4;
+    }
+    else
+    {
+	fmt = GDK_MEMORY_R8G8B8;
+	size = wp->w_popup_image_w * wp->w_popup_image_h * 3;
+	stride = wp->w_popup_image_w * 3;
+    }
+
+    bytes = g_bytes_new(wp->w_popup_image_data, size);
+    texture = gdk_memory_texture_new(wp->w_popup_image_w,
+	    wp->w_popup_image_h, fmt, bytes, stride);
+    g_bytes_unref(bytes);
+
+    if (wp->w_popup_image_texture != NULL)
+	g_object_unref(wp->w_popup_image_texture);
+    wp->w_popup_image_texture = texture;
+}
+
+    bool
+gui_mch_update_popup_image_pixels(win_T *wp)
+{
+    if (wp->w_popup_image_texture == NULL || wp->w_popup_image_data == NULL)
+	return false;
+    maybe_set_image_texture(wp, TRUE);
+    return true;
+}
+
+    void
+gui_mch_draw_popup_image(
+	win_T	*wp,
+	int	 row,
+	int	 col,
+	int	 src_x,
+	int	 src_y,
+	int	 draw_w,
+	int	 draw_h)
+{
+    if (wp->w_popup_image_data == NULL
+	    || wp->w_popup_image_w <= 0 || wp->w_popup_image_h <= 0
+	    || draw_w <= 0 || draw_h <= 0)
+	return;
+
+    maybe_set_image_texture(wp, FALSE);
+    if (gui.drawarea != NULL)
+    {
+	vim_draw_area_add_image(VIM_DRAW_AREA(gui.drawarea),
+		wp->w_popup_image_texture, row, col, src_x, src_y,
+		draw_w, draw_h, wp->w_zindex, wp->w_id);
+
+	gtk_widget_queue_draw(gui.drawarea);
+    }
+}
+#endif
+
+#ifdef FEAT_IMAGE_CAIRO
+    void
+gui_mch_free_popup_image(win_T *wp)
+{
+    cairo_popup_image_free(wp);
+}
+
+    bool
+gui_mch_update_popup_image_pixels(win_T *wp)
+{
+    return cairo_popup_image_update(wp);
+}
+
+    void
+gui_mch_draw_popup_image(
+	win_T	*wp,
+	int	 row,
+	int	 col,
+	int	 src_x,
+	int	 src_y,
+	int	 draw_w,
+	int	 draw_h)
+{
+    int x, y;
+
+    if (wp->w_popup_image_data == NULL
+	    || wp->w_popup_image_w <= 0 || wp->w_popup_image_h <= 0
+	    || draw_w <= 0 || draw_h <= 0
+	    || gui.surface == NULL
+	    )
+	return;
+
+    x = FILL_X(col);
+    y = FILL_Y(row);
+    cairo_popup_image_paint(wp, gui.surface, x, y,
+					    src_x, src_y, draw_w, draw_h);
+
+    if (gui.drawarea != NULL)
+	gtk_widget_queue_draw(gui.drawarea);
+}
+#endif // FEAT_IMAGE_CAIRO
+
+#ifndef USE_GTK4_SNAPSHOT
     static void
 surface_copy_rect(int dest_x, int dest_y,
 	int src_x, int src_y,
@@ -1455,10 +1718,16 @@ surface_copy_rect(int dest_x, int dest_y,
     cairo_destroy(cr);
     cairo_surface_destroy(tmp);
 }
+#endif
 
     void
 gui_mch_delete_lines(int row, int num_lines)
 {
+#ifdef USE_GTK4_SNAPSHOT
+    vim_draw_area_move_block(VIM_DRAW_AREA(gui.drawarea),
+	    row, row + num_lines, gui.scroll_region_bot,
+	    gui.scroll_region_left, gui.scroll_region_right);
+#else
     int ncols = gui.scroll_region_right - gui.scroll_region_left + 1;
     int nrows = gui.scroll_region_bot - row + 1;
     int src_nrows = nrows - num_lines;
@@ -1467,6 +1736,7 @@ gui_mch_delete_lines(int row, int num_lines)
 	    FILL_X(gui.scroll_region_left), FILL_Y(row),
 	    FILL_X(gui.scroll_region_left), FILL_Y(row + num_lines),
 	    gui.char_width * ncols + 1, gui.char_height * src_nrows);
+#endif
     gui_clear_block(
 	    gui.scroll_region_bot - num_lines + 1, gui.scroll_region_left,
 	    gui.scroll_region_bot, gui.scroll_region_right);
@@ -1477,6 +1747,11 @@ gui_mch_delete_lines(int row, int num_lines)
     void
 gui_mch_insert_lines(int row, int num_lines)
 {
+#ifdef USE_GTK4_SNAPSHOT
+    vim_draw_area_move_block(VIM_DRAW_AREA(gui.drawarea),
+	    row + num_lines, row, gui.scroll_region_bot - num_lines,
+	    gui.scroll_region_left, gui.scroll_region_right);
+#else
     int ncols = gui.scroll_region_right - gui.scroll_region_left + 1;
     int nrows = gui.scroll_region_bot - row + 1;
     int src_nrows = nrows - num_lines;
@@ -1485,6 +1760,7 @@ gui_mch_insert_lines(int row, int num_lines)
 	    FILL_X(gui.scroll_region_left), FILL_Y(row + num_lines),
 	    FILL_X(gui.scroll_region_left), FILL_Y(row),
 	    gui.char_width * ncols + 1, gui.char_height * src_nrows);
+#endif
     gui_clear_block(
 	    row, gui.scroll_region_left,
 	    row + num_lines - 1, gui.scroll_region_right);
@@ -1495,6 +1771,10 @@ gui_mch_insert_lines(int row, int num_lines)
     void
 gui_mch_draw_hollow_cursor(guicolor_T color)
 {
+#ifdef USE_GTK4_SNAPSHOT
+    gui_mch_set_fg_color(color);
+    vim_draw_area_set_hollow_cursor(VIM_DRAW_AREA(gui.drawarea));
+#else
     cairo_t *cr;
     int i = 1;
 
@@ -1514,6 +1794,7 @@ gui_mch_draw_hollow_cursor(guicolor_T color)
 	    i * gui.char_width - 1, gui.char_height - 1);
     cairo_stroke(cr);
     cairo_destroy(cr);
+#endif
 
     gtk_widget_queue_draw(gui.drawarea);
 }
@@ -1521,6 +1802,10 @@ gui_mch_draw_hollow_cursor(guicolor_T color)
     void
 gui_mch_draw_part_cursor(int w, int h, guicolor_T color)
 {
+#ifdef USE_GTK4_SNAPSHOT
+    gui_mch_set_fg_color(color);
+    vim_draw_area_set_part_cursor(VIM_DRAW_AREA(gui.drawarea), w, h);
+#else
     cairo_t *cr;
 
     if (gui.surface == NULL)
@@ -1532,13 +1817,14 @@ gui_mch_draw_part_cursor(int w, int h, guicolor_T color)
 	    gui.fgcolor->red, gui.fgcolor->green,
 	    gui.fgcolor->blue, gui.fgcolor->alpha);
     cairo_rectangle(cr,
-#ifdef FEAT_RIGHTLEFT
+# ifdef FEAT_RIGHTLEFT
 	    CURSOR_BAR_RIGHT ? FILL_X(gui.col + 1) - w :
-#endif
+# endif
 	    FILL_X(gui.col), FILL_Y(gui.row) + gui.char_height - h,
 	    w, h);
     cairo_fill(cr);
     cairo_destroy(cr);
+#endif
 
     gtk_widget_queue_draw(gui.drawarea);
 }
@@ -1547,8 +1833,10 @@ gui_mch_draw_part_cursor(int w, int h, guicolor_T color)
 gui_mch_flash(int msec)
 {
     // Invert the screen, wait, then invert back
+#ifndef USE_GTK4_SNAPSHOT
     if (gui.surface == NULL)
 	return;
+#endif
 
     gui_mch_invert_rectangle(0, 0, (int)Rows - 1, (int)Columns - 1);
     gui_mch_flush();
@@ -1559,6 +1847,9 @@ gui_mch_flash(int msec)
     void
 gui_mch_invert_rectangle(int r, int c, int nr, int nc)
 {
+#ifdef USE_GTK4_SNAPSHOT
+    vim_draw_area_invert_block(VIM_DRAW_AREA(gui.drawarea), r, c, nr, nc);
+#else
     cairo_t *cr;
 
     if (gui.surface == NULL)
@@ -1572,6 +1863,7 @@ gui_mch_invert_rectangle(int r, int c, int nr, int nc)
 	    (nc + 1) * gui.char_width, (nr + 1) * gui.char_height);
     cairo_fill(cr);
     cairo_destroy(cr);
+#endif
 
     gtk_widget_queue_draw(gui.drawarea);
 }
@@ -1916,6 +2208,49 @@ focus_out_event(GtkEventControllerFocus *controller UNUSED,
     }
 }
 
+#ifdef FEAT_MENU
+    static gboolean
+grab_drawarea_focus_idle(gpointer data UNUSED)
+{
+    if (gui.drawarea != NULL && !gtk_widget_has_focus(gui.drawarea))
+	gtk_widget_grab_focus(gui.drawarea);
+    return G_SOURCE_REMOVE;
+}
+
+    static gboolean
+menubar_popover_closed_hook(GSignalInvocationHint *ihint UNUSED,
+	guint n_param_values, const GValue *param_values,
+	gpointer data UNUSED)
+{
+    GObject	*obj;
+    GtkWidget	*popover;
+    GtkWidget	*parent;
+
+    if (n_param_values < 1 || gui.menubar == NULL || gui.drawarea == NULL)
+	return TRUE;
+    obj = g_value_get_object(&param_values[0]);
+    if (!GTK_IS_POPOVER(obj))
+	return TRUE;
+    popover = GTK_WIDGET(obj);
+
+    // Only react to popovers that descend from the menubar.
+    for (parent = gtk_widget_get_parent(popover);
+	    parent != NULL;
+	    parent = gtk_widget_get_parent(parent))
+    {
+	if (parent != gui.menubar)
+	    continue;
+	// Defer the grab to the next main loop iteration; calling it
+	// synchronously while GTK is still completing the popover close
+	// has no effect (issue #20274).
+	g_idle_add(grab_drawarea_focus_idle, NULL);
+	break;
+    }
+    return TRUE;	// keep the emission hook installed
+}
+#endif
+
+#ifndef USE_GTK4_SNAPSHOT
     static void
 drawarea_realize_cb(GtkWidget *widget UNUSED, gpointer data UNUSED)
 {
@@ -1942,6 +2277,7 @@ drawarea_realize_cb(GtkWidget *widget UNUSED, gpointer data UNUSED)
 
     gui_mch_new_colors();
 }
+#endif
 
     static void
 drawarea_unrealize_cb(GtkWidget *widget UNUSED, gpointer data UNUSED)
@@ -1949,13 +2285,16 @@ drawarea_unrealize_cb(GtkWidget *widget UNUSED, gpointer data UNUSED)
 #ifdef FEAT_XIM
     im_shutdown();
 #endif
+#ifndef USE_GTK4_SNAPSHOT
     if (gui.surface != NULL)
     {
 	cairo_surface_destroy(gui.surface);
 	gui.surface = NULL;
     }
+#endif
 }
 
+#ifndef USE_GTK4_SNAPSHOT
 // Debounced resize: drawarea_resize_cb only resizes the backing surface
 // (preserving old content) and (re)arms a short timeout. The actual
 // gui_resize_shell() runs from drawarea_resize_apply_cb once the user has
@@ -2075,6 +2414,7 @@ drawarea_scale_factor_cb(GObject *object UNUSED,
     if (gui.in_use)
 	redraw_all_later(UPD_CLEAR);
 }
+#endif
 
 #ifdef FEAT_DND
 /*
@@ -2468,7 +2808,9 @@ gui_mch_menu_grey(vimmenu_T *menu, int grey)
     void
 gui_mch_menu_hidden(vimmenu_T *menu, int hidden)
 {
-    if (menu->id == 0)
+    // GMenu-based menu items have no real widget, only the (GtkWidget *)1
+    // marker; they cannot be toggled via the widget API.
+    if (menu->id == NULL || menu->id == (GtkWidget *)1)
 	return;
 
     if (hidden)
@@ -2518,6 +2860,28 @@ gui_mch_showing_tabline(void)
 }
 
 static int ignore_tabline_evt = FALSE;
+// Page hovered over in tab line, zero indicates none
+static int tabpage_hover = 0;
+
+    static void
+tabpage_enter_cb(
+	GtkEventController  *controller UNUSED,
+	double		    x UNUSED,
+	double		    y UNUSED,
+	void		    *udata)
+{
+    tabpage_hover = GPOINTER_TO_INT(udata);
+}
+
+    static void
+tabline_enter_cb(
+	GtkEventController  *controller UNUSED,
+	double		    x UNUSED,
+	double		    y UNUSED,
+	void		    *udata UNUSED)
+{
+    tabpage_hover = 0;
+}
 
     void
 gui_mch_update_tabline(void)
@@ -2538,6 +2902,10 @@ gui_mch_update_tabline(void)
 
     for (tp = first_tabpage; tp != NULL; tp = tp->tp_next, ++nr)
     {
+	GtkNotebookPage	    *page_widget;
+	GtkWidget	    *tab_widget;
+	GtkEventController  *mcontroller;
+
 	if (tp == curtab)
 	    curtabidx = nr;
 
@@ -2559,9 +2927,18 @@ gui_mch_update_tabline(void)
 		    page, TRUE);
 	}
 
-	event_box = gtk_notebook_get_tab_label(GTK_NOTEBOOK(gui.tabline), page);
-	g_object_set_data(G_OBJECT(event_box), "tab_num",
+	// Attach motion event controller to detect which tab page is currently
+	// hovered over.
+	page_widget = gtk_notebook_get_page(GTK_NOTEBOOK(gui.tabline), page);
+	mcontroller = gtk_event_controller_motion_new();
+	g_signal_connect(mcontroller, "enter", G_CALLBACK(tabpage_enter_cb),
 		GINT_TO_POINTER(tab_num));
+	gtk_event_controller_set_propagation_phase(
+		mcontroller, GTK_PHASE_CAPTURE);
+	g_object_get(page_widget, "tab", &tab_widget, NULL);
+	gtk_widget_add_controller(tab_widget, mcontroller);
+
+	event_box = gtk_notebook_get_tab_label(GTK_NOTEBOOK(gui.tabline), page);
 	label = gtk_widget_get_first_child(event_box);
 	get_tabline_label(tp, FALSE);
 	labeltext = CONVERT_TO_UTF8(NameBuff);
@@ -2623,6 +3000,96 @@ on_tab_reordered(
     else
 	tabpage_move(idx);
 }
+
+/*
+ * Handle selecting an item in the tab line popup menu.
+ */
+    static void
+tabline_menu_action_cb(
+	GSimpleAction	*action UNUSED,
+	GVariant	*parameter UNUSED,
+	void		*udata)
+{
+    send_tabline_menu_event(tabpage_hover, GPOINTER_TO_INT(udata));
+}
+
+    static void
+add_tabline_menu_item(
+	GMenu	    *gmenu,
+	GActionMap  *amap,
+	const char  *name,
+	const char  *action,
+	int	    resp)
+{
+    GSimpleAction *act = g_simple_action_new(action, NULL);
+    char detailed[32];
+
+    g_signal_connect(act, "activate", G_CALLBACK(tabline_menu_action_cb),
+	    GINT_TO_POINTER(resp));
+    g_action_map_add_action(amap, G_ACTION(act));
+    g_object_unref(act);
+
+    vim_snprintf(detailed, sizeof(detailed), "tabline.%s", action);
+    g_menu_append(gmenu, name, detailed);
+}
+
+/*
+ * Create a menu for the tab line.
+ */
+    static GMenu *
+create_tabline_popup_menu(GActionGroup **agroup_store)
+{
+    GMenu		*gmenu = g_menu_new();
+    GSimpleActionGroup	*agroup = g_simple_action_group_new();
+
+    add_tabline_menu_item(gmenu, G_ACTION_MAP(agroup),
+	    _("Close Tab"), "close-tab", TABLINE_MENU_CLOSE);
+    add_tabline_menu_item(gmenu, G_ACTION_MAP(agroup),
+	    _("New Tab"), "new-tab", TABLINE_MENU_NEW);
+    add_tabline_menu_item(gmenu, G_ACTION_MAP(agroup),
+	    _("Open Tab..."), "open-tab", TABLINE_MENU_OPEN);
+
+    *agroup_store = G_ACTION_GROUP(agroup);
+    return gmenu;
+}
+
+    static void
+tabline_menu_press_event(
+	GtkGestureClick *gesture,
+	int		n_press UNUSED,
+	double		x,
+	double		y,
+	GtkWidget	*popover)
+{
+    guint but;
+
+    but = gtk_gesture_single_get_current_button(GTK_GESTURE_SINGLE(gesture));
+    if (but == GDK_BUTTON_SECONDARY)
+    {
+	// Right mouse button pressed, popup menu
+	GdkRectangle rect;
+	rect.x = x;
+	rect.y = y;
+	rect.width = 1;
+	rect.height = 1;
+
+	gtk_popover_set_pointing_to(GTK_POPOVER(popover), &rect);
+	gtk_popover_popup(GTK_POPOVER(popover));
+    }
+    else if (but == GDK_BUTTON_PRIMARY)
+    {
+	if (tabpage_hover == 0)
+	    // Click after all tabs moves to next tab page.  When "x" is
+	    // small guess it's the left button.
+	    send_tabline_event(x < 50 ? -1 : 0);
+    }
+    else if (but == GDK_BUTTON_MIDDLE)
+    {
+	if (tabpage_hover != 0)
+	    // Middle mouse click on tabpage label closes that tab.
+	    send_tabline_menu_event(tabpage_hover, TABLINE_MENU_CLOSE);
+    }
+}
 #endif
 
 /*
@@ -2638,6 +3105,16 @@ on_tab_reordered(
     void
 gui_mch_drawsign(int row, int col, int typenr)
 {
+# ifdef USE_GTK4_SNAPSHOT
+    GdkTexture *sign;
+
+    sign = (GdkTexture *)sign_get_image(typenr);
+    if (sign == NULL)
+	return;
+
+    vim_draw_area_add_sign(VIM_DRAW_AREA(gui.drawarea), sign,
+	    row, col, SIGN_WIDTH, SIGN_HEIGHT);
+# else
     GdkPixbuf	*sign;
     cairo_t	*cr;
     int		width, height;
@@ -2672,6 +3149,7 @@ gui_mch_drawsign(int row, int col, int typenr)
 
     cairo_paint(cr);
     cairo_destroy(cr);
+# endif
 
     gtk_widget_queue_draw(gui.drawarea);
 }
@@ -2681,12 +3159,21 @@ gui_mch_register_sign(char_u *signfile)
 {
     if (signfile[0] != NUL && signfile[0] != '-' && gui.in_use)
     {
-	GdkPixbuf   *sign;
-	GError	    *error = NULL;
+	GError *error = NULL;
+# ifdef USE_GTK4_SNAPSHOT
+	GdkTexture  *sign;
+
+	sign = gdk_texture_new_from_filename((const char *)signfile,
+							    &error);
+	if (sign != NULL)
+	    return sign;
+# else
+	GdkPixbuf *sign;
 
 	sign = gdk_pixbuf_new_from_file((const char *)signfile, &error);
 	if (error == NULL)
 	    return sign;
+# endif
 
 	semsg("E255: %s", error->message);
 	g_error_free(error);
@@ -2842,6 +3329,7 @@ setup_zero_width_cluster(PangoItem *item, PangoGlyphInfo *glyph,
 	glyph->geometry.x_offset = -width + MAX(0, width - ink_rect.width) / 2;
 }
 
+#ifndef USE_GTK4_SNAPSHOT
 /*
  * Draw a single glyph string segment: background, foreground, and fake bold.
  */
@@ -2927,6 +3415,7 @@ draw_under(int flags, int row, int col, int cells, cairo_t *cr)
 	cairo_stroke(cr);
     }
 }
+#endif
 
 /*
  * Draw a string of characters on the screen.
@@ -2943,15 +3432,24 @@ gui_gtk_draw_string_ext(
 	int	flags,
 	int	force_pango)
 {
-    GdkRectangle	area;
     PangoGlyphString	*glyphs;
     int			column_offset = 0;
     int			i;
+#ifdef USE_GTK4_SNAPSHOT
+    gboolean		s_alloced = FALSE;
+#else
+    GdkRectangle	area;
     cairo_t		*cr;
+#endif
 
-    if (gui.text_context == NULL || gui.surface == NULL)
+    if (gui.text_context == NULL
+#ifndef USE_GTK4_SNAPSHOT
+	    || gui.surface == NULL
+#endif
+	    )
 	return len;
 
+#ifndef USE_GTK4_SNAPSHOT
     // Restrict all drawing to the current screen line.
     area.x = gui.border_offset;
     area.y = FILL_Y(row);
@@ -2961,6 +3459,7 @@ gui_gtk_draw_string_ext(
     cr = cairo_create(gui.surface);
     cairo_rectangle(cr, area.x, area.y, area.width, area.height);
     cairo_clip(cr);
+#endif
 
     glyphs = pango_glyph_string_new();
 
@@ -2985,7 +3484,12 @@ gui_gtk_draw_string_ext(
 	    glyphs->log_clusters[i] = i;
 	}
 
+#ifdef USE_GTK4_SNAPSHOT
+	vim_draw_area_add_glyphs(VIM_DRAW_AREA(gui.drawarea), row, col, len,
+		flags, gui.ascii_font, glyphs);
+#else
 	draw_glyph_string(row, col, len, flags, gui.ascii_font, glyphs, cr);
+#endif
 
 	column_offset = len;
     }
@@ -3001,8 +3505,17 @@ not_ascii:;
 	// Safety check: pango crashes with invalid utf-8.
 	if (!utf_valid_string(s, s + len))
 	{
+#ifdef USE_GTK4_SNAPSHOT
+	    // vim_draw_area_add_glyphs() also handles under decorations. Make
+	    // "str" a string of spaces so that under decorations are still
+	    // applied.
+	    s = g_malloc(len);
+	    memset(s, ' ', len);
+	    s_alloced = TRUE;
+#else
 	    column_offset = len;
 	    goto skipitall;
+#endif
 	}
 
 	cluster_width = PANGO_SCALE * gui.char_width;
@@ -3094,8 +3607,14 @@ not_ascii:;
 		}
 	    }
 
+#ifdef USE_GTK4_SNAPSHOT
+	    vim_draw_area_add_glyphs(VIM_DRAW_AREA(gui.drawarea),
+		    row, col + column_offset, item_cells,
+		    flags, item->analysis.font, glyphs);
+#else
 	    draw_glyph_string(row, col + column_offset, item_cells,
 			      flags, item->analysis.font, glyphs, cr);
+#endif
 
 	    pango_item_free(item);
 
@@ -3105,12 +3624,17 @@ not_ascii:;
 	pango_attr_list_unref(attr_list);
     }
 
+#ifdef USE_GTK4_SNAPSHOT
+    if (s_alloced)
+	g_free(s);
+#else
 skipitall:
     draw_under(flags, row, col, column_offset, cr);
+    cairo_destroy(cr);
+#endif
 
     pango_glyph_string_free(glyphs);
 
-    cairo_destroy(cr);
 
     if (gui.drawarea != NULL)
 	gtk_widget_queue_draw(gui.drawarea);
@@ -3140,7 +3664,11 @@ gui_gtk_draw_string(int row, int col, char_u *s, int len, int flags)
     int		is_utf8;
     char_u	backup_ch;
 
-    if (gui.text_context == NULL || gui.surface == NULL)
+    if (gui.text_context == NULL
+#ifndef USE_GTK4_SNAPSHOT
+	    || gui.surface == NULL
+#endif
+	    )
 	return len;
 
     if (output_conv.vc_type != CONV_NONE)
@@ -3477,11 +4005,11 @@ get_menu_tool_height(void)
 }
 
 /*
- * Get the GdkClipboard for the given Clipboard_T.
+ * Get the GdkClipboard and GdkContentProvider for the given Clipboard_T.
  * clip_star (*) uses PRIMARY, clip_plus (+) uses CLIPBOARD.
  */
     static GdkClipboard *
-gtk4_get_clipboard(Clipboard_T *cbd)
+gtk4_get_clipboard(Clipboard_T *cbd, GdkContentProvider **provider)
 {
     GdkDisplay *display;
 
@@ -3493,64 +4021,80 @@ gtk4_get_clipboard(Clipboard_T *cbd)
 	return NULL;
 
     if (cbd == &clip_plus)
+    {
+	if (provider != NULL)
+	    *provider = gui.regular_provider;
 	return gdk_display_get_clipboard(display);
+    }
     else
+    {
+	if (provider != NULL)
+	    *provider = gui.primary_provider;
 	return gdk_display_get_primary_clipboard(display);
+    }
 }
 
 typedef struct {
     Clipboard_T *cbd;
     gboolean	done;
+    gboolean	abandoned;	// requester timed out, callback owns "crd"
 } ClipReadData;
 
 /*
- * Callback for gdk_clipboard_read_text_async().
+ * Callback for gdk_clipboard_read_async().
  */
     static void
-clip_read_text_cb(GObject *source, GAsyncResult *result, gpointer user_data)
+clip_read_cb(GdkClipboard *cb, GAsyncResult *result, ClipReadData *crd)
 {
-    GdkClipboard	*clipboard = GDK_CLIPBOARD(source);
-    ClipReadData	*crd = (ClipReadData *)user_data;
-    Clipboard_T		*cbd = crd->cbd;
-    char		*text;
-    GError		*error = NULL;
+    Clipboard_T	    *cbd = crd->cbd;
+    GError	    *error = NULL;
+    GInputStream    *in_stream;
+    const char	    *mime_type;
+    GByteArray	    *arr;
+    static char	    buf[512];
+    ssize_t	    r;
+    char_u	    *actual, *final;
+    long	    len;
+    int		    motion_type = MAUTO;
+    char_u	    *tofree = NULL;
 
-    text = gdk_clipboard_read_text_finish(clipboard, result, &error);
-    if (text != NULL)
+    in_stream = gdk_clipboard_read_finish(cb, result, &mime_type, &error);
+    if (in_stream == NULL)
     {
-	char_u	*tmpbuf = NULL;
-	char_u	*p;
-	int	len;
-	int	motion_type = MAUTO;
-
-	len = (int)STRLEN(text);
-
-	// Convert from UTF-8 to 'encoding' if needed.
-	if (input_conv.vc_type != CONV_NONE)
-	{
-	    tmpbuf = string_convert(&input_conv, (char_u *)text, &len);
-	    if (tmpbuf != NULL)
-		p = tmpbuf;
-	    else
-		p = (char_u *)text;
-	}
-	else
-	    p = (char_u *)text;
-
-	// Chop off any trailing NUL bytes.
-	while (len > 0 && p[len - 1] == NUL)
-	    --len;
-
-	clip_yank_selection(motion_type, p, (long)len, cbd);
-	vim_free(tmpbuf);
-	g_free(text);
+	g_error_free(error);
+	goto exit;
     }
+
+    arr = g_byte_array_new();
+
+    while ((r = g_input_stream_read(in_stream, buf, 512, NULL, NULL)) > 0)
+	g_byte_array_append(arr, (uint8_t *)buf, r);
+
+    if (r == -1)
+    {
+	g_byte_array_free(arr, TRUE);
+	goto exit;
+    }
+    assert(r == 0);
+
+    len = (long)arr->len;
+    actual = final = g_byte_array_free(arr, FALSE);
+
+    if (!crd->abandoned && clip_convert_data(&final, &len, &motion_type,
+	    STRCMP(mime_type, VIM_MIMETYPE_NAME) == 0,
+	    STRCMP(mime_type, VIMENC_MIMETYPE_NAME) == 0, &tofree) == OK)
+	clip_yank_selection(motion_type, final, len, cbd);
+    g_free(actual);
+    vim_free(tofree);
+
+exit:
+    if (in_stream != NULL)
+	g_object_unref(in_stream);
+    // free "crd" if the requester gave up, else mark the read complete
+    if (crd->abandoned)
+	vim_free(crd);
     else
-    {
-	if (error != NULL)
-	    g_error_free(error);
-    }
-    crd->done = TRUE;
+	crd->done = TRUE;
 }
 
 /*
@@ -3559,79 +4103,56 @@ clip_read_text_cb(GObject *source, GAsyncResult *result, gpointer user_data)
     void
 clip_mch_request_selection(Clipboard_T *cbd)
 {
+    static const char	*mimes_no_html[] = {
+	VIMENC_MIMETYPE_NAME,
+	VIM_MIMETYPE_NAME,
+	"text/plain;charset=utf-8",
+	"text/plain",
+	NULL
+    };
     GdkClipboard	*clipboard;
-    ClipReadData	crd;
+    ClipReadData	*crd;
     time_t		start;
 
-    clipboard = gtk4_get_clipboard(cbd);
+    clipboard = gtk4_get_clipboard(cbd, NULL);
     if (clipboard == NULL)
 	return;
 
-    crd.cbd = cbd;
-    crd.done = FALSE;
-    gdk_clipboard_read_text_async(clipboard, NULL, clip_read_text_cb, &crd);
+    // Heap-allocate: on a timeout this returns before the read completes,
+    // so "crd" must outlive this stack frame.
+    crd = ALLOC_ONE(ClipReadData);
+    if (crd == NULL)
+	return;
+    crd->cbd = cbd;
+    crd->done = FALSE;
+    crd->abandoned = FALSE;
+
+    gdk_clipboard_read_async(
+	    clipboard, clip_html ? supported_mimes : mimes_no_html,
+	    G_PRIORITY_HIGH, NULL, (GAsyncReadyCallback)clip_read_cb, crd);
 
     // Spin until the async callback fires, with a 3-second wall-clock
     // timeout as a safety net.
     start = time(NULL);
-    while (!crd.done && time(NULL) < start + 3)
+    while (!crd->done && time(NULL) < start + 3)
 	g_main_context_iteration(NULL, TRUE);
+
+    if (crd->done)
+	vim_free(crd);
+    else
+	// timed out: hand ownership to the callback, which frees "crd"
+	crd->abandoned = TRUE;
 }
 
 static int in_clipboard_set = FALSE;
 
 /*
- * Send the current selection to the clipboard.
+ * Send the current selection to the clipboard. Do nothing for because we
+ * subclass GdkContentProvider which will provide the data only when needed.
  */
     void
-clip_mch_set_selection(Clipboard_T *cbd)
+clip_mch_set_selection(Clipboard_T *cbd UNUSED)
 {
-    GdkClipboard	*clipboard;
-    char_u		*str = NULL;
-    long_u		len;
-    int			motion_type;
-
-    clipboard = gtk4_get_clipboard(cbd);
-    if (clipboard == NULL)
-	return;
-
-    // Get the selection text from the register.
-    clip_get_selection(cbd);
-    motion_type = clip_convert_selection(&str, &len, cbd);
-    if (motion_type < 0 || str == NULL)
-	return;
-
-    // Convert from 'encoding' to UTF-8 if needed.
-    if (output_conv.vc_type != CONV_NONE)
-    {
-	char_u	*conv_str;
-	int	conv_len = (int)len;
-
-	conv_str = string_convert(&output_conv, str, &conv_len);
-	if (conv_str != NULL)
-	{
-	    vim_free(str);
-	    str = conv_str;
-	    len = conv_len;
-	}
-    }
-
-    // Ensure NUL-terminated string for GTK.
-    {
-	char_u *nul_str = alloc(len + 1);
-
-	if (nul_str != NULL)
-	{
-	    mch_memmove(nul_str, str, len);
-	    nul_str[len] = NUL;
-	    in_clipboard_set = TRUE;
-	    gdk_clipboard_set_text(clipboard, (const char *)nul_str);
-	    in_clipboard_set = FALSE;
-	    vim_free(nul_str);
-	}
-    }
-
-    vim_free(str);
 }
 
     static void
@@ -3647,13 +4168,23 @@ clipboard_changed_cb(GdkClipboard *clipboard, gpointer user_data)
 }
 
 /*
- * Own the selection.  In GTK4, ownership is implicit when content is set
- * on the clipboard.  Return OK to indicate we can own it.
+ * Own the selection.
  */
     int
-clip_mch_own_selection(Clipboard_T *cbd UNUSED)
+clip_mch_own_selection(Clipboard_T *cbd)
 {
-    return OK;
+    GdkContentProvider	*cp;
+    GdkClipboard	*cb = gtk4_get_clipboard(cbd, &cp);
+    int			ret;
+
+    if (cb == NULL)
+	return FAIL;
+
+    in_clipboard_set = TRUE;
+    ret = gdk_clipboard_set_content(cb, cp);
+    in_clipboard_set = FALSE;
+
+    return ret ? OK : FAIL;
 }
 
 /*
@@ -3665,47 +4196,14 @@ clip_mch_lose_selection(Clipboard_T *cbd)
 {
     GdkClipboard *clipboard;
 
-    clipboard = gtk4_get_clipboard(cbd);
+    clipboard = gtk4_get_clipboard(cbd, NULL);
     if (clipboard == NULL)
 	return;
 
-    // Only release ownership if we still own it.  Otherwise we would
-    // clobber another application's clipboard content with NULL, which
-    // happens when this is called from clipboard_changed_cb after a
-    // foreign app took the selection.
+    // Only release ownership if we still own it. We don't want to clear the
+    // current selection when we aren't actually the source.
     if (gdk_clipboard_is_local(clipboard))
 	gdk_clipboard_set_content(clipboard, NULL);
-}
-
-// Balloon eval - use GTK4 tooltip
-    void
-gui_mch_post_balloon(BalloonEval *beval UNUSED, char_u *mesg)
-{
-    if (mesg != NULL && gui.drawarea != NULL)
-    {
-	char_u *text = CONVERT_TO_UTF8(mesg);
-	gtk_widget_set_tooltip_text(gui.drawarea, (const char *)text);
-	CONVERT_TO_UTF8_FREE(text);
-    }
-    else if (gui.drawarea != NULL)
-	gtk_widget_set_tooltip_text(gui.drawarea, NULL);
-}
-
-    BalloonEval *
-gui_mch_create_beval_area(void *target UNUSED, char_u *mesg UNUSED,
-	void (*mesgCB)(BalloonEval *, int) UNUSED, void *clientData UNUSED)
-{
-    return NULL;
-}
-
-    void
-gui_mch_enable_beval_area(BalloonEval *beval UNUSED)
-{
-}
-
-    void
-gui_mch_disable_beval_area(BalloonEval *beval UNUSED)
-{
 }
 
 // GTK4 does not have gtk_main_level/gtk_main_quit.
@@ -3861,16 +4359,15 @@ create_toolbar_icon(vimmenu_T *menu)
 	expand_env(menu->iconfile, buf, MAXPATHL);
 	if (vim_fexists(buf))
 	{
-	    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_scale(
-		    (const char *)buf, 24, 24, TRUE, NULL);
-	    if (pixbuf != NULL)
+	    GdkTexture *texture = gdk_texture_new_from_filename(
+		    (const char *)buf, NULL);
+
+	    if (texture != NULL)
 	    {
-		GdkTexture *texture =
-			gdk_texture_new_for_pixbuf(pixbuf);
 		image = gtk_image_new_from_paintable(
 			GDK_PAINTABLE(texture));
+		gtk_widget_set_size_request(image, 24, 24);
 		g_object_unref(texture);
-		g_object_unref(pixbuf);
 	    }
 	}
     }
@@ -3984,7 +4481,7 @@ gui_mch_add_menu(vimmenu_T *menu, int idx UNUSED)
 }
 
     void
-gui_mch_add_menu_item(vimmenu_T *menu, int idx UNUSED)
+gui_mch_add_menu_item(vimmenu_T *menu, int idx)
 {
     vimmenu_T *parent = menu->parent;
 
@@ -3993,32 +4490,32 @@ gui_mch_add_menu_item(vimmenu_T *menu, int idx UNUSED)
     {
 	if (menu_is_separator(menu->name))
 	{
-	    GtkWidget *sep = gtk_separator_new(GTK_ORIENTATION_VERTICAL);
-	    gtk_box_append(GTK_BOX(gui.toolbar), sep);
-	    menu->id = sep;
+	    menu->id =
+		vim_toolbar_insert_separator(VIM_TOOLBAR(gui.toolbar), idx);
 	}
 	else
 	{
 	    GtkWidget	*btn;
 	    GtkWidget	*icon;
+	    char_u	*text;
 	    char_u	*tooltip;
 
-	    icon = create_toolbar_icon(menu);
-	    btn = gtk_button_new();
-	    gtk_button_set_child(GTK_BUTTON(btn), icon);
-	    gtk_widget_set_focusable(btn, FALSE);
-	    gtk_widget_add_css_class(btn, "flat");
-
+	    text    = CONVERT_TO_UTF8(menu->dname);
 	    tooltip = CONVERT_TO_UTF8(menu->strings[MENU_INDEX_TIP]);
-	    if (tooltip != NULL && utf_valid_string(tooltip, NULL))
-		gtk_widget_set_tooltip_text(btn, (const gchar *)tooltip);
-	    CONVERT_TO_UTF8_FREE(tooltip);
+	    if (tooltip != NULL && !utf_valid_string(tooltip, NULL))
+		CONVERT_TO_UTF8_FREE(tooltip);
+
+	    icon = create_toolbar_icon(menu);
+	    btn = vim_toolbar_insert_button(VIM_TOOLBAR(gui.toolbar),
+		    icon, (const char *)text, idx);
+	    gtk_widget_set_tooltip_text(btn, (const gchar *)tooltip);
 
 	    g_signal_connect(btn, "clicked",
 		    G_CALLBACK(toolbar_button_clicked_cb), menu);
 
-	    gtk_box_append(GTK_BOX(gui.toolbar), btn);
 	    menu->id = btn;
+	    CONVERT_TO_UTF8_FREE(text);
+	    CONVERT_TO_UTF8_FREE(tooltip);
 	}
 	return;
     }
@@ -4035,7 +4532,8 @@ gui_mch_add_menu_item(vimmenu_T *menu, int idx UNUSED)
 	{
 	    // GMenu doesn't have real separators; use a section
 	    GMenu *section = g_menu_new();
-	    g_menu_append_section(parent_menu, NULL, G_MENU_MODEL(section));
+	    g_menu_insert_section(parent_menu, idx, NULL,
+		    G_MENU_MODEL(section));
 	    g_object_unref(section);
 	    menu->id = NULL;
 	}
@@ -4064,7 +4562,7 @@ gui_mch_add_menu_item(vimmenu_T *menu, int idx UNUSED)
 
 	    label = CONVERT_TO_UTF8(menu->dname);
 	    vim_snprintf(detailed, sizeof(detailed), "menu.%s", action_name);
-	    g_menu_append(parent_menu, (const char *)label, detailed);
+	    g_menu_insert(parent_menu, idx, (const char *)label, detailed);
 	    CONVERT_TO_UTF8_FREE(label);
 
 	    menu->id = (GtkWidget *)1;  // non-NULL marker
@@ -4082,8 +4580,17 @@ gui_mch_toggle_tearoffs(int enable UNUSED)
 }
 
     void
-gui_mch_menu_set_tip(vimmenu_T *menu UNUSED)
+gui_mch_menu_set_tip(vimmenu_T *menu)
 {
+    char_u *tooltip;
+
+    if (menu->id == NULL || menu->parent == NULL || gui.toolbar == NULL)
+	return;
+
+    tooltip = CONVERT_TO_UTF8(menu->strings[MENU_INDEX_TIP]);
+    if (tooltip != NULL && utf_valid_string(tooltip, NULL))
+	gtk_widget_set_tooltip_text(menu->id, (const char *)tooltip);
+    CONVERT_TO_UTF8_FREE(tooltip);
 }
 
 /*
@@ -4159,10 +4666,9 @@ gui_mch_destroy_menu(vimmenu_T *menu)
     // For toolbar buttons and separators, remove from the toolbar box.
     if (menu->id != NULL && menu->id != (GtkWidget *)1)
     {
-	GtkWidget *parent_widget = gtk_widget_get_parent(menu->id);
-
-	if (parent_widget != NULL)
-	    gtk_box_remove(GTK_BOX(parent_widget), menu->id);
+	vim_toolbar_remove(VIM_TOOLBAR(gui.toolbar), menu->id);
+	menu->id = NULL;
+	return;
     }
     menu->id = NULL;
 
@@ -4567,97 +5073,270 @@ gui_mch_browsedir(char_u *title, char_u *initdir)
  * ============================================================
  */
 
-typedef struct {
-    int		response;
-    gboolean	done;
-} AlertDialogData;
+/*
+ * Split up button_string into individual button labels by inserting NUL bytes.
+ * Also replace the Vim-style mnemonic accelerator prefix '&' with '_'.
+ * "button_string" is duplicated; caller must free the duplicated string via
+ * *tofree.
+ */
+    static char **
+split_button_string(char_u *button_string, int *n_buttons, char **tofree)
+{
+    char	    **array;
+    char_u	    *p;
+    unsigned int    count = 1;
+
+    button_string = (char_u *)g_strdup((const char *)button_string);
+
+    for (p = button_string; *p != NUL; ++p)
+	if (*p == DLG_BUTTON_SEP)
+	    ++count;
+
+    array = g_malloc_n(count, sizeof(char *));
+    count = 0;
+
+    if (array != NULL)
+    {
+	array[count++] = (char *)button_string;
+	for (p = button_string; *p != NUL; )
+	{
+	    if (*p == DLG_BUTTON_SEP)
+	    {
+		*p++ = NUL;
+		array[count++] = (char *)p;
+	    }
+	    else if (*p == DLG_HOTKEY_CHAR)
+		*p++ = '_';
+	    else
+		MB_PTR_ADV(p);
+	}
+    }
+
+    *tofree = (char *)button_string;
+    *n_buttons = count;
+    return array;
+}
+
+/*
+ * Convert VIM_GENERIC, VIM_ERROR, etc into an icon name. Returns NULL for
+ * VIM_GENERIC.
+ */
+    static const char *
+dialog_type_to_icon(int type)
+{
+    switch (type)
+    {
+	case VIM_ERROR:
+	    return "dialog-error-symbolic";
+	case VIM_WARNING:
+	    return "dialog-warning-symbolic";
+	case VIM_INFO:
+	    return "dialog-information-symbolic";
+	case VIM_QUESTION:
+	    return "dialog-question-symbolic";
+	default:
+	    break;
+    }
+    return NULL;
+}
+
+// Data associated with each button in the dialog
+typedef struct
+{
+    int		but_idx;
+    int		*response;
+    gboolean	*done;
+} DialogButtonState;
 
     static void
-alert_dialog_cb(GObject *source, GAsyncResult *res, gpointer data)
+dialog_button_clicked_cb(GtkButton *button, DialogButtonState *state)
 {
-    AlertDialogData *add = (AlertDialogData *)data;
-    add->response = gtk_alert_dialog_choose_finish(
-		    GTK_ALERT_DIALOG(source), res, NULL);
-    add->done = TRUE;
+    *state->response = state->but_idx;
+    *state->done = TRUE;
+}
+
+    static gboolean
+dialog_key_pressed_cb(
+	GtkEventControllerKey	*controller,
+	guint			keyval,
+	guint			keycode,
+	GdkModifierType		state,
+	gboolean		*done)
+{
+    if (keyval == GDK_KEY_Escape)
+    {
+	*done = TRUE;
+	return TRUE;
+    }
+    return FALSE;
+}
+
+    static gboolean
+dialog_close_request_cb(GtkWindow *win, gboolean *win_closed)
+{
+    *win_closed = TRUE;
+    return FALSE;
 }
 
     int
 gui_mch_dialog(
-	int	type UNUSED,
+	int	type,
 	char_u	*title,
 	char_u	*message,
 	char_u	*buttons,
-	int	dfltbutton,
-	char_u	*textfield UNUSED,
+	int	def_but,
+	char_u	*textfield,
 	int	ex_cmd UNUSED)
 {
-    GtkAlertDialog	*dlg;
-    AlertDialogData	add;
-    char_u		*p;
-    char_u		*buf = NULL;
-    int			butcount = 0;
-    int			i;
-    const char		*btn_labels[64];
-    char_u		*btn_conv[64];
+    GtkWindow		*win = GTK_WINDOW(gtk_window_new());
+    GtkWidget		*vertbox;
+    GtkWidget		*message_box;
+    const char		*icon_name;
+    GtkWidget		*icon;
+    GtkWidget		*label;
+    GtkWidget		*entry = NULL;
+    char_u		*utf8_title;
+    char_u		*utf8_message;
+    GtkEventController *key_controller;
+    DialogButtonState	*but_states = NULL;
+    char		*tofree = NULL;
+    int			response = -1;
+    gboolean		done = FALSE;
+    gboolean		win_closed = FALSE;
 
-    title = CONVERT_TO_UTF8(title);
-    message = CONVERT_TO_UTF8(message);
+    utf8_title = CONVERT_TO_UTF8(title);
+    if (utf8_title != NULL)
+	gtk_window_set_title(win, (const char *)utf8_title);
+    CONVERT_TO_UTF8_FREE(utf8_title);
 
-    // Parse button labels from the "&Yes\n&No\n&Cancel" format
+    gtk_window_set_transient_for(win, GTK_WINDOW(gui.mainwin));
+    gtk_window_set_modal(win, TRUE);
+    gtk_window_set_default_size(win, 300, -1);
+    gtk_window_set_destroy_with_parent(win, TRUE);
+    g_signal_connect(win, "close-request",
+	    G_CALLBACK(dialog_close_request_cb), &win_closed);
+
+    // Create main vertical layout container
+    vertbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 16);
+    gtk_window_set_child(win, vertbox);
+    gtk_widget_set_margin_top(vertbox, 24);
+    gtk_widget_set_margin_bottom(vertbox, 24);
+    gtk_widget_set_margin_start(vertbox, 12);
+    gtk_widget_set_margin_end(vertbox, 12);
+
+    // Add the message label
+    message_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+    gtk_widget_set_halign(message_box, GTK_ALIGN_CENTER);
+    gtk_box_append(GTK_BOX(vertbox), message_box);
+
+    // If type is not VIM_GENERIC, add an icon to make the dialog look nicer :)
+    icon_name = dialog_type_to_icon(type);
+    if (icon_name != NULL)
+    {
+	icon = gtk_image_new_from_icon_name(icon_name);
+	gtk_image_set_icon_size(GTK_IMAGE(icon), GTK_ICON_SIZE_LARGE);
+	gtk_box_append(GTK_BOX(message_box), icon);
+    }
+
+    utf8_message = CONVERT_TO_UTF8(message);
+    label = gtk_label_new((const char *)utf8_message);
+    CONVERT_TO_UTF8_FREE(utf8_message);
+    gtk_label_set_wrap(GTK_LABEL(label), TRUE);
+    gtk_label_set_max_width_chars(GTK_LABEL(label), 40);
+    gtk_box_append(GTK_BOX(message_box), label);
+
+    // Close the dialog when the <Esc> key is pressed. the GTK3 GUI also allows
+    // mnemonics without <Alt> key, but that behaviour comes from GTK+ 1.2 (from
+    // 1999!), so most users probably don't care...
+    key_controller = gtk_event_controller_key_new();
+    g_signal_connect(key_controller, "key-pressed",
+	    G_CALLBACK(dialog_key_pressed_cb), &done);
+    gtk_widget_add_controller(GTK_WIDGET(win), key_controller);
+
+    if (textfield != NULL)
+    {
+	// Add text entry so user can enter text
+	char_u *utf8_text = CONVERT_TO_UTF8(textfield);
+
+	entry = gtk_entry_new();
+
+	if (utf8_text != NULL)
+	    gtk_editable_set_text(GTK_EDITABLE(entry), (const char *)utf8_text);
+	else
+	    gtk_editable_set_text(GTK_EDITABLE(entry), "");
+	CONVERT_TO_UTF8_FREE(utf8_text);
+
+	// Make it so that pressing enter key will activate "def_but" button
+	// (which is set as the default widget).
+	gtk_entry_set_activates_default(GTK_ENTRY(entry), TRUE);
+	gtk_box_append(GTK_BOX(vertbox), entry);
+    }
+
     if (buttons != NULL)
     {
-	buf = vim_strsave(buttons);
-	if (buf != NULL)
+	GtkWidget   *but_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+	char	    **buttons_arr; // Note that array is allocated, not strings
+	int	    n_buttons;
+
+	gtk_widget_set_halign(but_box, GTK_ALIGN_CENTER);
+	gtk_box_set_homogeneous(GTK_BOX(but_box), TRUE);
+	gtk_box_append(GTK_BOX(vertbox), but_box);
+
+	buttons_arr = split_button_string(buttons, &n_buttons, &tofree);
+
+	but_states = g_malloc_n(n_buttons, sizeof(DialogButtonState));
+
+	for (int i = 0; i < n_buttons; i++)
 	{
-	    p = buf;
-	    while (*p != NUL && butcount < 63)
-	    {
-		char_u *start = p;
-		while (*p != NUL && *p != '\n')
-		    ++p;
-		if (*p == '\n')
-		    *p++ = NUL;
-		// Skip '&' mnemonic marker
-		if (*start == '&')
-		    ++start;
-		btn_conv[butcount] = CONVERT_TO_UTF8(start);
-		btn_labels[butcount] = (const char *)btn_conv[butcount];
-		butcount++;
-	    }
+	    char_u		*but_label;
+	    GtkWidget		*but;
+	    DialogButtonState	*but_state = but_states + i;
+
+	    but_label = CONVERT_TO_UTF8((char_u *)buttons_arr[i]);
+	    if (but_label == NULL)
+		continue;
+
+	    but = gtk_button_new_with_mnemonic((char *)but_label);
+	    if (i == def_but - 1)
+		gtk_window_set_default_widget(win, but);
+	    gtk_box_append(GTK_BOX(but_box), but);
+	    CONVERT_TO_UTF8_FREE(but_label);
+
+	    but_state->but_idx = i;
+	    but_state->response = &response;
+	    but_state->done = &done;
+
+	    g_signal_connect(but, "clicked",
+		    G_CALLBACK(dialog_button_clicked_cb), but_state);
 	}
+	g_free(buttons_arr);
     }
-    btn_labels[butcount] = NULL;
 
-    dlg = gtk_alert_dialog_new("%s", message ? (char *)message : "");
-    if (title != NULL)
-	gtk_alert_dialog_set_detail(dlg, (const char *)title);
-    gtk_alert_dialog_set_buttons(dlg, btn_labels);
-    gtk_alert_dialog_set_modal(dlg, TRUE);
+    gtk_window_present(win);
 
-    if (dfltbutton > 0 && dfltbutton <= butcount)
-	gtk_alert_dialog_set_default_button(dlg, dfltbutton - 1);
-    if (butcount > 0)
-	gtk_alert_dialog_set_cancel_button(dlg, butcount - 1);
-
-    add.response = -1;
-    add.done = FALSE;
-
-    gtk_alert_dialog_choose(dlg, GTK_WINDOW(gui.mainwin), NULL,
-	    alert_dialog_cb, &add);
-
-    while (!add.done)
+    while (!done && !win_closed)
 	g_main_context_iteration(NULL, TRUE);
 
-    g_object_unref(dlg);
+    if (done)
+    {
+	if (textfield != NULL)
+	{
+	    // Get the text the user entered
+	    char_u *text;
 
-    for (i = 0; i < butcount; i++)
-	CONVERT_TO_UTF8_FREE(btn_conv[i]);
-    vim_free(buf);
-    CONVERT_TO_UTF8_FREE(title);
-    CONVERT_TO_UTF8_FREE(message);
+	    text = (char_u *)gtk_editable_get_text(GTK_EDITABLE(entry));
+	    text = CONVERT_FROM_UTF8(text);
+	    vim_strncpy(textfield, text, IOSIZE - 1);
+	    CONVERT_FROM_UTF8_FREE(text);
+	}
 
-    // GTK returns 0-based index, Vim wants 1-based
-    return add.response >= 0 ? add.response + 1 : 0;
+	gtk_window_destroy(win);
+    }
+    g_free(but_states);
+    g_free(tofree);
+
+    // Vim buttons are indexed starting from one.
+    return response == -1 ? 0 : response + 1;
 }
 
 /*
@@ -5002,7 +5681,6 @@ print_draw_page_cb(
     linenr_T	    lnum;
     linenr_T	    first;
     linenr_T	    last;
-    int		    page_line;
     double	    y;
 
     cr = gtk_print_context_get_cairo_context(context);
@@ -5013,9 +5691,8 @@ print_draw_page_cb(
 	last = pd->last_line;
 
     y = 0;
-    page_line = 0;
 
-    for (lnum = first; lnum <= last; ++lnum, ++page_line)
+    for (lnum = first; lnum <= last; ++lnum)
     {
 	char_u		*line;
 	PangoLayout	*layout;

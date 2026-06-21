@@ -1470,6 +1470,12 @@ $quote	eval.txt	/*$quote*
 +hangul_input	various.txt	/*+hangul_input*
 +iconv	various.txt	/*+iconv*
 +iconv/dyn	various.txt	/*+iconv\/dyn*
++image	various.txt	/*+image*
++image_cairo	various.txt	/*+image_cairo*
++image_gdi	various.txt	/*+image_gdi*
++image_gdk	various.txt	/*+image_gdk*
++image_kitty	various.txt	/*+image_kitty*
++image_sixel	various.txt	/*+image_sixel*
 +insert_expand	various.txt	/*+insert_expand*
 +ipv6	various.txt	/*+ipv6*
 +job	various.txt	/*+job*
@@ -2519,6 +2525,7 @@ $quote	eval.txt	/*$quote*
 :command-bar	map.txt	/*:command-bar*
 :command-buffer	map.txt	/*:command-buffer*
 :command-complete	map.txt	/*:command-complete*
+:command-completeopt	map.txt	/*:command-completeopt*
 :command-completion	map.txt	/*:command-completion*
 :command-completion-custom	map.txt	/*:command-completion-custom*
 :command-completion-customlist	map.txt	/*:command-completion-customlist*
@@ -7538,6 +7545,7 @@ ft-asy-syntax	syntax.txt	/*ft-asy-syntax*
 ft-awk-plugin	filetype.txt	/*ft-awk-plugin*
 ft-bash-syntax	syntax.txt	/*ft-bash-syntax*
 ft-basic-syntax	syntax.txt	/*ft-basic-syntax*
+ft-beancount-plugin	filetype.txt	/*ft-beancount-plugin*
 ft-c-omni	insert.txt	/*ft-c-omni*
 ft-c-syntax	syntax.txt	/*ft-c-syntax*
 ft-cangjie-syntax	syntax.txt	/*ft-cangjie-syntax*
@@ -7626,6 +7634,7 @@ ft-log-syntax	syntax.txt	/*ft-log-syntax*
 ft-lpc-syntax	syntax.txt	/*ft-lpc-syntax*
 ft-lua-plugin	filetype.txt	/*ft-lua-plugin*
 ft-lua-syntax	syntax.txt	/*ft-lua-syntax*
+ft-luau-plugin	filetype.txt	/*ft-luau-plugin*
 ft-mail-plugin	filetype.txt	/*ft-mail-plugin*
 ft-mail.vim	syntax.txt	/*ft-mail.vim*
 ft-make-syntax	syntax.txt	/*ft-make-syntax*
@@ -7890,6 +7899,7 @@ g:lf_shell_syntax	syntax.txt	/*g:lf_shell_syntax*
 g:lua_folding	filetype.txt	/*g:lua_folding*
 g:lua_subversion	filetype.txt	/*g:lua_subversion*
 g:lua_version	filetype.txt	/*g:lua_version*
+g:luau_folding	filetype.txt	/*g:luau_folding*
 g:markdown_fenced_languages	syntax.txt	/*g:markdown_fenced_languages*
 g:markdown_minlines	syntax.txt	/*g:markdown_minlines*
 g:markdown_syntax_conceal	syntax.txt	/*g:markdown_syntax_conceal*
@@ -8063,7 +8073,6 @@ g:zipPlugin_ext	pi_zip.txt	/*g:zipPlugin_ext*
 g:zip_exec	pi_zip.txt	/*g:zip_exec*
 g:zip_extractcmd	pi_zip.txt	/*g:zip_extractcmd*
 g:zip_nomax	pi_zip.txt	/*g:zip_nomax*
-g:zip_shq	pi_zip.txt	/*g:zip_shq*
 g:zip_unzipcmd	pi_zip.txt	/*g:zip_unzipcmd*
 g:zip_zipcmd	pi_zip.txt	/*g:zip_zipcmd*
 g;	motion.txt	/*g;*
@@ -8124,6 +8133,7 @@ get()-func	builtin.txt	/*get()-func*
 get()-list	builtin.txt	/*get()-list*
 get()-tuple	builtin.txt	/*get()-tuple*
 get-ms-debuggers	debug.txt	/*get-ms-debuggers*
+getbgcolor()	builtin.txt	/*getbgcolor()*
 getbufinfo()	builtin.txt	/*getbufinfo()*
 getbufline()	builtin.txt	/*getbufline()*
 getbufoneline()	builtin.txt	/*getbufoneline()*
@@ -8248,6 +8258,7 @@ gt	tabpage.txt	/*gt*
 gtk-css	gui_x11.txt	/*gtk-css*
 gtk-tooltip-colors	gui_x11.txt	/*gtk-tooltip-colors*
 gtk3-slow	gui_x11.txt	/*gtk3-slow*
+gtk4-hwaccel	gui_x11.txt	/*gtk4-hwaccel*
 gtk4-slow	gui_x11.txt	/*gtk4-slow*
 gu	change.txt	/*gu*
 gugu	change.txt	/*gugu*
@@ -9803,6 +9814,7 @@ popup-filter-errors	popup.txt	/*popup-filter-errors*
 popup-filter-mode	popup.txt	/*popup-filter-mode*
 popup-function-details	popup.txt	/*popup-function-details*
 popup-functions	popup.txt	/*popup-functions*
+popup-image	popup.txt	/*popup-image*
 popup-intro	popup.txt	/*popup-intro*
 popup-mapping	popup.txt	/*popup-mapping*
 popup-mask	popup.txt	/*popup-mask*

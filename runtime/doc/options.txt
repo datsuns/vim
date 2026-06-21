@@ -1,4 +1,4 @@
-*options.txt*	For Vim version 9.2.  Last change: 2026 Jun 04
+*options.txt*	For Vim version 9.2.  Last change: 2026 Jun 17
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -9707,7 +9707,8 @@ A jump table for the options with a short description can be found at |Q_op|.
 		icons		Toolbar buttons are shown with icons.
 		text		Toolbar buttons shown with text.
 		horiz		Icon and text of a toolbar button are
-				horizontally arranged.  {only in GTK+ 2 GUI}
+				horizontally arranged.
+				{only in GTK+ 2 and GTK 4 GUI}
 		tooltips	Tooltips are active for toolbar buttons.
 	Tooltips refer to the popup help text which appears after the mouse
 	cursor is placed over a toolbar button for a brief moment.
@@ -10536,7 +10537,8 @@ A jump table for the options with a short description can be found at |Q_op|.
 			the same style as the |ins-completion-menu|.  When an
 			info popup is shown next to the menu, it can be
 			scrolled by moving the mouse pointer on top of it and
-			using the scroll wheel.
+			using the scroll wheel, or with the keyboard like in
+			Insert mode completion, see |popupmenu-keys|.
 	  tagfile	When using CTRL-D to list matching tags, the kind of
 			tag and the file of the tag is listed.	Only one match
 			is displayed per line.  Often used tag kinds are:

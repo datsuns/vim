@@ -3270,7 +3270,7 @@ spell_soundfold_sofo(slang_T *slang, char_u *inword, char_u *res)
     else
     {
 	// The sl_sal_first[] table contains the translation.
-	for (s = inword; (c = *s) != NUL; ++s)
+	for (s = inword; (c = *s) != NUL && ri < MAXWLEN - 1; ++s)
 	{
 	    if (VIM_ISWHITE(c))
 		c = ' ';
@@ -4325,7 +4325,7 @@ dump_prefixes(
 			}
 		    }
 		}
-		else
+		else if (depth < MAXWLEN - 1)
 		{
 		    // Normal char, go one level deeper.
 		    prefix[depth++] = c;

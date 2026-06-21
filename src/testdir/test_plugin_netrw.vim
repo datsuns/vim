@@ -172,6 +172,30 @@ function Test_MakeBookmark(netrw_curdir, fname)
   call s:MakeBookmark(a:fname)
   bw
 endfunction
+
+" Test the markings match pattern rebuilt by s:NetrwMarkFile() when unmarking an entry
+function Test_NetrwMarkFile_match_pattern_rebuild()
+  new
+  let curbufnr = bufnr("%")
+
+  call s:NetrwMarkFile(1, 'fname_dir/')
+  call s:NetrwMarkFile(1, 'fname_file')
+  let match_pattern = s:netrwmarkfilemtch_{curbufnr}
+
+  " Assert match pattern after marking and unmarking a directory entry
+  call s:NetrwMarkFile(1, 'dir/')
+  call s:NetrwMarkFile(1, 'dir/')
+  let rebuilt_match_pattern = s:netrwmarkfilemtch_{curbufnr}
+  call assert_equal(match_pattern, rebuilt_match_pattern)
+
+  " Assert match pattern after marking and unmarking a file entry
+  call s:NetrwMarkFile(1, 'file')
+  call s:NetrwMarkFile(1, 'file')
+  let rebuilt_match_pattern = s:netrwmarkfilemtch_{curbufnr}
+  call assert_equal(match_pattern, rebuilt_match_pattern)
+
+  bw
+endfunction
 " }}}
 END
 
@@ -765,6 +789,10 @@ func Test_netrw_bookmark_goto_delete_prompt()
   bw!
 endfunc
 
+func Test_netrw_markings_match_pattern_rebuild()
+  call Test_NetrwMarkFile_match_pattern_rebuild()
+endfunc
+
 func Test_netrw_mf_command_injection()
   CheckUnix
   CheckExecutable touch
@@ -818,6 +846,26 @@ func Test_netrw_injection()
   finally
     call delete(savefile)
     unlet! g:netrw_home g:netrw_dirhistmax g:netrw_dirhistcnt g:netrw_dirhist_1 g:injected
+  endtry
+endfunc
+
+" Deleting a file whose name contains an Ex command separator must not let the
+" name inject commands into the :execute in s:NetrwLocalRmFile().
+func Test_netrw_local_rm_injection()
+  CheckUnix
+  let dir   = getcwd() . '/Xnetrwrm'
+  let fname = "x|let g:injected = 1"
+  call mkdir(dir, 'pR')
+  call writefile([], dir . '/' . fname)
+  try
+    call netrw#Call('NetrwLocalRmFile', dir, fname, 1)
+    call assert_false(exists('g:injected'), 'filename must not inject Ex commands')
+    " The file is removed before the sink, so its absence also confirms the
+    " vulnerable code path was actually exercised (not skipped on an error).
+    call assert_false(filereadable(dir . '/' . fname), 'crafted file must be deleted')
+  finally
+    call delete(dir . '/' . fname)
+    unlet! g:injected
   endtry
 endfunc
 

@@ -535,6 +535,36 @@ static char *(features[]) =
 #else
 	"-sodium",
 #endif
+#ifdef FEAT_IMAGE
+	"+image",
+#else
+	"-image",
+#endif
+#ifdef FEAT_IMAGE_SIXEL
+	"+image_sixel",
+#else
+	"-image_sixel",
+#endif
+#ifdef FEAT_IMAGE_KITTY
+	"+image_kitty",
+#else
+	"-image_kitty",
+#endif
+#ifdef FEAT_IMAGE_GDI
+	"+image_gdi",
+#else
+	"-image_gdi",
+#endif
+#ifdef FEAT_IMAGE_CAIRO
+	"+image_cairo",
+#else
+	"-image_cairo",
+#endif
+#ifdef FEAT_IMAGE_GDK
+	"+image_gdk",
+#else
+	"-image_gdk",
+#endif
 #ifdef FEAT_SOUND
 	"+sound",
 #else
@@ -729,6 +759,200 @@ static char *(features[]) =
 
 static int included_patches[] =
 {   /* Add new patch number below this line */
+/**/
+    699,
+/**/
+    698,
+/**/
+    697,
+/**/
+    696,
+/**/
+    695,
+/**/
+    694,
+/**/
+    693,
+/**/
+    692,
+/**/
+    691,
+/**/
+    690,
+/**/
+    689,
+/**/
+    688,
+/**/
+    687,
+/**/
+    686,
+/**/
+    685,
+/**/
+    684,
+/**/
+    683,
+/**/
+    682,
+/**/
+    681,
+/**/
+    680,
+/**/
+    679,
+/**/
+    678,
+/**/
+    677,
+/**/
+    676,
+/**/
+    675,
+/**/
+    674,
+/**/
+    673,
+/**/
+    672,
+/**/
+    671,
+/**/
+    670,
+/**/
+    669,
+/**/
+    668,
+/**/
+    667,
+/**/
+    666,
+/**/
+    665,
+/**/
+    664,
+/**/
+    663,
+/**/
+    662,
+/**/
+    661,
+/**/
+    660,
+/**/
+    659,
+/**/
+    658,
+/**/
+    657,
+/**/
+    656,
+/**/
+    655,
+/**/
+    654,
+/**/
+    653,
+/**/
+    652,
+/**/
+    651,
+/**/
+    650,
+/**/
+    649,
+/**/
+    648,
+/**/
+    647,
+/**/
+    646,
+/**/
+    645,
+/**/
+    644,
+/**/
+    643,
+/**/
+    642,
+/**/
+    641,
+/**/
+    640,
+/**/
+    639,
+/**/
+    638,
+/**/
+    637,
+/**/
+    636,
+/**/
+    635,
+/**/
+    634,
+/**/
+    633,
+/**/
+    632,
+/**/
+    631,
+/**/
+    630,
+/**/
+    629,
+/**/
+    628,
+/**/
+    627,
+/**/
+    626,
+/**/
+    625,
+/**/
+    624,
+/**/
+    623,
+/**/
+    622,
+/**/
+    621,
+/**/
+    620,
+/**/
+    619,
+/**/
+    618,
+/**/
+    617,
+/**/
+    616,
+/**/
+    615,
+/**/
+    614,
+/**/
+    613,
+/**/
+    612,
+/**/
+    611,
+/**/
+    610,
+/**/
+    609,
+/**/
+    608,
+/**/
+    607,
+/**/
+    606,
+/**/
+    605,
+/**/
+    604,
+/**/
+    603,
 /**/
     602,
 /**/
@@ -2282,7 +2506,11 @@ list_version(void)
     msg_puts(_("without GUI."));
 #elif defined(FEAT_GUI_GTK)
 # if defined(USE_GTK4)
+#  ifdef USE_GTK4_SNAPSHOT
+    msg_puts(_("with GTK4 GUI (hwaccel)."));
+#  else
     msg_puts(_("with GTK4 GUI."));
+#  endif
 # elif defined(USE_GTK3)
     msg_puts(_("with GTK3 GUI."));
 # elif defined(FEAT_GUI_GNOME)

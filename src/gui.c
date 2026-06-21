@@ -10,6 +10,10 @@
 
 #include "vim.h"
 
+#if defined(FEAT_IMAGE_GDI)
+void update_popup_images_rect(int left, int top, int right, int bottom);
+#endif
+
 // Structure containing all the GUI information
 gui_T gui;
 
@@ -1351,6 +1355,11 @@ gui_update_cursor(
     if (!gui.in_focus)
     {
 	gui_mch_draw_hollow_cursor(cbg);
+#if defined(FEAT_GUI_GTK) && defined(FEAT_IMAGE_CAIRO)
+# if !GTK_CHECK_VERSION(4,0,0)
+	update_popup_images();
+# endif
+#endif
 	return;
     }
 
@@ -1408,7 +1417,10 @@ gui_update_cursor(
 	    --gui.col;
 #endif
 
-#ifndef FEAT_GUI_MSWIN	    // doesn't seem to work for MSWindows
+	// Doesn't seem to work for MSWindows. Not necessary when using
+	// GtkSnapshot, because everything is drawn in order in the snapshot
+	// vfunc.
+#if !defined(FEAT_GUI_MSWIN) && !defined(USE_GTK4_SNAPSHOT)
 	gui.highlight_mask = ScreenAttrs[LineOffset[gui.row] + gui.col];
 	(void)gui_screenchar(LineOffset[gui.row] + gui.col,
 		GUI_MON_TRS_CURSOR | GUI_MON_NOCLEAR,
@@ -1416,6 +1428,11 @@ gui_update_cursor(
 #endif
     }
     gui.highlight_mask = old_hl_mask;
+#if defined(FEAT_GUI_GTK) && defined(FEAT_IMAGE_CAIRO)
+# if !GTK_CHECK_VERSION(4,0,0)
+    update_popup_images();
+# endif
+#endif
 }
 
 #if defined(FEAT_MENU)
@@ -1600,6 +1617,10 @@ again:
 
     gui.num_cols = (pixel_width - gui_get_base_width()) / gui.char_width;
     gui.num_rows = (pixel_height - gui_get_base_height()) / gui.char_height;
+
+#ifdef USE_GTK4_SNAPSHOT
+    gui_gtk4_update_size();
+#endif
 
     gui_position_components(pixel_width);
     gui_reset_scroll_region();
@@ -2738,6 +2759,15 @@ gui_undraw_cursor(void)
 #endif
     gui_redraw_block(gui.cursor_row, startcol,
 	    gui.cursor_row, endcol, GUI_MON_NOCLEAR);
+#if defined(FEAT_IMAGE_GDI)
+    {
+	int left   = FILL_X(startcol);
+	int top    = FILL_Y(gui.cursor_row);
+	int right  = FILL_X(endcol + 1);
+	int bottom = FILL_Y(gui.cursor_row + 1);
+	update_popup_images_rect(left, top, right, bottom);
+    }
+#endif
 
     // Cursor_is_valid is reset when the cursor is undrawn, also reset it
     // here in case it wasn't needed to undraw it.
@@ -4134,6 +4164,8 @@ gui_drag_scrollbar(scrollbar_T *sb, long value, int still_dragging)
 	// Keep the "dragged_wp" value until after the scrolling, for when the
 	// mouse button is released.  GTK2 doesn't send the button-up event.
 	gui.dragged_wp = NULL;
+	// WinScrolled event
+	gui_focus_change(TRUE);
 #endif
     }
 

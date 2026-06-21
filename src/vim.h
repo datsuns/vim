@@ -343,7 +343,10 @@
 #endif
 #ifdef BACKSLASH_IN_FILENAME
 # define PATH_ESC_CHARS ((char_u *)" \t\n*?[{`%#'\"|!<")
-# define BUFFER_ESC_CHARS ((char_u *)" \t\n*?[`%#'\"|!<")
+// '%' and '#' are not escaped for ":buffer": it has no EX_XFILE, so they are
+// not expanded, and escaping them as "\%"/"\#" breaks buffer name matching
+// when '%'/'#' is in 'isfname' (backslash treated as a path separator).
+# define BUFFER_ESC_CHARS ((char_u *)" \t\n*?[`'\"|!<")
 #else
 # ifdef VMS
     // VMS allows a lot of characters in the file name
@@ -704,7 +707,8 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 #define POPUP_HANDLED_2	    0x02    // used by popup_do_filter()
 #define POPUP_HANDLED_3	    0x04    // used by popup_check_cursor_pos()
 #define POPUP_HANDLED_4	    0x08    // used by may_update_popup_mask()
-#define POPUP_HANDLED_5	    0x10    // used by update_popups()
+#define POPUP_HANDLED_5	    0x10    // used by update_popups() and
+				    // update_popup_images()
 
 /*
  * Terminal highlighting attribute bits.
@@ -875,6 +879,7 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 #define EXPAND_FILETYPECMD	63
 #define EXPAND_PATTERN_IN_BUF	64
 #define EXPAND_RETAB		65
+#define EXPAND_USER_COMPLETEOPT	66
 
 
 // Values for exmode_active (0 is no exmode)
@@ -2326,6 +2331,11 @@ typedef enum {
 # define VIM_ATOM_NAME "_VIM_TEXT"
 # define VIMENC_ATOM_NAME "_VIMENC_TEXT"
 
+// These are used for the GTK4 GUI, since GTK4 only supports conforming mime
+// types, see gui_gtk4_cb.c for more information.
+# define VIM_MIMETYPE_NAME "application/x-vim-text"
+# define VIMENC_MIMETYPE_NAME "application/x-vim-enc-text"
+
 // Selection states for modeless selection
 # define SELECT_CLEARED		0
 # define SELECT_IN_PROGRESS	1
@@ -3092,6 +3102,10 @@ long elapsed(DWORD start_tick);
 // flags used by user commands and :autocmd
 #define UC_BUFFER	1	// -buffer: local to current buffer
 #define UC_VIM9		2	// {} argument: Vim9 syntax.
+
+// flags for the -completeopt= attribute of :command
+#define UCC_ESCAPE	0x1	// escape spaces, tabs and backslashes in
+				// matches
 
 // flags used by vim_strsave_fnameescape()
 #define VSE_NONE	0

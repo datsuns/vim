@@ -2718,6 +2718,7 @@ typedef enum {
 /*
  * Check if the bytes at the start of the typeahead buffer are a character used
  * in Insert mode completion.  This includes the form with a CTRL modifier.
+ * During completion started by complete() keys are mapped as usual.
  */
     static int
 at_ins_compl_key(void)
@@ -2728,10 +2729,14 @@ at_ins_compl_key(void)
     if (typebuf.tb_len > 3
 	    && (c == K_SPECIAL || c == CSI)  // CSI is used by the GUI
 	    && p[1] == KS_MODIFIER
-	    && (p[2] & MOD_MASK_CTRL))
+	    && (p[2] & MOD_MASK_CTRL)
+	    // CTRL-SHIFT-N/P scroll the info popup, so they must not be folded
+	    // to the CTRL-N/CTRL-P completion keys here.
+	    && !(p[2] & MOD_MASK_SHIFT))
 	c = p[3] & 0x1f;
-    return (ctrl_x_mode_not_default() && vim_is_ctrl_x_key(c))
-		|| (compl_status_local() && (c == Ctrl_N || c == Ctrl_P));
+    return !ctrl_x_mode_eval()
+	    && ((ctrl_x_mode_not_default() && vim_is_ctrl_x_key(c))
+		|| (compl_status_local() && (c == Ctrl_N || c == Ctrl_P)));
 }
 
 /*
@@ -2869,7 +2874,8 @@ handle_mapping(
      * - in insert or cmdline mode and 'paste' option set
      * - waiting for "hit return to continue" and CR or SPACE typed
      * - waiting for a char with --more--
-     * - in Ctrl-X mode, and we get a valid char for that mode
+     * - in Ctrl-X mode (not started by complete()), and we get a valid char
+     *   for that mode
      * - currently receiving OSC sequence
      */
     tb_c1 = typebuf.tb_buf[typebuf.tb_off];
