@@ -887,7 +887,8 @@ handle_closure_in_use(ectx_T *ectx, int free_arguments)
 		*(stack + idx) = *tv;
 		tv->v_type = VAR_UNKNOWN;
 	    }
-	    else
+	    else if (tv->v_type != VAR_UNKNOWN)
+		// Skip an argument that was not set, the stack was cleared.
 		copy_tv(tv, stack + idx);
 	}
 	// Skip the stack frame.
@@ -1103,7 +1104,7 @@ add_defer_item(int var_idx, int argcount, ectx_T *ectx)
     listval.v_lock = 0;
     if (list_insert_tv(defer_l, &listval, defer_l->lv_first) == FAIL)
     {
-	vim_free(l);
+	list_free(l);
 	return NULL;
     }
 
@@ -2458,8 +2459,12 @@ execute_storeindex(isn_T *iptr, ectx_T *ectx)
 		}
 	    }
 	}
-	else if ((dest_type == VAR_LIST || dest_type == VAR_OBJECT)
-		&& tv_idx->v_type != VAR_NUMBER)
+	else if (dest_type == VAR_OBJECT)
+	{
+	    emsg(_(e_string_required));
+	    status = FAIL;
+	}
+	else if (dest_type == VAR_LIST && tv_idx->v_type != VAR_NUMBER)
 	{
 	    emsg(_(e_number_expected));
 	    status = FAIL;
@@ -2494,7 +2499,8 @@ execute_storeindex(isn_T *iptr, ectx_T *ectx)
 	    if (lidx < list->lv_len)
 	    {
 		listitem_T *li = list_find(list, lidx);
-
+		if (li == NULL)
+		    return FAIL;
 		if (error_if_locked(li->li_tv.v_lock,
 					     e_cannot_change_locked_list_item))
 		    return FAIL;
@@ -2944,7 +2950,8 @@ execute_for(isn_T *iptr, ectx_T *ectx)
 	{
 	    listitem_T *li = list_find(list,
 					 idxtv->vval.v_number);
-
+	    if (li == NULL)
+		return FAIL;
 	    copy_tv(&li->li_tv, STACK_TV_BOT(0));
 	    ++ectx->ec_stack.ga_len;
 	}
@@ -2996,7 +3003,8 @@ execute_for(isn_T *iptr, ectx_T *ectx)
 	// changed.
 	if (idxtv->vval.v_number == -1 && blob != NULL)
 	{
-	    blob_copy(blob, ltv);
+	    ltv->v_lock = 0;
+	    ltv->vval.v_blob = blob_copy(blob);
 	    blob_unref(blob);
 	    blob = ltv->vval.v_blob;
 	}
@@ -3298,6 +3306,13 @@ load_namespace_var(ectx_T *ectx, isntype_T isn_type, isn_T *iptr)
 	else
 	    semsg(_(e_undefined_variable_char_str),
 					      namespace, iptr->isn_arg.string);
+	// Push a value anyway, the stack must have the expected size when the
+	// error is ignored because of ":silent!" in a calling function.
+	typval_T *tv = STACK_TV_BOT(0);
+	tv->v_type = VAR_NUMBER;
+	tv->v_lock = 0;
+	tv->vval.v_number = 0;
+	++ectx->ec_stack.ga_len;
 	return FAIL;
     }
     else
@@ -3568,26 +3583,26 @@ exec_unpack_tuple(ectx_T *ectx, isn_T *iptr, typval_T *tv)
 	return EXEC_DONE;
     ectx->ec_stack.ga_len += count - 1;
 
-    // Variable after semicolon gets a list with the remaining
+    // Variable after semicolon gets a tuple with the remaining
     // items.
     if (semicolon)
     {
-	list_T	*rem_list =
-	    list_alloc_with_items(TUPLE_LEN(tuple) - count + 1);
+	tuple_T	*rem_tuple =
+	    tuple_alloc_with_items(TUPLE_LEN(tuple) - count + 1);
 
-	if (rem_list == NULL)
+	if (rem_tuple == NULL)
 	    return EXEC_DONE;
 	tv = STACK_TV_BOT(-count);
-	tv->v_type = VAR_LIST;
-	tv->vval.v_list = rem_list;
-	++rem_list->lv_refcount;
+	tv->v_type = VAR_TUPLE;
+	tv->vval.v_tuple = rem_tuple;
+	++rem_tuple->tv_refcount;
 	tv->v_lock = 0;
 	for (i = count - 1; i < TUPLE_LEN(tuple); ++i)
 	{
 	    typval_T tvcopy;
 
 	    copy_tv(TUPLE_ITEM(tuple, i), &tvcopy);
-	    list_set_item(rem_list, i - (count - 1), &tvcopy);
+	    tuple_set_item(rem_tuple, i - (count - 1), &tvcopy);
 	}
 	--count;
     }
@@ -4180,9 +4195,30 @@ exec_instructions(ectx_T *ectx)
 
 		    if (di == NULL)
 		    {
-			SOURCING_LNUM = iptr->isn_lnum;
-			semsg(_(e_undefined_variable_str), name);
-			goto on_error;
+			ufunc_T	*ufunc = NULL;
+
+			if (iptr->isn_type == ISN_LOADEXPORT)
+			{
+			    type_T	*type;
+
+			    // Not a variable, it can be an exported function
+			    // used as a value.
+			    (void)find_exported(sid, name, &ufunc, &type,
+							 NULL, NULL, FALSE);
+			}
+			if (ufunc == NULL)
+			{
+			    SOURCING_LNUM = iptr->isn_lnum;
+			    semsg(_(e_undefined_variable_str), name);
+			    goto on_error;
+			}
+			if (GA_GROW_FAILS(&ectx->ec_stack, 1))
+			    goto theend;
+			tv = STACK_TV_BOT(0);
+			tv->v_lock = 0;
+			++ectx->ec_stack.ga_len;
+			tv->v_type = VAR_FUNC;
+			tv->vval.v_string = vim_strsave(ufunc->uf_name);
 		    }
 		    else
 		    {
@@ -4239,7 +4275,14 @@ exec_instructions(ectx_T *ectx)
 		    SOURCING_LNUM = iptr->isn_lnum;
 		    if (eval_variable(name, (int)STRLEN(name), 0,
 			      STACK_TV_BOT(0), NULL, EVAL_VAR_VERBOSE) == FAIL)
+		    {
+			tv = STACK_TV_BOT(0);
+			tv->v_type = VAR_NUMBER;
+			tv->v_lock = 0;
+			tv->vval.v_number = 0;
+			++ectx->ec_stack.ga_len;
 			goto on_error;
+		    }
 		    ++ectx->ec_stack.ga_len;
 		}
 		break;
@@ -4719,7 +4762,8 @@ exec_instructions(ectx_T *ectx)
 			tv->vval.v_float = iptr->isn_arg.fnumber;
 			break;
 		    case ISN_PUSHBLOB:
-			blob_copy(iptr->isn_arg.blob, tv);
+			tv->v_type = VAR_BLOB;
+			tv->vval.v_blob = blob_copy(iptr->isn_arg.blob);
 			break;
 		    case ISN_PUSHFUNC:
 			tv->v_type = VAR_FUNC;
@@ -4895,18 +4939,46 @@ exec_instructions(ectx_T *ectx)
 		    }
 
 		    ufunc_T *ufunc;
+		    class_T *cl;
 		    if (mfunc->cmf_is_super)
+		    {
 			// Doing "super.Func", use the specific ufunc.
-			ufunc = mfunc->cmf_itf->class_obj_methods[
-							    mfunc->cmf_idx];
+			cl = mfunc->cmf_itf;
+			ufunc = cl->class_obj_methods[mfunc->cmf_idx];
+		    }
 		    else
 		    {
-			class_T *cl = obj->obj_class;
+			cl = obj->obj_class;
 
 			// convert the interface index to the object index
 			int idx = object_index_from_itf_index(mfunc->cmf_itf,
 						     TRUE, mfunc->cmf_idx, cl);
 			ufunc = cl->class_obj_methods[idx];
+		    }
+
+		    // A generic method: use the method with the type arguments
+		    // used when compiling.  The last one is cached, since
+		    // looking it up is slow.
+		    if (mfunc->cmf_ufunc != NULL && IS_GENERIC_FUNC(ufunc))
+		    {
+			if (mfunc->cmf_cache_cl == cl
+				&& mfunc->cmf_cache_generic == ufunc)
+			    ufunc = mfunc->cmf_cache_ufunc;
+			else
+			{
+			    ufunc_T *generic_ufunc = ufunc;
+
+			    ufunc = generic_func_get_same_types(generic_ufunc,
+							    mfunc->cmf_ufunc);
+			    if (ufunc == NULL)
+				goto on_error;
+
+			    ++cl->class_refcount;
+			    class_unref(mfunc->cmf_cache_cl);
+			    mfunc->cmf_cache_cl = cl;
+			    mfunc->cmf_cache_generic = generic_ufunc;
+			    mfunc->cmf_cache_ufunc = ufunc;
+			}
 		    }
 
 		    if (call_ufunc(ufunc, NULL, mfunc->cmf_argcount, ectx,
@@ -5118,7 +5190,31 @@ exec_instructions(ectx_T *ectx)
 			vim_free(pt);
 			goto theend;
 		    }
-		    if (fill_partial_and_closure(pt, ufunc,
+		    if (extra != NULL && extra->fre_outer_depth > 0
+					   && (ufunc->uf_flags & FC_CLOSURE))
+		    {
+			// Use the context of the function where the nested
+			// generic function is defined.
+			partial_T *outer_pt = ectx->ec_outer_ref == NULL
+				    ? NULL : ectx->ec_outer_ref->or_partial;
+
+			for (int depth = 1; outer_pt != NULL
+				    && depth < extra->fre_outer_depth; ++depth)
+			    outer_pt = get_pt_outer(outer_pt)->out_up_partial;
+			if (outer_pt == NULL)
+			{
+			    SOURCING_LNUM = iptr->isn_lnum;
+			    iemsg("outer partial unexpectedly NULL for FUNCREF");
+			    vim_free(pt);
+			    goto theend;
+			}
+			pt->pt_func = ufunc;
+			pt->pt_refcount = 1;
+			pt->pt_outer_partial = outer_pt;
+			++outer_pt->pt_refcount;
+			++ufunc->uf_refcount;
+		    }
+		    else if (fill_partial_and_closure(pt, ufunc,
 			       extra == NULL ? NULL : &extra->fre_loopvar_info,
 								 ectx) == FAIL)
 		    {
@@ -5241,9 +5337,12 @@ exec_instructions(ectx_T *ectx)
 		    size_t argidx = ufunc->uf_def_args.ga_len
 					+ iptr->isn_arg.jumparg.jump_arg_off
 					+ STACK_FRAME_SIZE;
-		    type_T *tuple = ufunc->uf_arg_types[argidx];
+		    type_T *type = ufunc->uf_arg_types[argidx];
 		    CLEAR_POINTER(tv);
-		    tv->v_type = tuple->tt_type;
+		    // "any" is not a type a value can have, leave the
+		    // argument marked as not set.
+		    if (type->tt_type != VAR_ANY)
+			tv->v_type = type->tt_type;
 		}
 
 		if (iptr->isn_type == ISN_JUMP_IF_ARG_SET ? arg_set : !arg_set)
@@ -6038,6 +6137,8 @@ exec_instructions(ectx_T *ectx)
 		    if (tv->v_type == VAR_LIST)
 		    {
 			li = list_find(tv->vval.v_list, gi->gi_index);
+			if (li == NULL)
+			    goto on_error;
 			item_tv = &li->li_tv;
 		    }
 		    else
@@ -7330,9 +7431,10 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 		{
 		    isn_outer_T *outer = &iptr->isn_arg.outer;
 
-		    if (outer->outer_depth == OUTER_LOOP_DEPTH)
-			smsg("%s%4d STOREOUTER level 1 $%d in loop",
-				pfx, current, outer->outer_idx);
+		    if (outer->outer_depth < 0)
+			smsg("%s%4d STOREOUTER $%d in loop level %d",
+				pfx, current, outer->outer_idx,
+				-outer->outer_depth);
 		    else
 			smsg("%s%4d STOREOUTER level %d $%d", pfx, current,
 				outer->outer_depth, outer->outer_idx);
@@ -7554,7 +7656,9 @@ list_instructions(char *pfx, isn_T *instr, int instr_count, ufunc_T *ufunc)
 
 		    smsg("%s%4d METHODCALL %s.%s(argc %d)", pfx, current,
 			    mfunc->cmf_itf->class_name.string,
-			    mfunc->cmf_itf->class_obj_methods[
+			    mfunc->cmf_ufunc != NULL
+				? mfunc->cmf_ufunc->uf_name
+				: mfunc->cmf_itf->class_obj_methods[
 						      mfunc->cmf_idx]->uf_name,
 			    mfunc->cmf_argcount);
 		}

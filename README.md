@@ -2,6 +2,7 @@
 
 [![Github Build status](https://github.com/vim/vim/workflows/GitHub%20CI/badge.svg)](https://github.com/vim/vim/actions?query=workflow%3A%22GitHub+CI%22)
 [![Coverage Status](https://codecov.io/gh/vim/vim/coverage.svg?branch=master)](https://codecov.io/gh/vim/vim?branch=master)
+[![Coverity Scan](https://scan.coverity.com/projects/241/badge.svg)](https://scan.coverity.com/projects/vim)
 [![Debian CI](https://badges.debian.net/badges/debian/testing/vim/version.svg)](https://buildd.debian.org/vim)
 [![Packages](https://repology.org/badge/tiny-repos/vim.svg)](https://repology.org/metapackage/vim)
 [![Fossies codespell report](https://fossies.org/linux/test/vim-master.tar.gz/codespell.svg)](https://fossies.org/linux/test/vim-master.tar.gz/codespell.html)
@@ -17,7 +18,7 @@ or one of the [Maillists](https://www.vim.org/community.php).
 ## What is Vim?
 
 Vim is a greatly improved version of the good old UNIX editor
-[Vi](https://en.wikipedia.org/wiki/Vi_(text_editor)).  Many new
+[Vi](https://en.wikipedia.org/wiki/Vi_%28text_editor%29).  Many new
 features have been added: multi-level undo, syntax highlighting, command line
 history, on-line help, spell checking, filename completion, block operations,
 script language, etc.  There is also a Graphical User Interface (GUI)

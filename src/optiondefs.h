@@ -1278,7 +1278,7 @@ static struct vimoption options[] =
 
 
     {"guiheadroom", "ghr",  P_NUM|P_VI_DEF,
-#if defined(FEAT_GUI_GTK) || defined(FEAT_GUI_X11)
+#if (defined(FEAT_GUI_GTK) && !defined(USE_GTK4)) || defined(FEAT_GUI_X11)
 			    (char_u *)&p_ghr, PV_NONE, NULL, NULL,
 #else
 			    (char_u *)NULL, PV_NONE, NULL, NULL,
@@ -1414,6 +1414,15 @@ static struct vimoption options[] =
 			    (char_u *)NULL, PV_NONE, NULL, NULL,
 #endif
 			    {(char_u *)"", (char_u *)0L} SCTX_INIT},
+    {"imageprotocol", "ipc",P_STRING|P_VI_DEF|P_ONECOMMA|P_NODUP|P_COLON,
+#ifdef FEAT_IMAGE
+			    (char_u *)&p_ipc, PV_NONE, did_set_imageprotocol, expand_set_imageprotocol,
+			    {(char_u *)"kitty:kitty,foot:sixel,ghostty:kitty,wezterm:kitty,xterm:sixel", (char_u *)0L}
+#else
+			    (char_u *)NULL, PV_NONE, NULL, NULL,
+			    {(char_u *)0L, (char_u *)0L}
+#endif
+			    SCTX_INIT},
     {"imcmdline",   "imc",  P_BOOL|P_VI_DEF,
 			    (char_u *)&p_imcmdline, PV_NONE, NULL, NULL,
 			    {(char_u *)FALSE, (char_u *)0L} SCTX_INIT},
@@ -2022,7 +2031,7 @@ static struct vimoption options[] =
 #endif
 			    SCTX_INIT},
     {"printexpr", "pexpr",  P_STRING|P_VI_DEF|P_SECURE,
-#ifdef FEAT_POSTSCRIPT
+#if defined(FEAT_POSTSCRIPT) || defined(FEAT_PRINT_PANGO)
 			    (char_u *)&p_pexpr, PV_NONE, did_set_optexpr, NULL,
 			    {(char_u *)"", (char_u *)0L}
 #else
@@ -2036,6 +2045,8 @@ static struct vimoption options[] =
 			    {
 # ifdef MSWIN
 				(char_u *)"Courier_New:h10",
+# elif defined(FEAT_PRINT_PANGO)
+				(char_u *)"Courier 10",
 # else
 				(char_u *)"courier",
 # endif

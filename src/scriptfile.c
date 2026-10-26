@@ -166,10 +166,11 @@ estack_sfile(estack_arg_T which UNUSED)
 	    if (entry->es_type == ETYPE_UFUNC || entry->es_type == ETYPE_AUCMD)
 	    {
 		sctx_T *def_ctx = entry->es_type == ETYPE_UFUNC
-				      ? &entry->es_info.ufunc->uf_script_ctx
-				      : acp_script_ctx(entry->es_info.aucmd);
+			      ? &entry->es_info.ufunc->uf_script_ctx
+			      : entry->es_info.aucmd != NULL
+				  ? acp_script_ctx(entry->es_info.aucmd) : NULL;
 
-		return def_ctx->sc_sid > 0
+		return def_ctx != NULL && def_ctx->sc_sid > 0
 			   ? vim_strsave(SCRIPT_ITEM(def_ctx->sc_sid)->sn_name)
 			   : NULL;
 	    }
@@ -322,11 +323,15 @@ stacktrace_create(void)
 	}
 	else if (entry->es_type == ETYPE_AUCMD)
 	{
-	    sctx_T sctx = *acp_script_ctx(entry->es_info.aucmd);
-	    char_u *filepath = sctx.sc_sid > 0 ?
-				   get_scriptname(sctx.sc_sid) : (char_u *)"";
+	    // The autocmd may not have a matching pattern yet, in which case
+	    // es_info.aucmd is still NULL.
+	    sctx_T *sctx = entry->es_info.aucmd != NULL
+			       ? acp_script_ctx(entry->es_info.aucmd) : NULL;
+	    char_u *filepath = sctx != NULL && sctx->sc_sid > 0 ?
+				   get_scriptname(sctx->sc_sid) : (char_u *)"";
 
-	    lnum += sctx.sc_lnum;
+	    if (sctx != NULL)
+		lnum += sctx->sc_lnum;
 	    stacktrace_push_item(l, NULL, entry->es_name, lnum, filepath);
 	}
     }
@@ -662,7 +667,7 @@ do_in_path(
 		    && !after_pathsep(buf.string, buf.string + buf.length))
 		{
 		    STRCPY(buf.string + buf.length, PATHSEPSTR);
-		    buf.length += STRLEN_LITERAL(PATHSEPSTR);
+		    buf.length += sizeof(PATHSEP);
 		}
 		STRCPY(buf.string + buf.length, prefix);
 		buf.length += prefixlen;
@@ -1699,7 +1704,11 @@ do_source_ext(
 #endif
 
     // Apply SourceCmd autocommands, they should get the file and source it.
-    if (has_autocmd(EVENT_SOURCECMD, fname_exp, NULL)
+    // When sourcing a file "fname_exp" was made a full path name by
+    // fix_fname() above, avoid expanding it again.
+    if ((fname == NULL
+		? has_autocmd(EVENT_SOURCECMD, fname_exp, NULL)
+		: has_autocmd_fullname(EVENT_SOURCECMD, fname_exp, NULL))
 	    && apply_autocmds(EVENT_SOURCECMD, fname_exp, fname_exp,
 							       FALSE, curbuf))
     {
@@ -2342,31 +2351,46 @@ f_getscriptinfo(typval_T *argvars, typval_T *rettv)
 	    continue;
 
 	if ((d = dict_alloc()) == NULL
-		|| list_append_dict(l, d) == FAIL
-		|| dict_add_string(d, "name", si->sn_name) == FAIL
+		|| list_append_dict(l, d) == FAIL)
+	{
+	    dict_unref(d);
+	    goto theend;
+	}
+	if (dict_add_string(d, "name", si->sn_name) == FAIL
 		|| dict_add_number(d, "sid", i) == FAIL
 		|| dict_add_number(d, "sourced", si->sn_sourced_sid) == FAIL
 		|| dict_add_number(d, "version", si->sn_version) == FAIL
 		|| dict_add_bool(d, "autoload",
 				si->sn_state == SN_STATE_NOT_LOADED) == FAIL)
-	    return;
+	    goto theend;
 
 	// When a script ID is specified, return information about only the
 	// specified script, and add the script-local variables and functions.
 	if (sid > 0)
 	{
 	    dict_T	*var_dict;
+	    list_T	*fn_list;
 
 	    var_dict = dict_copy(&si->sn_vars->sv_dict, TRUE, TRUE,
 								get_copyID());
-	    if (var_dict == NULL
-		    || dict_add_dict(d, "variables", var_dict) == FAIL
-		    || dict_add_list(d, "functions",
-					get_script_local_funcs(sid)) == FAIL)
-		return;
+	    if (var_dict == NULL)
+		goto theend;
+	    if (dict_add_dict(d, "variables", var_dict) == FAIL)
+	    {
+		dict_unref(var_dict);
+		goto theend;
+	    }
+	    --var_dict->dv_refcount;
+	    fn_list = get_script_local_funcs(sid);
+	    if (fn_list == NULL || dict_add_list(d, "functions", fn_list) == FAIL)
+	    {
+		list_unref(fn_list);
+		goto theend;
+	    }
 	}
     }
 
+theend:
     vim_regfree(regmatch.regprog);
     vim_free(pat);
 }
@@ -2430,8 +2454,10 @@ get_one_sourceline(source_cookie_T *sp)
 	have_read = TRUE;
 	ga.ga_len = len;
 
-	// If the line was longer than the buffer, read more.
-	if (ga.ga_maxlen - ga.ga_len == 1 && buf[len - 1] != '\n')
+	// If the line was longer than the buffer, read more.  A line of a
+	// buffer was taken as a whole.
+	if (!sp->source_from_buf && ga.ga_maxlen - ga.ga_len == 1
+						       && buf[len - 1] != '\n')
 	    continue;
 
 	if (len >= 1 && buf[len - 1] == '\n')	// remove trailing NL

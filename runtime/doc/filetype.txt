@@ -1,4 +1,4 @@
-*filetype.txt*	For Vim version 9.2.  Last change: 2026 Jun 18
+*filetype.txt*	For Vim version 9.2.  Last change: 2026 Oct 01
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -138,6 +138,7 @@ what kind of file it is.  This doesn't always work.  A number of global
 variables can be used to overrule the filetype used for certain extensions:
 
 	file name	variable ~
+	*.al		g:filetype_al
 	*.app		g:filetype_app
 	*.as		g:filetype_as
 	*.asa		g:filetype_asa		|ft-aspperl-syntax|
@@ -798,6 +799,15 @@ To force another recomputation, do: >
 [0] https://html.spec.whatwg.org/multipage/syntax.html#optional-tags
 [1] https://en.wikipedia.org/wiki/Dangling_else
 
+ICALENDAR			    *ft-icalendar-plugin* *g:icalendar_folding*
+
+You can enable folding of iCalendar components (BEGIN: and END: pairs)
+using |fold-expr| by: >
+
+	let g:icalendar_folding = 1
+<
+Nested components, such as a VALARM inside a VEVENT, produce nested folds.
+
 IDRIS2							*ft-idris2-plugin*
 
 By default the following options are set: >
@@ -993,6 +1003,21 @@ For fish, add to the config file
 
 	set -x MANPAGER "vim +MANPAGER --not-a-term -"
 
+NOTE: Some man implementations pass a temporary file path to the pager as an
+argument instead. This includes mandoc's frontend, which is the default on
+OpenBSD, Alpine Linux and Void Linux for example.
+
+In that case adjust the above lines to set the MANPAGER environment variable
+to "vim +MANPAGER --not-a-term" instead, dropping the final hyphen argument.
+
+A way to support both behaviors is to create the following wrapper script:
+>sh
+	#!/bin/sh
+	vim +MANPAGER --not-a-term "${1:--}"
+<
+You can set the MANPAGER environment variable to the script name to enable it
+(if it's not on the PATH you can use the absolute path). Make sure the
+executable permission bit is set.
 
 MARKDOWN						*ft-markdown-plugin*
 
@@ -1134,6 +1159,13 @@ Currently no other formats are recognized.
 
 TYPST							*ft-typst-plugin*
 
+						   *g:typst_recommended_style*
+By default, the Typst filetype plugin enables the following options: >
+	setlocal expandtab shiftwidth=2 softtabstop=2
+
+To disable this, set the following variable: >
+	let g:typst_recommended_style = 0
+<
 							*g:typst_conceal*
 When |TRUE| the Typst filetype plugin will set the 'conceallevel' option to 2.
 

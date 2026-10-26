@@ -5291,6 +5291,7 @@ qf_fill_buffer(qf_list_T *qfl, buf_T *buf, qfline_T *old_last, int qf_winid)
 	    // Delete the empty line which is now at the end
 	    (void)ml_delete(lnum + 1);
 
+	list_unref(qftf_list);
 	qfga_clear();
     }
 
@@ -7222,7 +7223,10 @@ get_qfline_items(qfline_T *qfp, list_T *list)
     if ((dict = dict_alloc()) == NULL)
 	return FAIL;
     if (list_append_dict(list, dict) == FAIL)
+    {
+	dict_unref(dict);
 	return FAIL;
+    }
 
     buf[0] = qfp->qf_type;
     buf[1] = NUL;

@@ -584,6 +584,7 @@ extern char *(*dyn_libintl_bindtextdomain)(const char *domainname, const char *d
 extern char *(*dyn_libintl_bind_textdomain_codeset)(const char *domainname, const char *codeset);
 extern char *(*dyn_libintl_textdomain)(const char *domainname);
 extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
+extern int *dyn_libintl_nl_msg_cat_cntr;
 #endif
 
 
@@ -701,6 +702,7 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 #define POPF_POSINVERT	0x800	// vertical position can be inverted
 #define POPF_OPACITY 0x1000	// popup has opacity/transparency setting
 #define POPF_CLIPWINDOW	0x2000	// confine popup to its host window's rect
+#define POPF_GLOBAL	0x4000	// popup is global (not tabpage local)
 
 // flags used in w_popup_handled
 #define POPUP_HANDLED_1	    0x01    // used by mouse_find_win()
@@ -1807,9 +1809,9 @@ void *vim_memset(void *, int, size_t);
  */
 #define STRLEN(s)	    strlen((char *)(s))
 #define STRCPY(d, s)	    strcpy((char *)(d), (char *)(s))
-#define STRNCPY(d, s, n)    strncpy((char *)(d), (char *)(s), (size_t)(n))
+#define STRNCPY(d, s, n)    strncpy((char *)(d), (char *)(s), (n))
 #define STRCMP(d, s)	    strcmp((char *)(d), (char *)(s))
-#define STRNCMP(d, s, n)    strncmp((char *)(d), (char *)(s), (size_t)(n))
+#define STRNCMP(d, s, n)    strncmp((char *)(d), (char *)(s), (n))
 #ifdef HAVE_STRCASECMP
 # define STRICMP(d, s)	    strcasecmp((char *)(d), (char *)(s))
 #else
@@ -1829,12 +1831,12 @@ void *vim_memset(void *, int, size_t);
 #define STRMOVE(d, s)	    mch_memmove((d), (s), STRLEN(s) + 1)
 
 #ifdef HAVE_STRNCASECMP
-# define STRNICMP(d, s, n)  strncasecmp((char *)(d), (char *)(s), (size_t)(n))
+# define STRNICMP(d, s, n)  strncasecmp((char *)(d), (char *)(s), (n))
 #else
 # ifdef HAVE_STRNICMP
-#  define STRNICMP(d, s, n) strnicmp((char *)(d), (char *)(s), (size_t)(n))
+#  define STRNICMP(d, s, n) strnicmp((char *)(d), (char *)(s), (n))
 # else
-#  define STRNICMP(d, s, n) vim_strnicmp((char *)(d), (char *)(s), (size_t)(n))
+#  define STRNICMP(d, s, n) vim_strnicmp((char *)(d), (char *)(s), (n))
 # endif
 #endif
 
@@ -1849,7 +1851,7 @@ void *vim_memset(void *, int, size_t);
 #define MB_STRNICMP2(d, s, n1, n2)	mb_strnicmp2((char_u *)(d), (char_u *)(s), (n1), (n2))
 
 #define STRCAT(d, s)	    strcat((char *)(d), (char *)(s))
-#define STRNCAT(d, s, n)    strncat((char *)(d), (char *)(s), (size_t)(n))
+#define STRNCAT(d, s, n)    strncat((char *)(d), (char *)(s), (n))
 
 #ifdef HAVE_STRPBRK
 # define vim_strpbrk(s, cs) (char_u *)strpbrk((char *)(s), (char *)(cs))
@@ -1929,7 +1931,7 @@ typedef unsigned short disptick_T;	// display tick type
 typedef void	    *vim_acl_T;		// dummy to pass an ACL to a function
 
 #ifndef mch_memmove
-# define mch_memmove(to, from, len) memmove((char*)(to), (char*)(from), (size_t)(len))
+# define mch_memmove(to, from, len) memmove((char*)(to), (char*)(from), (len))
 #endif
 
 /*
@@ -1939,7 +1941,7 @@ typedef void	    *vim_acl_T;		// dummy to pass an ACL to a function
  * thus it is not 100% accurate!)
  */
 #define fnamecmp(x, y) vim_fnamecmp((char_u *)(x), (char_u *)(y))
-#define fnamencmp(x, y, n) vim_fnamencmp((char_u *)(x), (char_u *)(y), (size_t)(n))
+#define fnamencmp(x, y, n) vim_fnamencmp((char_u *)(x), (char_u *)(y), (n))
 
 #if defined(UNIX) || defined(FEAT_GUI) || defined(VMS) \
 	|| defined(FEAT_CLIENTSERVER)
@@ -1957,8 +1959,8 @@ typedef void	    *vim_acl_T;		// dummy to pass an ACL to a function
 # define vim_read(fd, buf, count)   read((fd), (char *)(buf), (unsigned int)(count))
 # define vim_write(fd, buf, count)  write((fd), (char *)(buf), (unsigned int)(count))
 #else
-# define vim_read(fd, buf, count)   read((fd), (char *)(buf), (size_t) (count))
-# define vim_write(fd, buf, count)  write((fd), (char *)(buf), (size_t) (count))
+# define vim_read(fd, buf, count)   read((fd), (char *)(buf), (count))
+# define vim_write(fd, buf, count)  write((fd), (char *)(buf), (count))
 #endif
 
 /*
@@ -1993,10 +1995,10 @@ typedef void	    *vim_acl_T;		// dummy to pass an ACL to a function
 
 #define MAX_MCO	6	// maximum value for 'maxcombine'
 
-// Maximum number of bytes in a multi-byte character.  It can be one 32-bit
-// character of up to 6 bytes, or one 16-bit character of up to three bytes
-// plus six following composing characters of three bytes each.
-#define MB_MAXBYTES	21
+// Maximum number of bytes in the multi-byte character of one screen cell.
+// It can be one character of up to six bytes, plus MAX_MCO following composing
+// characters of up to four bytes each.
+#define MB_MAXBYTES	30
 
 #if (defined(FEAT_PROFILE) || defined(FEAT_RELTIME)) && !defined(PROTO)
 # ifdef MSWIN
@@ -2281,7 +2283,8 @@ typedef int sock_T;
 #define VV_TERMOSC 115
 #define VV_VIM_DID_INIT		116
 #define VV_CLIPPROVIDERS 117
-#define VV_LEN		118	// number of v: vars
+#define VV_IMAGEBACKEND 118
+#define VV_LEN		119	// number of v: vars
 
 // used for v_number in VAR_BOOL and VAR_SPECIAL
 #define VVAL_FALSE	0L	// VAR_BOOL
@@ -2592,6 +2595,25 @@ typedef int (*opt_expand_cb_T)(optexpand_T *args, int *numMatches, char_u ***mat
 #include "globals.h"	    // global variables and messages
 #include "errors.h"	    // error messages
 
+#ifndef PROTO
+/*
+ * Return TRUE when currently using Vim9 script syntax.
+ * Does not go up the stack, a ":function" inside vim9script uses legacy
+ * syntax.
+ * Defined here as "static inline" because it is called very frequently from
+ * the eval hot path; inlining avoids the cross-file call overhead.
+ */
+    static inline int
+in_vim9script(void)
+{
+    // "sc_version" is also set when compiling a ":def" function in legacy
+    // script.
+    return (current_sctx.sc_version == SCRIPT_VERSION_VIM9
+					 || (cmdmod.cmod_flags & CMOD_VIM9CMD))
+		&& !(cmdmod.cmod_flags & CMOD_LEGACY);
+}
+#endif
+
 /*
  * If console dialog not supported, but GUI dialog is, use the GUI one.
  */
@@ -2701,6 +2723,16 @@ typedef int (*opt_expand_cb_T)(optexpand_T *args, int *numMatches, char_u ***mat
 			    // multiple signs exist on the line
 #endif
 
+#if defined(FEAT_GUI_GTK) && defined(FEAT_IMAGE)
+// Logical pixels to physical pixels
+# define LOG2PHY(l) (gui.in_use ? (double)(l) * gui.scale : (l))
+ // Physical pixels to logical pixels
+# define PHY2LOG(p) (gui.in_use ? (double)(p) / gui.scale : (p))
+#else
+# define LOG2PHY(l) (l)
+# define PHY2LOG(p) (p)
+#endif
+
 #if defined(FEAT_GUI) && defined(FEAT_XCLIPBOARD)
 # ifdef FEAT_GUI_GTK
    // Avoid using a global variable for the X display.  It's ugly
@@ -2783,6 +2815,12 @@ typedef int (*opt_expand_cb_T)(optexpand_T *args, int *numMatches, char_u ***mat
 	    { GTK_WIDGET_SET_FLAGS(wid, GTK_REALIZED); } \
 	else \
 	    { GTK_WIDGET_UNSET_FLAGS(wid, GTK_REALIZED); } } while (0)
+# endif
+#endif
+
+#if defined(FEAT_PRINT_PANGO) && defined(FEAT_GUI_GTK) && defined(USE_GTK4)
+# if GTK_CHECK_VERSION(4, 14, 0)
+#  define USE_GTK4_PRINT_DIALOG
 # endif
 #endif
 
@@ -2909,6 +2947,15 @@ typedef int (*opt_expand_cb_T)(optexpand_T *args, int *numMatches, char_u ***mat
 # define MAX_OPEN_CHANNELS 10
 #else
 # define MAX_OPEN_CHANNELS 0
+#endif
+
+// Maximum number of simultaneously accepted socketserver client channels.
+// Bounds the channels (and file descriptors) added to the select()/poll()
+// sets so a connection flood cannot overflow the fd_set / pollfd arrays.
+#ifdef FEAT_SOCKETSERVER
+# define MAX_CLIENT_CHANNELS 100
+#else
+# define MAX_CLIENT_CHANNELS 0
 #endif
 
 #if defined(MSWIN)
@@ -3125,6 +3172,8 @@ long elapsed(DWORD start_tick);
 
 // Flags used by getvcol()
 #define GETVCOL_END_EXCL_LBR	1
+#define GETVCOL_NO_ABOVE	2	// exclude virtual text above the line
+#define GETVCOL_FOR_VIRTCOL	4	// value is used for "w_virtcol"
 
 // Used by expand_env_esc() callers that feed the result to
 // wildcard expansion, so that such characters embedded in

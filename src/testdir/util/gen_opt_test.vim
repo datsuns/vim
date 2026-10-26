@@ -237,7 +237,10 @@ let test_values = {
       \		['xxx', 'a,b']],
       \ 'helplang': [['', 'de', 'de,it'], ['xxx']],
       \ 'highlight': [['', 'e:Error'], ['xxx']],
-      \ 'imactivatekey': [['', 'S-space'], ['xxx']],
+      \ 'imactivatekey': [[''], ['xxx']],
+      \ 'imageprotocol': [
+      \ ['kitty:kitty', 'xterm:sixel,kitty:sixel'],
+      \ ['kitty:', 'xterm:unknown', 'xterm:sixel,wwww']],
       \ 'isfname': [['', '@', '@,48-52'], ['xxx', '@48']],
       \ 'isident': [['', '@', '@,48-52'], ['xxx', '@48']],
       \ 'iskeyword': [['', '@', '@,48-52'], ['xxx', '@48']],
@@ -394,6 +397,10 @@ let test_values = {
       \ 'othernum': [[-1, 0, 100], ['']],
       \ 'otherstring': [['', 'xxx'], []],
       \}
+
+if !has('gui_gtk4')
+    let test_values['imactivatekey'] = [['', 'S-space'], ['xxx']]
+endif
 
 if !has('clipboard')
   " If +clipboard isn't enabled but +clipboard_provider is, then 'clipboard' is
